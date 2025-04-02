@@ -225,7 +225,7 @@ impl TokenCache {
     // pub fn burned_transfer(&mut self, location: Location, txid: Txid, vout: u32) {
     //     self.token_actions.push(TokenAction::Transferred {
     //         transfer_location: location,
-    //         recipient: None,
+    //         recipient: *OP_RETURN_HASH,
     //         txid,
     //         vout,
     //     });
@@ -290,13 +290,14 @@ impl TokenCache {
     //                         valid_transfer.map(|x| Some(x.1.clone())).unwrap_or(None)
     //                     });
     //                 if let Some(TransferProtoDB { tick, .. }) = proto {
-    //                     if let Some(recipient) = recipient {
+    //                     if !recipient.is_op_return_hash() {
     //                         users.insert((*recipient, tick.into()));
-    //                         if let Some(transfer) = valid_transfer {
-    //                             users.insert((transfer.0, tick.into()));
-    //                         }
-    //                         tickers.insert(tick.into());
     //                     }
+
+    //                     if let Some(transfer) = valid_transfer {
+    //                         users.insert((transfer.0, tick.into()));
+    //                     }
+    //                     tickers.insert(tick.into());
     //                 }
     //             }
     //         }

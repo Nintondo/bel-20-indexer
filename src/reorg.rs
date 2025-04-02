@@ -157,7 +157,7 @@ impl ReorgCache {
                             to_remove_transfer.push((location, receiver, amt));
                         }
                         TokenHistoryEntry::RestoreTransferred(key, value, recipient) => {
-                            to_update_deployed.push(DeployedUpdate::Transfered(value.tick.into()));
+                            to_update_deployed.push(DeployedUpdate::Transferred(value.tick.into()));
                             to_restore_transferred.push((key, value, recipient));
                         }
                         TokenHistoryEntry::RemoveHistory(key) => {
@@ -191,7 +191,7 @@ impl ReorgCache {
                         .map(|x| match x {
                             DeployedUpdate::Mint(tick, _)
                             | DeployedUpdate::Transfer(tick)
-                            | DeployedUpdate::Transfered(tick) => tick.clone(),
+                            | DeployedUpdate::Transferred(tick) => tick.clone(),
                         })
                         .unique()
                         .collect_vec();
@@ -231,7 +231,7 @@ impl ReorgCache {
                             *transactions -= 1;
                             (tick, meta)
                         }
-                        DeployedUpdate::Transfered(tick) => {
+                        DeployedUpdate::Transferred(tick) => {
                             let mut meta = deploys.get(&tick).unwrap().clone();
                             let DeployProtoDB { transactions, .. } = &mut meta.proto;
                             *transactions -= 1;
@@ -358,5 +358,5 @@ impl ReorgCache {
 enum DeployedUpdate {
     Mint(LowerCaseTick, Fixed128),
     Transfer(LowerCaseTick),
-    Transfered(LowerCaseTick),
+    Transferred(LowerCaseTick),
 }

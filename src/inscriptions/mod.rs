@@ -7,7 +7,7 @@ pub mod types;
 mod utils;
 
 use dutils::async_thread::Thread;
-use electrs_client::{BlockMeta, Update};
+use electrs_client::{BlockMeta, ClientError, Update};
 use types::{InscriptionsTokenHistory, TokenHistoryData};
 pub use utils::ScriptToAddr;
 
@@ -192,8 +192,31 @@ async fn indexer(
     let mut repeater = token.repeat_until_cancel(Duration::from_secs(3));
     while repeater.next().await {
         let mut last_index_height = server.db.last_block.get(()).unwrap_or_default();
-        let last_indexer_block = client.get_electrs_block_meta(last_index_height).await?;
-        let last_electris_block = client.get_last_electrs_block_meta().await?;
+
+        let last_indexer_block = match client.get_electrs_block_meta(last_index_height).await {
+            Ok(ok) => ok,
+            Err(e) => {
+               if let ClientError::Json(_) = e {
+                    warn!("Got client recovery error {e}, try again...");
+                    continue;
+               }
+              
+                return Err(anyhow::anyhow!(e));
+            },
+        };
+
+        let last_electris_block = match client.get_last_electrs_block_meta().await {
+            Ok(ok) => ok,
+            Err(e) => {
+               if let ClientError::Json(_) = e {
+                    warn!("Got client recovery error {e}, try again...");
+                    continue;
+               }
+              
+                return Err(anyhow::anyhow!(e));
+            },
+        };
+
 
         if let Some(blocks_gap) = last_electris_block
             .height

@@ -1,18 +1,17 @@
 use std::sync::Arc;
 
 use crate::{
-    tokens::{InscriptionId, LowerCaseTick, TokenTick},
     NON_STANDARD_ADDRESS,
+    tokens::{InscriptionId, LowerCaseTick, TokenTick},
 };
 
 use super::{
-    utils::{first_page, page_size_default, to_scripthash, validate_tick},
-    AddressLocation, Fixed128, TransferProtoDB, BAD_PARAMS, INTERNAL, NETWORK,
+    AddressLocation, BAD_PARAMS, Fixed128, INTERNAL, NETWORK, TransferProtoDB,utils::{first_page, page_size_default, to_scripthash, validate_tick},
 };
 use axum::{
+    Json,
     extract::{Path, Query, State},
     response::IntoResponse,
-    Json,
 };
 use dutils::error::{ApiError, ContextWrapper};
 use itertools::Itertools;
@@ -20,7 +19,7 @@ use nintypes::common::inscriptions::Outpoint;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use super::{ApiResult, Server, BAD_REQUEST, NOT_FOUND};
+use super::{ApiResult, BAD_REQUEST, NOT_FOUND, Server};
 
 #[derive(Serialize, Deserialize)]
 pub struct Token {

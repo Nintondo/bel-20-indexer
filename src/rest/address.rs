@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::LowerCaseTick;
 
 use super::{
-    utils::to_scripthash, AddressLocation, AddressToken, ApiResult, Fixed128, FullHash, Server,
-    TokenTick, TokenTransfer, INTERNAL, NETWORK,
+    utils::to_scripthash, AddressLocation, AddressToken, ApiResult, Fixed128, FullHash, Server, TokenTick,
+    TokenTransfer, INTERNAL, NETWORK,
 };
 
 pub async fn address_tokens_tick(

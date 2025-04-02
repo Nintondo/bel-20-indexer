@@ -1,3 +1,5 @@
 /target
 /rocksdb
 .env
+/.idea
+*.lock

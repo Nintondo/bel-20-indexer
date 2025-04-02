@@ -1,10 +1,8 @@
 use super::*;
 
-mod client;
 mod logging;
 mod progress;
 
-pub use client::AsyncClient;
 pub use logging::init_logger;
 pub use progress::Progress;
 

@@ -1,4 +1,4 @@
-use bellscoin::{Address, PublicKey};
+use nintondo_dogecoin::{Address, PublicKey};
 use script::ScriptBuf;
 use validator::ValidationError;
 

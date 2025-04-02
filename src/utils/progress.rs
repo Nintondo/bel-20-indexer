@@ -28,11 +28,19 @@ impl Progress {
             c: c.into(),
         }
     }
+
+    pub fn reset_c(&self, new_c: u64) {
+        self.span.pb_set_length(new_c);
+        self.c.store(new_c, std::sync::atomic::Ordering::Release);
+        self.update_msg();
+    }
+
     pub fn inc(&self, c: u64) {
         self.span.pb_inc(c);
         self.c.fetch_add(c, std::sync::atomic::Ordering::AcqRel);
         self.update_msg();
     }
+
     fn update_msg(&self) {
         let time = self.start.elapsed().as_secs_f32();
         self.span.pb_set_message(&format!(

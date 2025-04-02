@@ -1,19 +1,15 @@
+extern crate serde;
 #[macro_use]
 extern crate tracing;
-extern crate serde;
 
 use {
     axum::{
-        body::Body,
-        extract::{Path, Query, State},
+        body::Body, extract::{Path, Query, State},
         http::{Response, StatusCode},
         response::IntoResponse,
         routing::get,
-        Json, Router,
-    },
-    bellscoin::{
-        hashes::{sha256, Hash},
-        opcodes, script, BlockHash, Network, OutPoint, Transaction, TxOut, Txid,
+        Json,
+        Router,
     },
     db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     dutils::{
@@ -22,9 +18,13 @@ use {
         wait_token::WaitToken,
     },
     futures::future::join_all,
-    inscriptions::{Location, ScriptToAddr},
+    inscriptions::Location,
     itertools::Itertools,
     lazy_static::lazy_static,
+    nintondo_dogecoin::{
+        hashes::{sha256, Hash}, script, BlockHash, Network, OutPoint,
+        TxOut, Txid,
+    },
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{serde_as, DisplayFromStr},
@@ -34,7 +34,6 @@ use {
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
         fmt::{Display, Formatter},
         future::IntoFuture,
-        iter::Peekable,
         marker::PhantomData,
         ops::{Bound, RangeBounds},
         str::FromStr,
@@ -45,7 +44,6 @@ use {
     tokens::*,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
-    utils::AsyncClient,
 };
 
 mod db;
@@ -85,15 +83,15 @@ lazy_static! {
     static ref PASS: String = load_env!("RPC_PASS");
     static ref NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
-        .unwrap_or(Network::Bellscoin);
-    static ref MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT: usize = if let Network::Bellscoin = *NETWORK
+        .unwrap_or(Network::Dogecoin);
+    static ref MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT: usize = if let Network::Dogecoin = *NETWORK
     {
         133_000
     } else {
         0
     };
     static ref START_HEIGHT: u32 = match *NETWORK {
-        Network::Bellscoin => MAINNET_START_HEIGHT,
+        Network::Dogecoin => MAINNET_START_HEIGHT,
         _ => 0,
     };
     static ref SERVER_URL: String =
@@ -106,7 +104,7 @@ async fn main() {
     dotenv::dotenv().unwrap();
     utils::init_logger();
 
-    let (addr_rx, raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
+    let (raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
 
     let server = Arc::new(server);
 
@@ -126,7 +124,7 @@ async fn main() {
     let result = join_all([
         signal_handler,
         server1
-            .run_threads(server.token.clone(), addr_rx, raw_event_tx, event_tx)
+            .run_threads(server.token.clone(), raw_event_tx, event_tx)
             .spawn(),
         run_rest(server.token.clone(), server.clone()).spawn(),
         inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
@@ -143,6 +141,8 @@ async fn main() {
 }
 
 async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
+    info!("Start REST");
+    
     let listener = tokio::net::TcpListener::bind(&*SERVER_URL).await.unwrap();
 
     let rest = axum::serve(listener, rest::get_router(server))
@@ -153,7 +153,6 @@ async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
         token.cancelled().await;
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
-
     tokio::select! {
         v = rest => {
             info!("Rest finished");

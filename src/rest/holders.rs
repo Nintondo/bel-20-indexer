@@ -13,8 +13,8 @@ use validator::Validate;
 use crate::tokens::LowerCaseTick;
 
 use super::{
-    utils::{first_page, page_size_default, validate_tick},
-    ApiResult, Fixed128, Server, BAD_PARAMS, INTERNAL,
+    utils::{first_page, page_size_default, validate_tick}, ApiResult, Fixed128, Server, BAD_PARAMS,
+    INTERNAL,
 };
 
 pub async fn holders(

@@ -1,208 +1,88 @@
-use super::*;
+use std::default::Default;
 
-pub struct ParseInscription<'a> {
-    tx: &'a Transaction,
-    input_idx: usize,
-    inscription_idx: &'a mut u32,
-    inputs_cum: &'a [u64],
-}
+use super::*;
+use crate::inscriptions::types::{HistoryLocation, Outpoint, ParsedTokenHistoryData};
 
 pub struct InitialIndexer {}
 
-impl InitialIndexer {
-    fn parse_block(
-        height: u32,
-        created: u32,
-        txs: &[Transaction],
-        prevouts: &HashMap<OutPoint, TxOut>,
-        token_cache: &mut TokenCache,
-    ) {
-        let mut transfers = vec![];
+pub struct TxidN(pub [u8; 32]);
 
-        for tx in txs {
-            if tx.is_coin_base() {
-                continue;
-            }
-            let mut inscription_idx = 0;
-            let txid = tx.txid();
+impl From<TxidN> for Txid {
+    fn from(value: TxidN) -> Self {
+        Txid::from_slice(&value.0).expect("Unexpected txid")
+    }
+}
 
-            let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts)
-                .expect("failed to find all txos to calculate offsets");
-
-            for (idx, txin) in tx.input.iter().enumerate() {
-                transfers.extend(
-                    token_cache
-                        .valid_transfers
-                        .range(
-                            Location {
-                                outpoint: txin.previous_output,
-                                offset: 0,
-                            }..=Location {
-                                outpoint: txin.previous_output,
-                                offset: u64::MAX,
-                            },
-                        )
-                        .map(|(k, (address, proto))| (*k, (*address, proto.clone()))),
-                );
-
-                for &(location, _) in &transfers {
-                    if location.outpoint != txin.previous_output {
-                        continue;
-                    }
-
-                    if let Ok((vout, _)) = InscriptionSearcher::get_output_index_by_input(
-                        inputs_cum.get(idx).map(|&x| x + location.offset),
-                        &tx.output,
-                    ) {
-                        if tx.output[vout as usize].script_pubkey.is_op_return() {
-                            token_cache.burned_transfer(location, txid, vout);
-                        } else {
-                            let owner =
-                                tx.output[vout as usize].script_pubkey.compute_script_hash();
-                            token_cache.transferred(location, owner, txid, vout);
-                        };
-                    } else {
-                        token_cache.transferred(
-                            location,
-                            prevouts
-                                .get(&txin.previous_output)
-                                .unwrap()
-                                .script_pubkey
-                                .compute_script_hash(),
-                            tx.txid(),
-                            0,
-                        );
-                    }
-                }
-
-                for inc in Self::parse_inscriptions(ParseInscription {
-                    tx,
-                    input_idx: idx,
-                    inscription_idx: &mut inscription_idx,
-                    inputs_cum: &inputs_cum,
-                }) {
-                    if inc.genesis.index == 0
-                        || height as usize >= *MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT
-                    {
-                        if let Some(proto) = token_cache.parse_token_action(&inc, height, created) {
-                            transfers.push((
-                                inc.location,
-                                (inc.owner, TransferProtoDB::from_proto(proto, height)),
-                            ))
-                        };
-                    }
-                }
-            }
+impl From<Outpoint> for OutPoint {
+    fn from(value: Outpoint) -> Self {
+        Self {
+            txid: TxidN(value.txid).into(),
+            vout: value.vout,
         }
     }
+}
 
-    pub async fn handle(
-        block_height: u32,
-        server: Arc<Server>,
+impl From<HistoryLocation> for Location {
+    fn from(value: HistoryLocation) -> Self {
+        Location {
+            outpoint: value.outpoint.into(),
+            offset: value.offset,
+        }
+    }
+}
+
+impl InitialIndexer {
+    pub async fn handle_batch(
+        token_history_data: Vec<ParsedTokenHistoryData>,
+        server: &Server,
         reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
-    ) -> anyhow::Result<()> {
-        let current_hash = server.client.get_block_hash(block_height).await?;
+    ) {
+        // used to get all data from db and generate keys
+        let batch_cache = BatchCache::load_cache(server, &token_history_data);
+
+        // generate shared cache for updates
+        let mut shared_cache = batch_cache.shared_cache();
+
         let mut last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
 
-        if let Some(cache) = reorg_cache.as_ref() {
-            cache.lock().new_block(block_height, last_history_id);
-        }
+        // store all proofs for batch
+        let mut block_height_to_history = HashMap::<u32, BlockHistory>::new();
 
-        server.db.block_hashes.set(block_height, current_hash);
+        // last proof from db
+        let mut prev_proof = server
+            .db
+            .last_block
+            .get(())
+            .and_then(|height| server.db.proof_of_history.get(height))
+            .unwrap_or(*DEFAULT_HASH);
 
-        if reorg_cache.is_some() {
-            debug!("Syncing block: {} ({})", current_hash, block_height);
-        }
+        // store only standard addresses
+        let mut full_hash_to_address = HashMap::<FullHash, String>::new();
 
-        let block = server.client.get_block(&current_hash).await?;
-        let created = block.header.time;
+        for block in token_history_data {
+            if let Some(cache) = reorg_cache.as_ref() {
+                cache
+                    .lock()
+                    .new_block(block.block_info.into(), last_history_id);
 
-        match server.addr_tx.send(server::threads::AddressesToLoad {
-            height: block_height,
-            addresses: block
-                .txdata
-                .iter()
-                .flat_map(|x| &x.output)
-                .map(|x| x.script_pubkey.clone())
-                .collect(),
-        }) {
-            Ok(_) => {}
-            _ => {
-                if !server.token.is_cancelled() {
-                    panic!("Failed to send addresses to load");
-                }
+                debug!(
+                    "Syncing block: {} ({})",
+                    block.block_info.block_hash, block.block_info.height
+                );
             }
-        }
 
-        let prevouts = block
-            .txdata
-            .iter()
-            .flat_map(|x| {
-                let txid = x.txid();
-                x.output.iter().enumerate().map(move |(idx, vout)| {
-                    (
-                        OutPoint {
-                            txid,
-                            vout: idx as u32,
-                        },
-                        vout,
-                    )
-                })
-            })
-            .filter(|x| !x.1.script_pubkey.is_provably_unspendable());
+            let block_cache = batch_cache
+                .get_block_cache(block.block_info.height)
+                .expect("Block cache must exist, generated above");
 
-        server.db.prevouts.extend(prevouts);
+            let mut token_cache = shared_cache.generate_block_token_cache(&block_cache);
+            let history = token_cache.process_token_actions(reorg_cache.clone(), &server.holders);
+            shared_cache.update_cache(token_cache);
 
-        if block_height < *START_HEIGHT {
-            server.db.last_block.set((), block_height);
-            return Ok(());
-        }
-
-        if block.txdata.len() == 1 {
-            server.db.last_block.set((), block_height);
-            return server.new_hash(block_height, current_hash, &[]).await;
-        }
-
-        let mut token_cache = TokenCache::default();
-        let prevouts = utils::load_prevouts_for_block(server.db.clone(), &block.txdata)?;
-
-        if let Some(cache) = reorg_cache.as_ref() {
-            prevouts.iter().for_each(|(key, value)| {
-                cache.lock().removed_prevout(*key, value.clone());
-            });
-        }
-
-        token_cache.valid_transfers.extend(
-            server.db.load_transfers(
-                prevouts
-                    .iter()
-                    .map(|(k, v)| AddressLocation {
-                        address: v.script_pubkey.compute_script_hash(),
-                        location: Location {
-                            outpoint: *k,
-                            offset: 0,
-                        },
-                    })
-                    .collect(),
-            ),
-        );
-
-        Self::parse_block(
-            block_height,
-            created,
-            &block.txdata,
-            &prevouts,
-            &mut token_cache,
-        );
-
-        token_cache.load_tokens_data(&server.db)?;
-
-        let history = token_cache
-            .process_token_actions(reorg_cache.clone(), &server.holders)
-            .into_iter()
-            .flat_map(|action| {
+            let mut block_history: Vec<(AddressTokenId, HistoryValue)> = Vec::new();
+            for action in history {
                 last_history_id += 1;
-                let mut results: Vec<(AddressTokenId, HistoryValue)> = vec![];
+
                 let token = action.tick();
                 let recipient = action.recipient();
                 let key = AddressTokenId {
@@ -219,160 +99,502 @@ impl InitialIndexer {
                         .sender()
                         .expect("Should be in here with the Send action");
                     last_history_id += 1;
-                    results.extend([
-                        (
-                            AddressTokenId {
-                                address: sender,
-                                token,
-                                id: last_history_id,
+                    block_history.push((
+                        AddressTokenId {
+                            address: sender,
+                            token,
+                            id: last_history_id,
+                        },
+                        HistoryValue {
+                            height: block.block_info.height,
+                            action: db_action,
+                        },
+                    ));
+                    block_history.push((
+                        key,
+                        HistoryValue {
+                            height: block.block_info.height,
+                            action: TokenHistoryDB::Receive {
+                                amt,
+                                sender,
+                                txid,
+                                vout,
                             },
-                            HistoryValue {
-                                height: block_height,
-                                action: db_action,
-                            },
-                        ),
-                        (
-                            key,
-                            HistoryValue {
-                                height: block_height,
-                                action: TokenHistoryDB::Receive {
-                                    amt,
-                                    sender,
-                                    txid,
-                                    vout,
-                                },
-                            },
-                        ),
-                    ])
+                        },
+                    ))
                 } else {
-                    results.push((
+                    block_history.push((
                         key,
                         HistoryValue {
                             action: db_action,
-                            height: block_height,
+                            height: block.block_info.height,
                         },
                     ));
                 }
-                match server.raw_event_sender.send(results.clone()) {
-                    Ok(_) => {}
-                    _ => {
-                        if !server.token.is_cancelled() {
-                            panic!("Failed to send raw event");
-                        }
+            }
+
+            let rest_addresses = block_cache
+                .addresses
+                .into_iter()
+                .flat_map(|x| match x {
+                    types::ParsedTokenAddress::Standard(script) => {
+                        script.to_address_str(*NETWORK).map(|v| {
+                            let full_hash = script.compute_script_hash();
+                            let str_address = if script.is_op_return() {
+                                OP_RETURN_ADDRESS.to_string()
+                            } else {
+                                full_hash_to_address.insert(full_hash, v.clone());
+                                v
+                            };
+                            (full_hash, str_address)
+                        })
                     }
-                }
-                results
-            })
-            .collect_vec();
+                    types::ParsedTokenAddress::NonStandard(full_hash) => {
+                        Some((full_hash, NON_STANDARD_ADDRESS.to_string()))
+                    }
+                })
+                .collect();
 
-        if let Some(reorg_cache) = reorg_cache.as_ref() {
-            let mut cache = reorg_cache.lock();
-            history
-                .iter()
-                .for_each(|(k, _)| cache.added_history(k.clone()));
-        };
+            let new_block_proof =
+                Server::generate_history_hash(prev_proof, &block_history, &rest_addresses)
+                    .expect("Must generate history proof");
 
-        {
-            let new_keys = history
-                .iter()
-                .map(|x| x.0.clone())
-                .sorted_unstable_by_key(|x| x.id)
-                .collect_vec();
-            server.db.block_events.set(block_height, new_keys);
-
-            let keys = history.iter().map(|x| (x.1.action.outpoint(), x.0.clone()));
-            server.db.outpoint_to_event.extend(keys)
+            block_height_to_history.insert(
+                block.block_info.height,
+                BlockHistory {
+                    block_hash: block.block_info.block_hash,
+                    proof: new_block_proof,
+                    history: block_history,
+                },
+            );
+            prev_proof = new_block_proof;
         }
 
+        let last_block_height = block_height_to_history
+            .keys()
+            .sorted()
+            .next_back()
+            .cloned()
+            .expect("Last block height must exist in batch");
+
+        // write/rewrite tokens
+        server.db.token_to_meta.extend(
+            shared_cache
+                .token_to_meta
+                .into_iter()
+                .map(|(tick, proto)| (tick, TokenMetaDB::from(proto))),
+        );
+
+        // write/rewrite address token balance
         server
-            .new_hash(block_height, current_hash, &history)
-            .await?;
+            .db
+            .address_token_to_balance
+            .extend(shared_cache.account_to_balance);
 
-        server.db.address_token_to_history.extend(history);
+        // remove spent token transfers
+        server
+            .db
+            .address_location_to_transfer
+            .remove_batch(shared_cache.transfer_to_remove.into_iter());
 
-        token_cache.write_token_data(server.db.clone()).await?;
-        token_cache.write_valid_transfers(&server.db)?;
+        // write new address token transfers
+        server
+            .db
+            .address_location_to_transfer
+            .extend(shared_cache.address_location_to_transfer);
 
-        server.db.last_block.set((), block_height);
+        // write all addresses
+        server.db.fullhash_to_address.extend(full_hash_to_address);
+
+        for (height, block_history) in block_height_to_history
+            .iter()
+            .sorted_by_key(|(block_number, _)| *block_number)
+        {
+            let history_idx = block_history
+                .history
+                .iter()
+                .map(|(address_token_id, _)| address_token_id.clone())
+                .sorted_unstable_by_key(|address_token_id| address_token_id.id)
+                .collect_vec();
+
+            server.db.block_events.set(height, history_idx);
+
+            let outpoint_idx = block_history
+                .history
+                .iter()
+                .map(|(address_token_id, history)| {
+                    (history.action.outpoint(), address_token_id.clone())
+                });
+
+            server.db.outpoint_to_event.extend(outpoint_idx);
+
+            server
+                .db
+                .address_token_to_history
+                .extend(block_history.history.clone());
+        }
+
+        //write history proofs
+        server.db.proof_of_history.extend(
+            block_height_to_history
+                .iter()
+                .map(|(height, history)| (height, history.proof)),
+        );
+
         server.db.last_history_id.set((), last_history_id);
-        Ok(())
-    }
+        server.db.last_block.set((), last_block_height);
+        *server.last_indexed_address_height.write().await = last_block_height;
 
-    fn parse_inscriptions(payload: ParseInscription) -> Vec<InscriptionTemplate> {
-        let mut result = vec![];
+        for (block_height, block_history) in block_height_to_history
+            .into_iter()
+            .sorted_by_key(|(height, _)| *height)
+        {
+            if let Some(reorg_cache) = reorg_cache.as_ref() {
+                let mut cache = reorg_cache.lock();
+                block_history
+                    .history
+                    .iter()
+                    .for_each(|(k, _)| cache.added_history(k.clone()));
+            };
 
-        for inscription in Inscription::from_transaction(payload.tx, payload.input_idx) {
-            match inscription {
-                ParsedInscription::None => {}
-                ParsedInscription::Partial => {}
-                ParsedInscription::Complete(inscription) => {
-                    let genesis = {
-                        InscriptionId {
-                            txid: payload.tx.txid(),
-                            index: *payload.inscription_idx,
-                        }
-                    };
+            server
+                .event_sender
+                .send(ServerEvent::NewBlock(
+                    block_height,
+                    block_history.proof,
+                    block_history.block_hash,
+                ))
+                .ok();
 
-                    *payload.inscription_idx += 1;
-
-                    let content_type = inscription.content_type().map(|x| x.to_owned());
-
-                    let pointer = inscription.pointer();
-
-                    let mut inc = InscriptionTemplate {
-                        content: inscription.into_body(),
-                        content_type,
-                        genesis,
-                        location: Location {
-                            offset: 0,
-                            outpoint: OutPoint {
-                                txid: payload.tx.txid(),
-                                vout: payload.input_idx as u32,
-                            },
-                        },
-                        owner: FullHash::ZERO,
-                        value: 0,
-                        leaked: false,
-                    };
-
-                    let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(
-                        payload.inputs_cum.get(payload.input_idx).copied(),
-                        &payload.tx.output,
-                    ) else {
-                        continue;
-                    };
-
-                    if let Ok((new_vout, new_offset)) =
-                        InscriptionSearcher::get_output_index_by_input(pointer, &payload.tx.output)
-                    {
-                        vout = new_vout;
-                        offset = new_offset;
-                    }
-
-                    let location: Location = Location {
-                        outpoint: OutPoint {
-                            txid: payload.tx.txid(),
-                            vout,
-                        },
-                        offset,
-                    };
-
-                    let tx_out = &payload.tx.output[vout as usize];
-
-                    if tx_out.script_pubkey.is_op_return() {
-                        inc.owner = *OP_RETURN_HASH;
-                    } else {
-                        inc.owner = tx_out.script_pubkey.compute_script_hash();
-                    }
-
-                    inc.location = location;
-                    inc.value = tx_out.value;
-
-                    result.push(inc);
-                }
+            if server.raw_event_sender.send(block_history.history).is_err()
+                && !server.token.is_cancelled()
+            {
+                panic!("Failed to send raw event");
             }
         }
-
-        result
     }
+}
+
+pub struct BatchCache {
+    // cache for all batch of blocks
+    pub token_to_meta: HashMap<LowerCaseTick, TokenMeta>,
+    pub account_to_balance: HashMap<AddressToken, TokenBalance>,
+    pub address_location_to_transfer: HashMap<AddressLocation, TransferProtoDB>,
+    // keys for block to get cached data
+    pub block_number_to_block_cache: HashMap<u32, BlockCache>,
+}
+
+#[derive(Default)]
+pub struct SharedBatchCache {
+    pub token_to_meta: HashMap<LowerCaseTick, TokenMeta>,
+    pub account_to_balance: HashMap<AddressToken, TokenBalance>,
+    pub address_location_to_transfer: HashMap<AddressLocation, TransferProtoDB>,
+    pub transfer_to_remove: HashSet<AddressLocation>,
+}
+
+impl SharedBatchCache {
+    pub fn generate_block_token_cache(&mut self, block_cache: &BlockCache) -> TokenCache {
+        let tokens: HashMap<_, _> = block_cache
+            .tokens
+            .iter()
+            .flat_map(|tick| {
+                self.token_to_meta
+                    .remove(tick)
+                    .map(|meta| (tick.clone(), meta))
+            })
+            .collect();
+
+        let token_accounts: HashMap<_, _> = block_cache
+            .address_token
+            .iter()
+            .flat_map(|address_token| {
+                self.account_to_balance
+                    .remove(address_token)
+                    .map(|balance| (address_token.clone(), balance))
+            })
+            .collect();
+
+        let mut valid_transfers = BTreeMap::<_, _>::new();
+        for key in &block_cache.address_transfer_location {
+            let Some(data) = self.address_location_to_transfer.remove(key) else {
+                continue;
+            };
+            self.transfer_to_remove.insert(key.clone());
+            valid_transfers.insert(key.location, (key.address, data.clone()));
+        }
+
+        let mut token_cache = block_cache.token_cache.clone();
+        token_cache.tokens = tokens;
+        token_cache.token_accounts = token_accounts;
+        token_cache.valid_transfers = valid_transfers;
+
+        token_cache
+    }
+
+    pub fn update_cache(&mut self, token_cache: TokenCache) {
+        // update tokens deploys from block
+        self.token_to_meta.extend(token_cache.tokens);
+        // update address balance from block
+        self.account_to_balance.extend(token_cache.token_accounts);
+        // return not spent transfers from block
+        self.address_location_to_transfer.extend(
+            token_cache
+                .valid_transfers
+                .into_iter()
+                .map(|(location, (address, proto))| (AddressLocation { address, location }, proto)),
+        );
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct BlockCache {
+    pub addresses: HashSet<types::ParsedTokenAddress>,
+    pub tokens: HashSet<LowerCaseTick>,
+    pub address_token: HashSet<AddressToken>,
+    pub address_transfer_location: HashSet<AddressLocation>,
+    pub token_cache: TokenCache,
+}
+
+impl BatchCache {
+    pub fn load_cache(server: &Server, history: &[ParsedTokenHistoryData]) -> Self {
+        let mut block_number_to_block_cache = HashMap::<u32, BlockCache>::new();
+
+        for block in history {
+            let mut block_cache = BlockCache::default();
+            let mut inscription_idx = 0;
+            let mut addresses = HashSet::new();
+
+            for inscription in &block.inscriptions {
+                // got txid:vout where token action was happened
+                let txid = Txid::from_slice(&inscription.from_location.outpoint.txid).unwrap();
+                let vout = inscription.from_location.outpoint.vout;
+
+                match inscription.token {
+                    types::ParsedTokenActionRest::Mint { tick, amt } if !inscription.leaked => {
+                        let token: LowerCaseTick = tick.into();
+                        let account = AddressToken {
+                            address: inscription.to.compute_script_hash(),
+                            token: token.clone(),
+                        };
+
+                        block_cache
+                            .token_cache
+                            .token_actions
+                            .push(TokenAction::Mint {
+                                owner: account.address,
+                                proto: MintProto::Bel20 { tick, amt },
+                                txid,
+                                vout,
+                            });
+
+                        block_cache.tokens.insert(token);
+                        block_cache.address_token.insert(account);
+                        addresses.insert(inscription.from.clone());
+                        addresses.insert(inscription.to.clone());
+                    }
+                    types::ParsedTokenActionRest::DeployTransfer { tick, amt }
+                        if !inscription.leaked =>
+                    {
+                        let token: LowerCaseTick = tick.into();
+                        let account = AddressToken {
+                            address: inscription.to.compute_script_hash(),
+                            token: token.clone(),
+                        };
+                        let address_location = AddressLocation {
+                            address: account.address,
+                            location: inscription.to_location.into(),
+                        };
+
+                        block_cache
+                            .token_cache
+                            .token_actions
+                            .push(TokenAction::Transfer {
+                                location: address_location.location,
+                                owner: address_location.address,
+                                proto: TransferProto::Bel20 { tick, amt },
+                                txid,
+                                vout,
+                            });
+
+                        block_cache.token_cache.all_transfers.insert(
+                            address_location.location,
+                            TransferProtoDB {
+                                tick,
+                                amt,
+                                height: block.block_info.height,
+                            },
+                        );
+
+                        block_cache.tokens.insert(token);
+                        block_cache
+                            .address_transfer_location
+                            .insert(address_location);
+                        block_cache.address_token.insert(account);
+                        addresses.insert(inscription.to.clone());
+                        addresses.insert(inscription.from.clone());
+                    }
+                    types::ParsedTokenActionRest::SpentTransfer { outpoint, tick, .. } => {
+                        let token: LowerCaseTick = tick.into();
+                        let account = AddressToken {
+                            address: inscription.from.compute_script_hash(),
+                            token: token.clone(),
+                        };
+
+                        if inscription.leaked {
+                            let leaked_outpoint = outpoint.expect("Must exist leaked outpoint");
+                            block_cache
+                                .token_cache
+                                .token_actions
+                                .push(TokenAction::Transferred {
+                                    transfer_location: inscription.from_location.into(),
+                                    recipient: account.address,
+                                    txid: leaked_outpoint.txid,
+                                    vout: leaked_outpoint.vout,
+                                });
+                        } else {
+                            block_cache
+                                .token_cache
+                                .token_actions
+                                .push(TokenAction::Transferred {
+                                    transfer_location: inscription.from_location.into(),
+                                    recipient: inscription.to.compute_script_hash(),
+                                    txid,
+                                    vout,
+                                });
+                        }
+
+                        addresses.insert(inscription.to.clone());
+                        addresses.insert(inscription.from.clone());
+                        block_cache.tokens.insert(token.clone());
+                        block_cache
+                            .address_transfer_location
+                            .insert(AddressLocation {
+                                address: account.address,
+                                location: inscription.from_location.into(),
+                            });
+                        block_cache.address_token.insert(account);
+                        block_cache.address_token.insert(AddressToken {
+                            address: inscription.to.compute_script_hash(),
+                            token,
+                        });
+                    }
+                    types::ParsedTokenActionRest::Deploy {
+                        tick,
+                        max,
+                        lim,
+                        dec,
+                    } if !inscription.leaked => {
+                        block_cache
+                            .token_cache
+                            .token_actions
+                            .push(TokenAction::Deploy {
+                                genesis: InscriptionId {
+                                    txid,
+                                    index: inscription_idx,
+                                },
+                                proto: DeployProtoDB {
+                                    tick,
+                                    max,
+                                    lim,
+                                    dec,
+                                    supply: Fixed128::ZERO,
+                                    transfer_count: 0,
+                                    mint_count: 0,
+                                    height: block.block_info.height,
+                                    created: block.block_info.created,
+                                    deployer: inscription.to.compute_script_hash(),
+                                    transactions: 1,
+                                },
+                                owner: inscription.to.compute_script_hash(),
+                            });
+                        addresses.insert(inscription.to.clone());
+                        addresses.insert(inscription.from.clone());
+                        inscription_idx += 1;
+                    }
+                    _ => continue,
+                }
+            }
+
+            block_cache.addresses = addresses;
+            block_number_to_block_cache.insert(block.block_info.height, block_cache);
+        }
+
+        let ticks: Vec<_> = block_number_to_block_cache
+            .values()
+            .flat_map(|x| x.tokens.clone().into_iter())
+            .sorted()
+            .unique()
+            .collect();
+
+        let address_token: Vec<_> = block_number_to_block_cache
+            .values()
+            .flat_map(|x| x.address_token.clone().into_iter())
+            .sorted()
+            .unique()
+            .collect();
+
+        let address_transfer_location: Vec<_> = block_number_to_block_cache
+            .values()
+            .flat_map(|x| x.address_transfer_location.clone().into_iter())
+            .sorted()
+            .unique()
+            .collect();
+
+        let token_to_meta = server
+            .db
+            .token_to_meta
+            .multi_get(ticks.iter())
+            .into_iter()
+            .zip(ticks)
+            .filter_map(|(token_meta, token)| token_meta.map(|meta| (token, TokenMeta::from(meta))))
+            .collect::<HashMap<_, _>>();
+
+        let account_to_balance = server
+            .db
+            .address_token_to_balance
+            .multi_get(address_token.iter())
+            .into_iter()
+            .zip(address_token)
+            .flat_map(|(token_balance, address_token)| {
+                token_balance.map(|balance| (address_token, balance))
+            })
+            .collect::<HashMap<_, _>>();
+
+        let address_location_to_transfer = server
+            .db
+            .address_location_to_transfer
+            .multi_get(address_transfer_location.iter())
+            .into_iter()
+            .zip(address_transfer_location)
+            .flat_map(|(transfer, address_location)| {
+                transfer.map(|transfer| (address_location, transfer))
+            })
+            .collect::<HashMap<_, _>>();
+
+        Self {
+            token_to_meta,
+            account_to_balance,
+            address_location_to_transfer,
+            block_number_to_block_cache,
+        }
+    }
+
+    pub fn shared_cache(&self) -> SharedBatchCache {
+        SharedBatchCache {
+            token_to_meta: self.token_to_meta.clone(),
+            account_to_balance: self.account_to_balance.clone(),
+            address_location_to_transfer: self.address_location_to_transfer.clone(),
+            ..Default::default()
+        }
+    }
+
+    pub fn get_block_cache(&self, block_number: u32) -> Option<BlockCache> {
+        self.block_number_to_block_cache.get(&block_number).cloned()
+    }
+}
+
+struct BlockHistory {
+    pub block_hash: BlockHash,
+    pub proof: sha256::Hash,
+    pub history: Vec<(AddressTokenId, HistoryValue)>,
 }

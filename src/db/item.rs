@@ -1,4 +1,5 @@
 use super::*;
+use nintondo_dogecoin::consensus;
 
 pub trait Pebble {
     type Inner;
@@ -84,11 +85,11 @@ impl<const N: usize> Pebble for [u8; N] {
 
 pub struct UsingConsensus<T>(PhantomData<T>)
 where
-    T: bellscoin::consensus::Decodable + bellscoin::consensus::Encodable;
+    T: consensus::Decodable + consensus::Encodable;
 
 impl<T> Pebble for UsingConsensus<T>
 where
-    T: bellscoin::consensus::Decodable + bellscoin::consensus::Encodable,
+    T: consensus::Decodable + consensus::Encodable,
 {
     type Inner = T;
 
@@ -99,7 +100,7 @@ where
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        bellscoin::consensus::Decodable::consensus_decode(&mut std::io::Cursor::new(&v)).anyhow()
+        consensus::Decodable::consensus_decode(&mut std::io::Cursor::new(&v)).anyhow()
     }
 }
 

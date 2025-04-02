@@ -3,7 +3,6 @@ use super::*;
 mod structs;
 pub mod threads;
 pub use structs::*;
-use threads::AddressesToLoad;
 
 pub struct Server {
     pub db: Arc<DB>,
@@ -11,8 +10,7 @@ pub struct Server {
     pub raw_event_sender: kanal::Sender<RawServerEvent>,
     pub token: WaitToken,
     pub last_indexed_address_height: Arc<tokio::sync::RwLock<u32>>,
-    pub addr_tx: Arc<kanal::Sender<AddressesToLoad>>,
-    pub client: Arc<AsyncClient>,
+    pub client: electrs_client::Config,
     pub holders: Arc<Holders>,
 }
 
@@ -20,28 +18,23 @@ impl Server {
     pub async fn new(
         db_path: &str,
     ) -> anyhow::Result<(
-        kanal::Receiver<AddressesToLoad>,
         kanal::Receiver<RawServerEvent>,
         tokio::sync::broadcast::Sender<ServerEvent>,
         Self,
     )> {
         let (raw_tx, raw_rx) = kanal::unbounded();
         let (tx, _) = tokio::sync::broadcast::channel(30_000);
-        let (addr_tx, addr_rx) = kanal::unbounded();
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
 
         let server = Self {
-            client: Arc::new(
-                AsyncClient::new(
-                    &URL,
-                    Some(USER.to_string()),
-                    Some(PASS.to_string()),
-                    token.clone(),
-                )
-                .await?,
-            ),
-            addr_tx: Arc::new(addr_tx),
+            client: electrs_client::Config {
+                url: URL.to_string(),
+                user: USER.to_string(),
+                password: PASS.to_string(),
+                limit: Some(1000),
+                reorgs_path: None,
+            },
             holders: Arc::new(Holders::init(&db)),
             db,
             raw_event_sender: raw_tx.clone(),
@@ -50,7 +43,7 @@ impl Server {
             event_sender: tx.clone(),
         };
 
-        Ok((addr_rx, raw_rx, tx, server))
+        Ok((raw_rx, tx, server))
     }
 
     pub async fn load_addresses(
@@ -86,46 +79,39 @@ impl Server {
             .collect())
     }
 
-    pub async fn new_hash(
-        &self,
-        height: u32,
-        blockhash: BlockHash,
+    pub fn generate_history_hash(
+        prev_history_hash: sha256::Hash,
         history: &[(AddressTokenId, HistoryValue)],
-    ) -> anyhow::Result<()> {
+        addresses: &HashMap<FullHash, String>,
+    ) -> anyhow::Result<sha256::Hash> {
         let current_hash = if history.is_empty() {
             *DEFAULT_HASH
         } else {
-            let mut res = Vec::<u8>::new();
+            let mut buffer = Vec::<u8>::new();
 
-            for (k, v) in history {
-                let bytes = serde_json::to_vec(
-                    &HistoryRest::new(v.height, v.action.clone(), k.clone(), self).await?,
-                )?;
-                res.extend(bytes);
+            for (address_token, action) in history {
+                let rest = HistoryRest {
+                    height: action.height,
+                    action: TokenActionRest::from_with_addresses(action.action.clone(), addresses),
+                    address_token: AddressTokenIdRest {
+                        address: addresses.get(&address_token.address).unwrap().clone(),
+                        id: address_token.id,
+                        tick: address_token.token,
+                    },
+                };
+                let bytes = serde_json::to_vec(&rest)?;
+                buffer.extend(bytes);
             }
 
-            sha256::Hash::hash(&res)
+            sha256::Hash::hash(&buffer)
         };
 
         let new_hash = {
-            let prev_hash = self
-                .db
-                .proof_of_history
-                .get(height - 1)
-                .unwrap_or(*DEFAULT_HASH);
-            let mut result = vec![];
-            result.extend_from_slice(prev_hash.as_byte_array());
-            result.extend_from_slice(current_hash.as_byte_array());
-
-            sha256::Hash::hash(&result)
+            let mut buffer = prev_history_hash.as_byte_array().to_vec();
+            buffer.extend_from_slice(current_hash.as_byte_array());
+            sha256::Hash::hash(&buffer)
         };
 
-        self.event_sender
-            .send(ServerEvent::NewBlock(height, new_hash, blockhash))
-            .ok();
-
-        self.db.proof_of_history.set(height, new_hash);
-
-        Ok(())
+        Ok(new_hash)
     }
 }

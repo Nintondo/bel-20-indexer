@@ -40,7 +40,6 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
     {
         let end_block = client.get_electrs_block_meta(block_number).await?;
         initial_indexer(token.clone(), server.clone(), client.clone(), end_block).await?;
-        return Ok(());
     }
 
     let reorg_cache = Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new()));

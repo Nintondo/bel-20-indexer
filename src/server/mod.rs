@@ -114,47 +114,4 @@ impl Server {
 
         Ok(new_hash)
     }
-
-    pub async fn new_hash(
-        &self,
-        height: u32,
-        blockhash: BlockHash,
-        history: &[(AddressTokenId, HistoryValue)],
-    ) -> anyhow::Result<()> {
-        let current_hash = if history.is_empty() {
-            *DEFAULT_HASH
-        } else {
-            let mut res = Vec::<u8>::new();
-
-            for (k, v) in history {
-                let bytes = serde_json::to_vec(
-                    &HistoryRest::new(v.height, v.action.clone(), k.clone(), self).await?,
-                )?;
-                res.extend(bytes);
-            }
-
-            sha256::Hash::hash(&res)
-        };
-
-        let new_hash = {
-            let prev_hash = self
-                .db
-                .proof_of_history
-                .get(height - 1)
-                .unwrap_or(*DEFAULT_HASH);
-            let mut result = vec![];
-            result.extend_from_slice(prev_hash.as_byte_array());
-            result.extend_from_slice(current_hash.as_byte_array());
-
-            sha256::Hash::hash(&result)
-        };
-
-        self.event_sender
-            .send(ServerEvent::NewBlock(height, new_hash, blockhash))
-            .ok();
-
-        self.db.proof_of_history.set(height, new_hash);
-
-        Ok(())
-    }
 }

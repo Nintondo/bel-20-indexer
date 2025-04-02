@@ -1,5 +1,5 @@
-use nintondo_dogecoin::consensus;
 use super::*;
+use nintondo_dogecoin::consensus;
 
 pub trait Pebble {
     type Inner;

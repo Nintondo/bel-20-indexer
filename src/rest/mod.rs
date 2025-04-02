@@ -1,5 +1,5 @@
 use axum::{
-    response::{Sse, sse::Event},
+    response::{sse::Event, Sse},
     routing::post,
 };
 use futures::Stream;

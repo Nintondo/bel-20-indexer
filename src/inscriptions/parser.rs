@@ -1,12 +1,7 @@
 use std::default::Default;
-use std::{collections::VecDeque, ops::Deref};
 
 use super::*;
-use crate::inscriptions::types::{
-    HistoryLocation, Outpoint, ParsedTokenHistory, ParsedTokenHistoryData, TokenHistory,
-    TokenHistoryData,
-};
-use nintondo_dogecoin::{Address, hashes::serde_macros::serde_details::SerdeHash};
+use crate::inscriptions::types::{HistoryLocation, Outpoint, ParsedTokenHistoryData};
 
 pub struct InitialIndexer {}
 
@@ -41,7 +36,7 @@ impl InitialIndexer {
         token_history_data: Vec<ParsedTokenHistoryData>,
         server: &Server,
         reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
-    ) -> anyhow::Result<()> {
+    ) {
         // used to get all data from db and generate keys
         let batch_cache = BatchCache::load_cache(server, &token_history_data);
 
@@ -277,8 +272,6 @@ impl InitialIndexer {
                 panic!("Failed to send raw event");
             }
         }
-
-        Ok(())
     }
 }
 

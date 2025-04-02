@@ -1,5 +1,5 @@
-use crate::Fixed128;
 use crate::tokens::{FullHash, TokenTick};
+use crate::Fixed128;
 use dutils::error::ContextWrapper;
 use electrs_client::{Fetchable, UpdateCapable};
 use itertools::Itertools;

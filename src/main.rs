@@ -1,15 +1,15 @@
+extern crate serde;
 #[macro_use]
 extern crate tracing;
-extern crate serde;
 
 use {
     axum::{
-        Json, Router,
-        body::Body,
-        extract::{Path, Query, State},
+        body::Body, extract::{Path, Query, State},
         http::{Response, StatusCode},
         response::IntoResponse,
         routing::get,
+        Json,
+        Router,
     },
     db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     dutils::{
@@ -18,35 +18,32 @@ use {
         wait_token::WaitToken,
     },
     futures::future::join_all,
-    inscriptions::{Location, ScriptToAddr},
+    inscriptions::Location,
     itertools::Itertools,
     lazy_static::lazy_static,
     nintondo_dogecoin::{
-        BlockHash, Network, OutPoint, Transaction, TxOut, Txid,
-        hashes::{Hash, sha256},
-        opcodes, script,
+        hashes::{sha256, Hash}, script, BlockHash, Network, OutPoint,
+        TxOut, Txid,
     },
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
-    serde_with::{DisplayFromStr, serde_as},
+    serde_with::{serde_as, DisplayFromStr},
     server::{Server, ServerEvent},
     std::{
         borrow::{Borrow, Cow},
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
         fmt::{Display, Formatter},
         future::IntoFuture,
-        iter::Peekable,
         marker::PhantomData,
         ops::{Bound, RangeBounds},
         str::FromStr,
-        sync::{Arc, atomic::AtomicU64},
+        sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
     },
     tables::DB,
     tokens::*,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
-    utils::AsyncClient,
 };
 
 mod db;
@@ -144,6 +141,8 @@ async fn main() {
 }
 
 async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
+    info!("Start REST");
+    
     let listener = tokio::net::TcpListener::bind(&*SERVER_URL).await.unwrap();
 
     let rest = axum::serve(listener, rest::get_router(server))

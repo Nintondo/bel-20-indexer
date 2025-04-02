@@ -6,8 +6,7 @@ use crate::{
 };
 
 use super::{
-    AddressLocation, BAD_PARAMS, Fixed128, INTERNAL, NETWORK, TransferProtoDB,
-    utils::{first_page, page_size_default, to_scripthash, validate_tick},
+    AddressLocation, BAD_PARAMS, Fixed128, INTERNAL, NETWORK, TransferProtoDB,utils::{first_page, page_size_default, to_scripthash, validate_tick},
 };
 use axum::{
     Json,

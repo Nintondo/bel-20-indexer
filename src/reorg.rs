@@ -87,15 +87,6 @@ impl ReorgCache {
             .push(TokenHistoryEntry::RemoveHistory(key));
     }
 
-    pub fn removed_prevout(&mut self, key: OutPoint, value: TxOut) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RestorePrevout(key, value));
-    }
-
     pub fn added_transfer_token(
         &mut self,
         location: Location,

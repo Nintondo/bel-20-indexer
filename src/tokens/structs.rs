@@ -784,17 +784,6 @@ impl From<TokenMetaDB> for TokenMeta {
     }
 }
 
-#[derive(Clone)]
-pub struct InscriptionTemplate {
-    pub genesis: InscriptionId,
-    pub location: Location,
-    pub content_type: Option<String>,
-    pub owner: FullHash,
-    pub value: u64,
-    pub content: Option<Vec<u8>>,
-    pub leaked: bool,
-}
-
 pub(crate) struct DeserializeFromStr<T: FromStr>(pub(crate) T);
 
 impl<'de, T: FromStr> Deserialize<'de> for DeserializeFromStr<T>

@@ -1,5 +1,5 @@
 use axum::{
-    response::{sse::Event, Sse},
+    response::{Sse, sse::Event},
     routing::post,
 };
 use futures::Stream;
@@ -225,12 +225,11 @@ async fn subscribe(
     let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(200_000);
 
     let addresses = payload.addresses.unwrap_or_default();
-
     let tokens = payload
         .tokens
         .unwrap_or_default()
         .into_iter()
-        .map(LowerCaseTick::from)
+        .map(LowerCaseTokenTick::from)
         .collect::<HashSet<_>>();
 
     {
@@ -330,7 +329,7 @@ async fn address_token_history(
             return Err("").bad_request("Limit exceeded");
         }
     }
-    let token: LowerCaseTick = query.tick.into();
+    let token: LowerCaseTokenTick = query.tick.into();
 
     let deploy_proto = server
         .db
@@ -378,8 +377,6 @@ async fn address_tokens(
     let scripthash =
         to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
 
-    let mut ticks = HashMap::<LowerCaseTick, TokenTick>::new();
-
     let mut data = server
         .db
         .address_token_to_balance
@@ -393,22 +390,16 @@ async fn address_tokens(
             },
             false,
         )
-        .map(|(k, v)| {
-            let tick = ticks
-                .entry(k.token.clone())
-                .or_insert_with(|| server.db.token_to_meta.get(&k.token).unwrap().proto.tick);
-
-            TokenBalanceRest {
-                tick: *tick,
-                balance: v.balance,
-                transferable_balance: v.transferable_balance,
-                transfers_count: v.transfers_count,
-                transfers: vec![],
-            }
+        .map(|(k, v)| TokenBalanceRest {
+            tick: k.token,
+            balance: v.balance,
+            transferable_balance: v.transferable_balance,
+            transfers_count: v.transfers_count,
+            transfers: vec![],
         })
         .collect_vec();
 
-    let mut transfers = HashMap::<TokenTick, Vec<(Location, TransferProto)>>::new();
+    let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProto)>>::new();
 
     for (key, value) in server
         .db

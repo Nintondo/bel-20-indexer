@@ -1,6 +1,5 @@
-use futures::FutureExt;
-
 use super::*;
+
 use std::collections::VecDeque;
 
 #[derive(Default)]

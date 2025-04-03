@@ -1,7 +1,7 @@
 use super::*;
 
 generate_db_code! {
-    token_to_meta: LowerCaseTick => UsingSerde<TokenMetaDB>,
+    token_to_meta: LowerCaseTokenTick => UsingSerde<TokenMetaDB>,
     address_location_to_transfer: AddressLocation => UsingSerde<TransferProtoDB>,
     address_token_to_balance: AddressToken => UsingSerde<TokenBalance>,
     address_token_to_history: AddressTokenId => UsingSerde<HistoryValue>,

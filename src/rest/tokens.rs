@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     NON_STANDARD_ADDRESS,
-    tokens::{InscriptionId, LowerCaseTick, TokenTick},
+    tokens::{InscriptionId, OriginalTokenTick},
 };
 
 use super::{
-    AddressLocation, BAD_PARAMS, Fixed128, INTERNAL, NETWORK, TransferProtoDB,utils::{first_page, page_size_default, to_scripthash, validate_tick},
+    AddressLocation, BAD_PARAMS, Fixed128, INTERNAL, LowerCaseTokenTick, NETWORK, TransferProtoDB,
+    utils::{first_page, page_size_default, to_scripthash, validate_tick},
 };
 use axum::{
     Json,
@@ -25,7 +26,7 @@ use super::{ApiResult, BAD_REQUEST, NOT_FOUND, Server};
 pub struct Token {
     pub height: u32,
     pub created: u32,
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
     pub genesis: InscriptionId,
     pub deployer: String,
 
@@ -51,12 +52,11 @@ pub async fn token(
     Query(args): Query<TokenArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_REQUEST)?;
-    let tick: LowerCaseTick = args.tick.into();
-    let ref_tick = &tick;
+    let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
     let token = back
         .db
         .token_to_meta
-        .get(ref_tick.clone())
+        .get(lower_case_token_tick.clone())
         .map(|v| Token {
             height: v.proto.height,
             created: v.proto.created,
@@ -66,7 +66,7 @@ pub async fn token(
                 .get(v.proto.deployer)
                 .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
             transactions: v.proto.transactions,
-            holders: back.holders.holders_by_tick(ref_tick).unwrap_or(0) as u32,
+            holders: back.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
             tick: v.proto.tick,
             genesis: v.genesis,
             supply: v.proto.supply,
@@ -151,9 +151,11 @@ pub async fn tokens(
             .sorted_by_key(|(_, v)| v.proto.created)
             .rev()
             .collect_vec(),
-        SortBy::HoldersAsc => iter.sorted_by_key(|(k, _)| stats.get(k)).collect_vec(),
+        SortBy::HoldersAsc => iter
+            .sorted_by_key(|(_, proto)| stats.get(&proto.proto.tick))
+            .collect_vec(),
         SortBy::HoldersDesc => iter
-            .sorted_by_key(|(k, _)| stats.get(k))
+            .sorted_by_key(|(_, proto)| stats.get(&proto.proto.tick))
             .rev()
             .collect_vec(),
         SortBy::TransactionsAsc => iter
@@ -171,7 +173,7 @@ pub async fn tokens(
         .iter()
         .skip((args.page - 1) * args.page_size)
         .take(args.page_size)
-        .map(|(tick, v)| Token {
+        .map(|(_, v)| Token {
             height: v.proto.height,
             created: v.proto.created,
             mint_percent: v.proto.mint_percent().to_string(),
@@ -183,7 +185,7 @@ pub async fn tokens(
                 .get(v.proto.deployer)
                 .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
             transactions: v.proto.transactions,
-            holders: server.holders.holders_by_tick(tick).unwrap_or(0) as u32,
+            holders: server.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
             supply: v.proto.supply,
             completed: v.proto.is_completed(),
             max: v.proto.max,

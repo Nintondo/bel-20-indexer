@@ -4,12 +4,12 @@ extern crate tracing;
 
 use {
     axum::{
-        body::Body, extract::{Path, Query, State},
+        Json, Router,
+        body::Body,
+        extract::{Path, Query, State},
         http::{Response, StatusCode},
         response::IntoResponse,
         routing::get,
-        Json,
-        Router,
     },
     db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     dutils::{
@@ -22,12 +22,13 @@ use {
     itertools::Itertools,
     lazy_static::lazy_static,
     nintondo_dogecoin::{
-        hashes::{sha256, Hash}, script, BlockHash, Network, OutPoint,
-        TxOut, Txid,
+        BlockHash, Network, OutPoint, TxOut, Txid,
+        hashes::{Hash, sha256},
+        script,
     },
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
-    serde_with::{serde_as, DisplayFromStr},
+    serde_with::{DisplayFromStr, serde_as},
     server::{Server, ServerEvent},
     std::{
         borrow::{Borrow, Cow},
@@ -37,7 +38,7 @@ use {
         marker::PhantomData,
         ops::{Bound, RangeBounds},
         str::FromStr,
-        sync::{atomic::AtomicU64, Arc},
+        sync::{Arc, atomic::AtomicU64},
         time::{Duration, Instant},
     },
     tables::DB,
@@ -142,7 +143,7 @@ async fn main() {
 
 async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
     info!("Start REST");
-    
+
     let listener = tokio::net::TcpListener::bind(&*SERVER_URL).await.unwrap();
 
     let rest = axum::serve(listener, rest::get_router(server))

@@ -1,21 +1,19 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::Uri,
     response::IntoResponse,
-    Json,
 };
 use dutils::error::ApiError;
 use itertools::Itertools;
 use nintypes::common::inscriptions::Outpoint;
 use serde::{Deserialize, Serialize};
 
-use crate::LowerCaseTick;
-
 use super::{
-    utils::to_scripthash, AddressLocation, AddressToken, ApiResult, Fixed128, FullHash, Server, TokenTick,
-    TokenTransfer, INTERNAL, NETWORK,
+    AddressLocation, AddressToken, ApiResult, Fixed128, FullHash, INTERNAL, LowerCaseTokenTick,
+    NETWORK, OriginalTokenTick, Server, TokenTransfer, utils::to_scripthash,
 };
 
 pub async fn address_tokens_tick(
@@ -35,7 +33,7 @@ pub async fn address_tokens_tick(
                 .db
                 .address_token_to_balance
                 .range(&from..&to, false)
-                .map(|(k, _)| k.token)
+                .map(|(k, _)| LowerCaseTokenTick::from(k.token))
                 .collect_vec()
                 .iter(),
         )
@@ -50,7 +48,7 @@ pub async fn address_tokens_tick(
 #[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub struct AddressTick {
     pub address: FullHash,
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
 }
 
 pub async fn address_token_balance(
@@ -63,7 +61,7 @@ pub async fn address_token_balance(
     let scripthash =
         to_scripthash(script_type, &script_str, *NETWORK).bad_request("Invalid address")?;
 
-    let token: LowerCaseTick = tick.into();
+    let token: LowerCaseTokenTick = tick.into();
 
     let deploy_proto = state
         .db
@@ -71,14 +69,14 @@ pub async fn address_token_balance(
         .get(&token)
         .not_found("Token not found")?;
 
-    let tick = deploy_proto.proto.tick;
+    let original_token_tick = deploy_proto.proto.tick;
 
     let balance = state
         .db
         .address_token_to_balance
         .get(AddressToken {
             address: scripthash,
-            token: tick.into(),
+            token: original_token_tick,
         })
         .unwrap_or_default();
 
@@ -89,7 +87,7 @@ pub async fn address_token_balance(
         .db
         .address_location_to_transfer
         .range(&from..&to, false)
-        .filter(|(_, v)| v.tick == tick)
+        .filter(|(_, v)| v.tick == original_token_tick)
         .map(|(k, v)| TokenTransfer {
             amount: v.amt,
             outpoint: k.location.outpoint,
@@ -98,7 +96,7 @@ pub async fn address_token_balance(
 
     let data = TokenBalance {
         transfers,
-        tick,
+        tick: original_token_tick,
         balance: balance.balance,
         transferable_balance: balance.transferable_balance,
         transfers_count: balance.transfers_count,
@@ -114,7 +112,7 @@ pub struct AddressTokenBalanceArgs {
 
 #[derive(Serialize, Deserialize)]
 pub struct TokenBalance {
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
     pub balance: Fixed128,
     pub transferable_balance: Fixed128,
     pub transfers: Vec<TokenTransfer>,

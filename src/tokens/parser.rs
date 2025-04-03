@@ -8,7 +8,7 @@ use super::structs::*;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum HistoryTokenAction {
     Deploy {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         max: Fixed128,
         lim: Fixed128,
         dec: u8,
@@ -17,21 +17,21 @@ pub enum HistoryTokenAction {
         vout: u32,
     },
     Mint {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
         recipient: FullHash,
         txid: Txid,
         vout: u32,
     },
     DeployTransfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
         recipient: FullHash,
         txid: Txid,
         vout: u32,
     },
     Send {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
         recipient: FullHash,
         sender: FullHash,
@@ -41,7 +41,7 @@ pub enum HistoryTokenAction {
 }
 
 impl HistoryTokenAction {
-    pub fn tick(&self) -> TokenTick {
+    pub fn tick(&self) -> OriginalTokenTick {
         match self {
             HistoryTokenAction::Deploy { tick, .. }
             | HistoryTokenAction::Mint { tick, .. }
@@ -70,7 +70,7 @@ impl HistoryTokenAction {
 #[derive(Clone, Default)]
 pub struct TokenCache {
     /// All tokens. Used to check if a transfer is valid. Used like a cache, loaded from db before parsing.
-    pub tokens: HashMap<LowerCaseTick, TokenMeta>,
+    pub tokens: HashMap<LowerCaseTokenTick, TokenMeta>,
 
     /// All token accounts. Used to check if a transfer is valid. Used like a cache, loaded from db before parsing.
     pub token_accounts: HashMap<AddressToken, TokenBalance>,
@@ -163,7 +163,7 @@ impl TokenCache {
 
                     let key = AddressToken {
                         address: owner,
-                        token: tick.into(),
+                        token: tick,
                     };
 
                     holders.increase(
@@ -219,7 +219,7 @@ impl TokenCache {
 
                     let key = AddressToken {
                         address: owner,
-                        token: tick.into(),
+                        token: tick,
                     };
                     let Some(account) = self.token_accounts.get_mut(&key) else {
                         continue;
@@ -268,7 +268,7 @@ impl TokenCache {
 
                     let old_key = AddressToken {
                         address: sender,
-                        token: tick.into(),
+                        token: tick,
                     };
 
                     let old_account = self.token_accounts.get_mut(&old_key).unwrap();
@@ -290,7 +290,7 @@ impl TokenCache {
                     if !recipient.is_op_return_hash() {
                         let recipient_key = AddressToken {
                             address: recipient,
-                            token: tick.into(),
+                            token: tick,
                         };
 
                         holders.increase(

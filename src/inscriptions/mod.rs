@@ -196,27 +196,26 @@ async fn indexer(
         let last_indexer_block = match client.get_electrs_block_meta(last_index_height).await {
             Ok(ok) => ok,
             Err(e) => {
-               if let ClientError::Json(_) = e {
+                if let ClientError::Json(_) = e {
                     warn!("Got client recovery error {e}, try again...");
                     continue;
-               }
-              
+                }
+
                 return Err(anyhow::anyhow!(e));
-            },
+            }
         };
 
         let last_electris_block = match client.get_last_electrs_block_meta().await {
             Ok(ok) => ok,
             Err(e) => {
-               if let ClientError::Json(_) = e {
+                if let ClientError::Json(_) = e {
                     warn!("Got client recovery error {e}, try again...");
                     continue;
-               }
-              
-                return Err(anyhow::anyhow!(e));
-            },
-        };
+                }
 
+                return Err(anyhow::anyhow!(e));
+            }
+        };
 
         if let Some(blocks_gap) = last_electris_block
             .height

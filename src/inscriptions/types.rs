@@ -1,5 +1,5 @@
-use crate::tokens::{FullHash, TokenTick};
 use crate::Fixed128;
+use crate::tokens::{FullHash, OriginalTokenTick};
 use dutils::error::ContextWrapper;
 use electrs_client::{Fetchable, UpdateCapable};
 use itertools::Itertools;
@@ -249,22 +249,22 @@ impl std::fmt::Display for Outpoint {
 #[repr(u8)]
 pub enum ParsedTokenAction {
     Deploy {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         max: Fixed128,
         lim: Fixed128,
         dec: u8,
     },
     Mint {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     DeployTransfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     SpentTransfer {
         outpoint: Option<OutPoint>,
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
 }
@@ -273,22 +273,22 @@ pub enum ParsedTokenAction {
 #[repr(u8)]
 pub enum ParsedTokenActionRest {
     Deploy {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         max: Fixed128,
         lim: Fixed128,
         dec: u8,
     },
     Mint {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     DeployTransfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     SpentTransfer {
         outpoint: Option<OutPoint>,
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
 }

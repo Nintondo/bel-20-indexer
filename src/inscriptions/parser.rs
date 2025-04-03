@@ -277,7 +277,7 @@ impl InitialIndexer {
 
 pub struct BatchCache {
     // cache for all batch of blocks
-    pub token_to_meta: HashMap<LowerCaseTick, TokenMeta>,
+    pub token_to_meta: HashMap<LowerCaseTokenTick, TokenMeta>,
     pub account_to_balance: HashMap<AddressToken, TokenBalance>,
     pub address_location_to_transfer: HashMap<AddressLocation, TransferProtoDB>,
     // keys for block to get cached data
@@ -286,7 +286,7 @@ pub struct BatchCache {
 
 #[derive(Default)]
 pub struct SharedBatchCache {
-    pub token_to_meta: HashMap<LowerCaseTick, TokenMeta>,
+    pub token_to_meta: HashMap<LowerCaseTokenTick, TokenMeta>,
     pub account_to_balance: HashMap<AddressToken, TokenBalance>,
     pub address_location_to_transfer: HashMap<AddressLocation, TransferProtoDB>,
     pub transfer_to_remove: HashSet<AddressLocation>,
@@ -349,7 +349,7 @@ impl SharedBatchCache {
 #[derive(Default, Clone)]
 pub struct BlockCache {
     pub addresses: HashSet<types::ParsedTokenAddress>,
-    pub tokens: HashSet<LowerCaseTick>,
+    pub tokens: HashSet<LowerCaseTokenTick>,
     pub address_token: HashSet<AddressToken>,
     pub address_transfer_location: HashSet<AddressLocation>,
     pub token_cache: TokenCache,
@@ -371,10 +371,9 @@ impl BatchCache {
 
                 match inscription.token {
                     types::ParsedTokenActionRest::Mint { tick, amt } if !inscription.leaked => {
-                        let token: LowerCaseTick = tick.into();
                         let account = AddressToken {
                             address: inscription.to.compute_script_hash(),
-                            token: token.clone(),
+                            token: tick,
                         };
 
                         block_cache
@@ -387,7 +386,7 @@ impl BatchCache {
                                 vout,
                             });
 
-                        block_cache.tokens.insert(token);
+                        block_cache.tokens.insert(tick.into());
                         block_cache.address_token.insert(account);
                         addresses.insert(inscription.from.clone());
                         addresses.insert(inscription.to.clone());
@@ -395,10 +394,9 @@ impl BatchCache {
                     types::ParsedTokenActionRest::DeployTransfer { tick, amt }
                         if !inscription.leaked =>
                     {
-                        let token: LowerCaseTick = tick.into();
                         let account = AddressToken {
                             address: inscription.to.compute_script_hash(),
-                            token: token.clone(),
+                            token: tick,
                         };
                         let address_location = AddressLocation {
                             address: account.address,
@@ -425,7 +423,7 @@ impl BatchCache {
                             },
                         );
 
-                        block_cache.tokens.insert(token);
+                        block_cache.tokens.insert(tick.into());
                         block_cache
                             .address_transfer_location
                             .insert(address_location);
@@ -434,10 +432,9 @@ impl BatchCache {
                         addresses.insert(inscription.from.clone());
                     }
                     types::ParsedTokenActionRest::SpentTransfer { outpoint, tick, .. } => {
-                        let token: LowerCaseTick = tick.into();
                         let account = AddressToken {
                             address: inscription.from.compute_script_hash(),
-                            token: token.clone(),
+                            token: tick,
                         };
 
                         if inscription.leaked {
@@ -465,7 +462,7 @@ impl BatchCache {
 
                         addresses.insert(inscription.to.clone());
                         addresses.insert(inscription.from.clone());
-                        block_cache.tokens.insert(token.clone());
+                        block_cache.tokens.insert(tick.into());
                         block_cache
                             .address_transfer_location
                             .insert(AddressLocation {
@@ -475,7 +472,7 @@ impl BatchCache {
                         block_cache.address_token.insert(account);
                         block_cache.address_token.insert(AddressToken {
                             address: inscription.to.compute_script_hash(),
-                            token,
+                            token: tick,
                         });
                     }
                     types::ParsedTokenActionRest::Deploy {

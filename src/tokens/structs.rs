@@ -40,7 +40,7 @@ impl db::Pebble for BlockHeader {
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct AddressToken {
     pub address: FullHash,
-    pub token: LowerCaseTick,
+    pub token: OriginalTokenTick,
 }
 
 impl AddressToken {
@@ -62,7 +62,7 @@ impl From<AddressTokenId> for AddressToken {
     fn from(value: AddressTokenId) -> Self {
         Self {
             address: value.address,
-            token: value.token.into(),
+            token: value.token,
         }
     }
 }
@@ -73,14 +73,14 @@ impl db::Pebble for AddressToken {
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
         Ok(Self {
             address: v[..32].try_into().anyhow()?,
-            token: v[32..].into(),
+            token: v[32..].try_into().expect("Expected [u8;4], but got more"),
         })
     }
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
         let mut result = Vec::with_capacity(32 + 4);
         result.extend(v.address);
-        result.extend(v.token.0.clone());
+        result.extend(v.token.0);
         Cow::Owned(result)
     }
 }
@@ -88,7 +88,7 @@ impl db::Pebble for AddressToken {
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct AddressTokenId {
     pub address: FullHash,
-    pub token: TokenTick,
+    pub token: OriginalTokenTick,
     pub id: u64,
 }
 
@@ -106,7 +106,7 @@ impl db::Pebble for AddressTokenId {
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
         let address: FullHash = v[..32].try_into().anyhow()?;
-        let token = TokenTick(v[32..v.len() - 8].try_into().anyhow()?);
+        let token = OriginalTokenTick(v[32..v.len() - 8].try_into().anyhow()?);
         let id = u64::from_be_bytes(v[v.len() - 8..].try_into().anyhow()?);
 
         Ok(Self { address, id, token })
@@ -252,7 +252,7 @@ impl TokenHistoryDB {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TokenBalanceRest {
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
     pub balance: Fixed128,
     pub transferable_balance: Fixed128,
     pub transfers: Vec<TokenTransfer>,
@@ -262,7 +262,7 @@ pub struct TokenBalanceRest {
 #[derive(Serialize, Deserialize)]
 pub struct TokenProtoRest {
     pub genesis: InscriptionId,
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
     pub max: u64,
     pub lim: u64,
     pub dec: u8,
@@ -385,20 +385,10 @@ pub enum Brc4Error {
     Parse(Brc4ParseErr),
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct TokenTick(pub [u8; 4]);
-impl TryFrom<Vec<u8>> for TokenTick {
-    type Error = anyhow::Error;
+#[derive(Copy, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub struct OriginalTokenTick([u8; 4]);
 
-    fn try_from(v: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self(
-            v.try_into()
-                .map_err(|_| anyhow::Error::msg("Invalid byte length"))?,
-        ))
-    }
-}
-
-impl<'de> Deserialize<'de> for TokenTick {
+impl<'de> Deserialize<'de> for OriginalTokenTick {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -407,7 +397,7 @@ impl<'de> Deserialize<'de> for TokenTick {
     }
 }
 
-impl Serialize for TokenTick {
+impl Serialize for OriginalTokenTick {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -416,36 +406,55 @@ impl Serialize for TokenTick {
     }
 }
 
-impl From<[u8; 4]> for TokenTick {
+impl From<[u8; 4]> for OriginalTokenTick {
     fn from(v: [u8; 4]) -> Self {
         Self(v)
     }
 }
-impl std::fmt::Debug for TokenTick {
+
+impl TryFrom<&[u8]> for OriginalTokenTick {
+    type Error = std::array::TryFromSliceError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let x: Result<[u8; 4], _> = value.try_into();
+        Ok(Self(x?))
+    }
+}
+
+impl std::fmt::Debug for OriginalTokenTick {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self, f)
     }
 }
-impl Display for TokenTick {
+
+impl Display for OriginalTokenTick {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", String::from_utf8_lossy(&self.0))
     }
 }
-impl FromStr for TokenTick {
+
+impl FromStr for OriginalTokenTick {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self(s.as_bytes().try_into().anyhow_with("Invalid tick")?))
     }
 }
-impl From<TokenTick> for LowerCaseTick {
-    fn from(value: TokenTick) -> Self {
-        LowerCaseTick::from(value.0)
+
+impl From<OriginalTokenTick> for LowerCaseTokenTick {
+    fn from(value: OriginalTokenTick) -> Self {
+        LowerCaseTokenTick::from(
+            String::from_utf8_lossy(&value.0)
+                .to_lowercase()
+                .as_bytes()
+                .to_vec(),
+        )
     }
 }
-impl From<&TokenTick> for LowerCaseTick {
-    fn from(value: &TokenTick) -> Self {
-        LowerCaseTick::from(&value.0)
+
+impl From<&OriginalTokenTick> for LowerCaseTokenTick {
+    fn from(value: &OriginalTokenTick) -> Self {
+        LowerCaseTokenTick::from(&value.0)
     }
 }
 
@@ -535,21 +544,21 @@ pub enum TokenAction {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ParsedTokenAction {
     Deploy {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         max: u64,
         lim: u64,
         dec: u8,
     },
     Mint {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     DeployTransfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     SpentTransfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
 }
@@ -704,7 +713,7 @@ impl TokenActionRest {
 pub struct AddressTokenIdRest {
     pub id: u64,
     pub address: String,
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
 }
 
 impl From<AddressTokenIdEvent> for AddressTokenIdRest {
@@ -861,11 +870,11 @@ impl FromStr for InscriptionId {
 
 #[derive(Clone, Eq, PartialEq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct LowerCaseTick(pub Vec<u8>);
+pub struct LowerCaseTokenTick(pub Vec<u8>);
 
-impl<T: AsRef<[u8]>> From<T> for LowerCaseTick {
+impl<T: AsRef<[u8]>> From<T> for LowerCaseTokenTick {
     fn from(value: T) -> Self {
-        LowerCaseTick(
+        LowerCaseTokenTick(
             String::from_utf8_lossy(value.as_ref())
                 .to_lowercase()
                 .as_bytes()
@@ -874,7 +883,7 @@ impl<T: AsRef<[u8]>> From<T> for LowerCaseTick {
     }
 }
 
-impl std::ops::Deref for LowerCaseTick {
+impl std::ops::Deref for LowerCaseTokenTick {
     type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
@@ -882,13 +891,13 @@ impl std::ops::Deref for LowerCaseTick {
     }
 }
 
-impl std::ops::DerefMut for LowerCaseTick {
+impl std::ops::DerefMut for LowerCaseTokenTick {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl db::Pebble for LowerCaseTick {
+impl db::Pebble for LowerCaseTokenTick {
     type Inner = Self;
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {

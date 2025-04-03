@@ -385,26 +385,9 @@ pub enum Brc4Error {
     Parse(Brc4ParseErr),
 }
 
-#[derive(Copy, Clone, PartialEq, PartialOrd, Ord, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct OriginalTokenTick([u8; 4]);
-
-impl<'de> Deserialize<'de> for OriginalTokenTick {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(DeserializeFromStr::deserialize(deserializer)?.0)
-    }
-}
-
-impl Serialize for OriginalTokenTick {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.collect_str(self)
-    }
-}
 
 impl From<[u8; 4]> for OriginalTokenTick {
     fn from(v: [u8; 4]) -> Self {

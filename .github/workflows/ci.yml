@@ -1,0 +1,31 @@
+name: Build and copy Bel-20-indexer
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create Image Tarball for Bel-20-indexer
+      run: |
+        mkdir -p artifacts/
+        docker build --tag bel-20-indexer --file Dockerfile ./
+        docker save --output artifacts/bel-20-indexer.tar bel-20-indexer
+
+    - name: Set up SSH
+      run: |
+        mkdir -p ~/.ssh/
+        touch ~/.ssh/known_hosts
+        ssh-keyscan ${{ secrets.NODE_HOST }} >> ~/.ssh/known_hosts
+        echo "${{ secrets.NODE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        eval $(ssh-agent)
+
+    - name: Copy Files to Server
+      run: |
+        scp artifacts/bel-20-indexer.tar ${{ secrets.NODE_USERNAME }}@${{ secrets.NODE_HOST }}:/opt/dogecoin_electrs/bel-20-indexer.tar
+        

@@ -51,41 +51,49 @@ impl BlocksLoader {
         let features = blocks.into_iter().map(|from| async move {
             client
                 .fetch_updates::<inscriptions::types::InscriptionsTokenHistory>(&[from])
-                .map(|result| {
-                    result.map(|blocks| Blocks {
-                        from: blocks
-                            .first()
-                            .map(|block| match block {
-                                electrs_client::Update::AddBlock { block, .. } => BlockHeader {
-                                    number: block.block_info.height,
-                                    hash: block.block_info.block_hash.into(),
-                                    prev_hash: block.block_info.prev_block_hash.into(),
-                                },
-                                _ => unimplemented!(),
-                            })
-                            .expect("Must exist"),
-                        to: blocks
-                            .iter()
-                            .next_back()
-                            .map(|block| match block {
-                                electrs_client::Update::AddBlock { block, .. } => BlockHeader {
-                                    number: block.block_info.height,
-                                    hash: block.block_info.block_hash.into(),
-                                    prev_hash: block.block_info.prev_block_hash.into(),
-                                },
-                                _ => unimplemented!(),
-                            })
-                            .expect("Must exist"),
-                        blocks,
-                    })
-                })
                 .await
         });
 
         let result: Result<Vec<_>, electrs_client::ClientError> =
             join_all(features).await.into_iter().collect();
 
-        result
+        let blocks = result?;
+
+        if blocks.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let blocks = blocks
+            .into_iter()
+            .map(|blocks| Blocks {
+                from: blocks
+                    .first()
+                    .map(|block| match block {
+                        electrs_client::Update::AddBlock { block, .. } => BlockHeader {
+                            number: block.block_info.height,
+                            hash: block.block_info.block_hash.into(),
+                            prev_hash: block.block_info.prev_block_hash.into(),
+                        },
+                        _ => unimplemented!(),
+                    })
+                    .expect("Block must exist, checked above"),
+                to: blocks
+                    .iter()
+                    .next_back()
+                    .map(|block| match block {
+                        electrs_client::Update::AddBlock { block, .. } => BlockHeader {
+                            number: block.block_info.height,
+                            hash: block.block_info.block_hash.into(),
+                            prev_hash: block.block_info.prev_block_hash.into(),
+                        },
+                        _ => unimplemented!(),
+                    })
+                    .expect("Block must exist, checked above"),
+                blocks,
+            })
+            .collect();
+
+        Ok(blocks)
     }
 
     fn generate_blocks_batch_sequence(

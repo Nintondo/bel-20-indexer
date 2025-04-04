@@ -14,7 +14,8 @@ jobs:
       run: |
         mkdir -p artifacts/
         docker build --tag bel-20-indexer --file Dockerfile . \
-          --build-arg CARGO_TOKEN=${{ secrets.GIT_PERSONAL_ACCESS_TOKEN }}
+          --build-arg GIT_USERNAME=${{ secrets.GIT_USERNAME }} \
+          --build-arg GIT_PERSONAL_ACCESS_TOKEN=${{ secrets.GIT_PERSONAL_ACCESS_TOKEN }}
         docker save --output artifacts/bel-20-indexer.tar bel-20-indexer
 
     - name: Set up SSH

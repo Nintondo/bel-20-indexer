@@ -12,16 +12,20 @@ RUN apt update -y && \
     libclang-dev \
     protobuf-compiler
 
-ARG CARGO_TOKEN
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-RUN cargo login ${CARGO_TOKEN}
+ARG GIT_USERNAME
+ARG GIT_PERSONAL_ACCESS_TOKEN
+
+RUN printf "machine github.com\nlogin %s\npassword %s\n" "$GIT_USERNAME" "$GIT_PERSONAL_ACCESS_TOKEN" > ~/.netrc && \
+    chmod 600 ~/.netrc
 
 COPY Cargo.toml ./
 COPY src src
 
-RUN cargo fetch
+RUN cargo fetch && cargo build --release
 
-RUN cargo build --release
+RUN rm -rf ~/.cargo/git && \
+    rm -rf ~/.cargo/registry && \
+    rm -f ~/.netrc
 
 FROM ubuntu:24.04 AS runner
 

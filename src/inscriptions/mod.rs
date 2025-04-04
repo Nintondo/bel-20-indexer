@@ -1,3 +1,5 @@
+use crate::utils::retry_on_error;
+
 use super::*;
 use std::default::Default;
 
@@ -7,7 +9,7 @@ pub mod types;
 mod utils;
 
 use dutils::async_thread::Thread;
-use electrs_client::{BlockMeta, ClientError, Update};
+use electrs_client::{BlockMeta, Update};
 use types::{InscriptionsTokenHistory, TokenHistoryData};
 pub use utils::ScriptToAddr;
 
@@ -22,15 +24,21 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
             })?,
     );
 
-    let last_electris_block = client.get_last_electrs_block_meta().await?;
+    let last_electrs_block =
+        retry_on_error(30, 20, &token, || client.get_last_electrs_block_meta()).await?;
+
     let last_indexed_block = server.db.last_block.get(()).unwrap_or_default();
 
-    if let Some(block_number) = last_electris_block
+    if let Some(block_number) = last_electrs_block
         .height
         .checked_sub(reorg::REORG_CACHE_MAX_LEN as u32)
     {
         if block_number > last_indexed_block {
-            let end_block = client.get_electrs_block_meta(block_number).await?;
+            let end_block = retry_on_error(30, 20, &token, || {
+                client.get_electrs_block_meta(block_number)
+            })
+            .await?;
+
             initial_indexer(token.clone(), server.clone(), client.clone(), end_block).await?;
         }
     }
@@ -38,10 +46,11 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
     let reorg_cache = Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new()));
     if !token.is_cancelled() {
         let indexer_block_number = server.db.last_block.get(()).unwrap_or_default();
-        let indexer_block_meta = client
-            .get_electrs_block_meta(indexer_block_number)
-            .await
-            .anyhow()?;
+        let indexer_block_meta = retry_on_error(30, 20, &token, || {
+            client.get_electrs_block_meta(indexer_block_number)
+        })
+        .await?;
+
         let last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
         // set mock reorg data for block to start indexer
         // it's safe because this mock data will be dropped
@@ -50,13 +59,13 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
             .new_block(indexer_block_meta.into(), last_history_id);
     }
 
-    indexer(
+    let indexer_result = indexer(
         token.clone(),
         server.clone(),
         client.clone(),
         reorg_cache.clone(),
     )
-    .await?;
+    .await;
 
     info!("Server is finished");
 
@@ -64,7 +73,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
 
     server.db.flush_all();
 
-    Ok(())
+    indexer_result
 }
 
 async fn initial_indexer(
@@ -193,57 +202,41 @@ async fn indexer(
     while repeater.next().await {
         let mut last_index_height = server.db.last_block.get(()).unwrap_or_default();
 
-        let last_indexer_block = match client.get_electrs_block_meta(last_index_height).await {
-            Ok(ok) => ok,
-            Err(e) => {
-                if let ClientError::Json(_) = e {
-                    warn!("Got client recovery error {e}, try again...");
-                    continue;
-                }
+        let last_indexer_block = retry_on_error(u64::MAX, 20, &token, || {
+            client.get_electrs_block_meta(last_index_height)
+        })
+        .await?;
 
-                return Err(anyhow::anyhow!(e));
-            }
-        };
+        let last_electrs_block = retry_on_error(u64::MAX, 20, &token, || {
+            client.get_last_electrs_block_meta()
+        })
+        .await?;
 
-        let last_electris_block = match client.get_last_electrs_block_meta().await {
-            Ok(ok) => ok,
-            Err(e) => {
-                if let ClientError::Json(_) = e {
-                    warn!("Got client recovery error {e}, try again...");
-                    continue;
-                }
-
-                return Err(anyhow::anyhow!(e));
-            }
-        };
-
-        if let Some(blocks_gap) = last_electris_block
+        if let Some(blocks_gap) = last_electrs_block
             .height
             .checked_sub(last_indexer_block.height)
         {
-            if blocks_gap == 0 && last_electris_block.block_hash == last_indexer_block.block_hash {
+            if blocks_gap == 0 && last_electrs_block.block_hash == last_indexer_block.block_hash {
                 info!("Indexer has the same block, sleep for a while ...");
                 continue;
             } else {
                 info!(
                     "Indexer has {}, elects has {}",
-                    last_index_height, last_electris_block.height
+                    last_index_height, last_electrs_block.height
                 );
             }
         } else {
             warn!(
                 "Indexer has block number {} but got {}, sleep for a while ...",
-                last_indexer_block.height, last_electris_block.height
+                last_indexer_block.height, last_electrs_block.height
             );
             continue;
         };
 
         let blocks = reorg_cache.lock().get_blocks_headers();
-        let Some(updates) = token.run_fn(load_blocks(&client, &blocks)).await else {
-            break;
-        };
 
-        let updates = updates?;
+        let updates = load_blocks(&server.token, &client, &blocks).await?;
+
         if updates.is_empty() {
             info!("Got empty updates, sleep for a while ...");
             continue;
@@ -295,16 +288,16 @@ async fn indexer(
 }
 
 async fn load_blocks(
+    token: &WaitToken,
     client: &electrs_client::Client<TokenHistoryData>,
     from: &[BlockHeader],
 ) -> anyhow::Result<Vec<electrs_client::Update<TokenHistoryData>>> {
     let from: Vec<_> = from.iter().map(|f| f.into()).collect();
-    let updates = client
-        .fetch_updates::<InscriptionsTokenHistory>(&from)
-        .await
-        .inspect_err(|e| {
-            dbg!(e);
-        })?;
+
+    let updates = retry_on_error(10, 60, token, || {
+        client.fetch_updates::<InscriptionsTokenHistory>(&from)
+    })
+    .await?;
 
     let (new_blocks, reorgs) = updates.iter().fold((0, 0), |(inserts, reorgs), v| match v {
         electrs_client::Update::AddBlock { .. } => (inserts + 1, reorgs),

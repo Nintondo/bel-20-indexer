@@ -322,6 +322,7 @@ impl ReorgCache {
                         .db
                         .address_token_to_balance
                         .extend(accounts.into_iter());
+
                     server.db.address_location_to_transfer.extend(
                         to_restore_transferred
                             .into_iter()

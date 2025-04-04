@@ -14,6 +14,7 @@ RUN apt update -y && \
 
 ARG GIT_USERNAME
 ARG GIT_PERSONAL_ACCESS_TOKEN
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 RUN printf "machine github.com\nlogin %s\npassword %s\n" "$GIT_USERNAME" "$GIT_PERSONAL_ACCESS_TOKEN" > ~/.netrc && \
     chmod 600 ~/.netrc

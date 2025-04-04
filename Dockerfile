@@ -12,19 +12,26 @@ RUN apt update -y && \
     libclang-dev \
     protobuf-compiler
 
+ARG CARGO_TOKEN
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN cargo login ${CARGO_TOKEN}
+
 COPY Cargo.toml ./
 COPY src src
+
+RUN cargo fetch
+
 RUN cargo build --release
 
-FROM debian:bookworm-slim AS runer
+FROM ubuntu:24.04 AS runner
 
 WORKDIR /app
 
-RUN apt update -y && apt install -y curl openssl librocksdb-dev
+RUN apt update -y && \
+    apt install -y curl openssl libc6 libgcc-s1 librocksdb-dev
 
-COPY --from=builder /usr/src/app/target/release/bel_20_indexer .
+COPY --from=builder /usr/src/app/target/release/bel_20_node .
 
 EXPOSE 3001
 
-ENTRYPOINT ["./bel_20_indexer"]
-
+ENTRYPOINT ["./bel_20_node"]

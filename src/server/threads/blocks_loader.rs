@@ -130,7 +130,7 @@ impl Handler for BlocksLoader {
                     lock.from_block_number,
                     lock.to_block_number,
                     self.client.config.limit.unwrap_or(1000),
-                    5,
+                    1,
                 )
             }
         };

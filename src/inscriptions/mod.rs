@@ -200,7 +200,7 @@ async fn indexer(
 
     let mut repeater = token.repeat_until_cancel(Duration::from_secs(3));
     while repeater.next().await {
-        let mut last_index_height = server.db.last_block.get(()).unwrap_or_default();
+        let last_index_height = server.db.last_block.get(()).unwrap_or_default();
 
         let last_indexer_block = retry_on_error(u64::MAX, 20, &token, || {
             client.get_electrs_block_meta(last_index_height)
@@ -242,11 +242,9 @@ async fn indexer(
             continue;
         }
 
-        let mut parsed_updates = Vec::<types::ParsedTokenHistoryData>::new();
-
         for block in updates {
             match block {
-                electrs_client::Update::AddBlock { block, height, .. } => {
+                electrs_client::Update::AddBlock { block, .. } => {
                     let casted_block: types::ParsedTokenHistoryData = block
                         .try_into()
                         .inspect_err(|e| {
@@ -254,10 +252,15 @@ async fn indexer(
                         })
                         .anyhow()?;
 
-                    parsed_updates.push(casted_block);
-                    last_index_height = height;
+                    parser::InitialIndexer::handle_batch(
+                        vec![casted_block],
+                        &server,
+                        Some(reorg_cache.clone()),
+                    )
+                    .await;
                 }
                 Update::RemoveBlock { height } | Update::RemoveCachedBlock { height, .. } => {
+                    let last_index_height = server.db.last_block.get(()).unwrap_or_default();
                     let reorg_counter = last_index_height - height;
 
                     warn!(
@@ -276,13 +279,9 @@ async fn indexer(
                         .event_sender
                         .send(ServerEvent::Reorg(reorg_counter, height))
                         .ok();
-                    last_index_height -= reorg_counter;
                 }
             }
         }
-
-        parser::InitialIndexer::handle_batch(parsed_updates, &server, Some(reorg_cache.clone()))
-            .await;
     }
     Ok(())
 }

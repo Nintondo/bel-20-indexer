@@ -113,7 +113,7 @@ async fn initial_indexer(
     )
     .with_name("BlocksLoader")
     .with_restart(Duration::from_secs(5))
-    .with_invoke_frq(Duration::from_secs(1))
+    .with_invoke_frq(Duration::from_millis(100))
     .with_cancellation(token.clone())
     .run();
 

@@ -90,10 +90,13 @@ impl Server {
             let mut buffer = Vec::<u8>::new();
 
             for (address_token, action) in history {
-                let rest = HistoryRest {
+                let rest = rest::api::History {
                     height: action.height,
-                    action: TokenActionRest::from_with_addresses(action.action.clone(), addresses),
-                    address_token: AddressTokenIdRest {
+                    action: rest::api::TokenAction::from_with_addresses(
+                        action.action.clone(),
+                        addresses,
+                    ),
+                    address_token: rest::api::AddressTokenId {
                         address: addresses.get(&address_token.address).unwrap().clone(),
                         id: address_token.id,
                         tick: address_token.token,

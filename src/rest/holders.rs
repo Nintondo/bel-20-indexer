@@ -1,23 +1,8 @@
-use std::sync::Arc;
-
-use axum::{
-    Json,
-    extract::{Query, State},
-    response::IntoResponse,
-};
-use dutils::error::ApiError;
-use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
-use validator::Validate;
-
-use super::{
-    ApiResult, BAD_PARAMS, Fixed128, INTERNAL, LowerCaseTokenTick, Server,
-    utils::{first_page, page_size_default, validate_tick},
-};
+use super::*;
 
 pub async fn holders(
     State(server): State<Arc<Server>>,
-    Query(query): Query<Args>,
+    Query(query): Query<api::HoldersArgs>,
 ) -> ApiResult<impl IntoResponse> {
     query.validate().bad_request(BAD_PARAMS)?;
 
@@ -51,7 +36,7 @@ pub async fn holders(
             let percent =
                 balance.into_decimal() * Decimal::new(100, 0) / proto.supply.into_decimal();
 
-            holders.push(Holder {
+            holders.push(api::Holder {
                 rank,
                 address,
                 balance: balance.to_string(),
@@ -59,43 +44,15 @@ pub async fn holders(
             })
         }
 
-        Holders {
+        api::Holders {
             pages,
             count,
             max_percent,
             holders,
         }
     } else {
-        Holders::default()
+        api::Holders::default()
     };
 
     Ok(Json(result))
-}
-
-#[derive(Serialize, Deserialize, Default, Validate)]
-pub struct Args {
-    #[serde(default = "page_size_default")]
-    #[validate(range(min = page_size_default(), max = 20))]
-    pub page_size: usize,
-    #[validate(range(min = 1))]
-    #[serde(default = "first_page")]
-    pub page: usize,
-    #[validate(custom(function = "validate_tick"))]
-    pub tick: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Holder {
-    pub rank: usize,
-    pub address: String,
-    pub balance: String,
-    pub percent: String,
-}
-
-#[derive(Serialize, Deserialize, Default)]
-pub struct Holders {
-    pub pages: usize,
-    pub count: usize,
-    pub max_percent: Decimal,
-    pub holders: Vec<Holder>,
 }

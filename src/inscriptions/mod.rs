@@ -84,12 +84,12 @@ async fn initial_indexer(
 ) -> anyhow::Result<()> {
     info!("Start Initial Indexer");
 
-    let last_electris_block = client.get_last_electrs_block_meta().await?;
+    let last_electrs_block = client.get_last_electrs_block_meta().await?;
     let last_indexer_block_number = server.db.last_block.get(()).unwrap_or_default();
 
     let progress = crate::utils::Progress::begin(
         "Indexing",
-        last_electris_block.height as _,
+        last_electrs_block.height as _,
         last_indexer_block_number as _,
     );
 
@@ -100,7 +100,7 @@ async fn initial_indexer(
     let blocks_storage = Arc::new(tokio::sync::Mutex::new(
         crate::server::threads::blocks_loader::LoadedBlocks {
             from_block_number: last_indexer_block.height,
-            to_block_number: last_electris_block.height,
+            to_block_number: last_electrs_block.height,
             ..Default::default()
         },
     ));

@@ -1,20 +1,4 @@
-use std::sync::Arc;
-
-use axum::{
-    Json,
-    extract::{Path, Query, State},
-    http::Uri,
-    response::IntoResponse,
-};
-use dutils::error::ApiError;
-use itertools::Itertools;
-use nintypes::common::inscriptions::Outpoint;
-use serde::{Deserialize, Serialize};
-
-use super::{
-    AddressLocation, AddressToken, ApiResult, Fixed128, FullHash, INTERNAL, LowerCaseTokenTick,
-    NETWORK, OriginalTokenTick, Server, TokenTransfer, utils::to_scripthash,
-};
+use super::*;
 
 pub async fn address_tokens_tick(
     url: Uri,
@@ -41,14 +25,8 @@ pub async fn address_tokens_tick(
         .flatten()
         .map(|x| x.proto.tick)
         .collect_vec();
-    Ok(Json(data))
-}
 
-#[cfg_attr(test, derive(Debug))]
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct AddressTick {
-    pub address: FullHash,
-    pub tick: OriginalTokenTick,
+    Ok(Json(data))
 }
 
 pub async fn address_token_balance(
@@ -117,4 +95,81 @@ pub struct TokenBalance {
     pub transferable_balance: Fixed128,
     pub transfers: Vec<TokenTransfer>,
     pub transfers_count: u64,
+}
+
+pub async fn address_tokens(
+    State(server): State<Arc<Server>>,
+    Path(script_str): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let scripthash =
+        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+
+    let mut data = server
+        .db
+        .address_token_to_balance
+        .range(
+            &AddressToken {
+                address: scripthash,
+                token: [0; 4].into(),
+            }..=&AddressToken {
+                address: scripthash,
+                token: [u8::MAX; 4].into(),
+            },
+            false,
+        )
+        .map(|(k, v)| api::AddressTokenBalance {
+            tick: k.token,
+            balance: v.balance,
+            transferable_balance: v.transferable_balance,
+            transfers_count: v.transfers_count,
+            transfers: vec![],
+        })
+        .collect_vec();
+
+    let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProto)>>::new();
+
+    for (key, value) in server
+        .db
+        .address_location_to_transfer
+        .range(
+            &AddressLocation {
+                address: scripthash,
+                location: Location::zero(),
+            }..,
+            false,
+        )
+        .take_while(|x| x.0.address == scripthash)
+    {
+        transfers
+            .entry(value.tick)
+            .and_modify(|x| x.push((key.location, value.clone().into())))
+            .or_insert(vec![(key.location, value.into())]);
+    }
+
+    for token in data.iter_mut() {
+        let transfers = transfers
+            .remove(&token.tick)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|x| {
+                let TransferProto::Bel20 { amt, .. } = x.1;
+                TokenTransfer {
+                    outpoint: x.0.outpoint,
+                    amount: amt,
+                }
+            })
+            .collect();
+
+        token.transfers = transfers;
+    }
+
+    let data = serde_json::to_vec(&data).internal(INTERNAL)?;
+    let body = Body::from(data);
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("X-Powered-By", "NINTONDO")
+        .body(body)
+        .internal(INTERNAL)
 }

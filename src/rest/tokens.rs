@@ -1,55 +1,8 @@
-use std::sync::Arc;
-
-use crate::{
-    NON_STANDARD_ADDRESS,
-    tokens::{InscriptionId, OriginalTokenTick},
-};
-
-use super::{
-    AddressLocation, BAD_PARAMS, Fixed128, INTERNAL, LowerCaseTokenTick, NETWORK, TransferProtoDB,
-    utils::{first_page, page_size_default, to_scripthash, validate_tick},
-};
-use axum::{
-    Json,
-    extract::{Path, Query, State},
-    response::IntoResponse,
-};
-use dutils::error::{ApiError, ContextWrapper};
-use itertools::Itertools;
-use nintypes::common::inscriptions::Outpoint;
-use serde::{Deserialize, Serialize};
-use validator::Validate;
-
-use super::{ApiResult, BAD_REQUEST, NOT_FOUND, Server};
-
-#[derive(Serialize, Deserialize)]
-pub struct Token {
-    pub height: u32,
-    pub created: u32,
-    pub tick: OriginalTokenTick,
-    pub genesis: InscriptionId,
-    pub deployer: String,
-
-    pub transactions: u32,
-    pub holders: u32,
-    pub supply: Fixed128,
-    pub mint_percent: String,
-    pub completed: bool,
-
-    pub max: Fixed128,
-    pub lim: Fixed128,
-    pub dec: u8,
-}
-
-#[derive(Serialize, Deserialize, Default, Validate)]
-pub struct TokenArgs {
-    #[validate(custom(function = "validate_tick"))]
-    pub tick: String,
-}
+use super::*;
 
 pub async fn token(
     State(back): State<Arc<Server>>,
-    Query(args): Query<TokenArgs>,
+    Query(args): Query<api::TokenArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_REQUEST)?;
     let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
@@ -57,7 +10,7 @@ pub async fn token(
         .db
         .token_to_meta
         .get(lower_case_token_tick.clone())
-        .map(|v| Token {
+        .map(|v| api::Token {
             height: v.proto.height,
             created: v.proto.created,
             deployer: back
@@ -81,51 +34,9 @@ pub async fn token(
     Ok(Json(token))
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct TokensResult {
-    pub pages: usize,
-    pub count: usize,
-    pub tokens: Vec<Token>,
-}
-
-#[derive(Default, Serialize, Deserialize)]
-pub enum SortBy {
-    DeployTimeAsc,
-    DeployTimeDesc,
-    HoldersAsc,
-    HoldersDesc,
-    TransactionsAsc,
-    #[default]
-    TransactionsDesc,
-}
-
-#[derive(Default, Serialize, Deserialize)]
-pub enum FilterBy {
-    #[default]
-    All,
-    Completed,
-    InProgress,
-}
-
-#[derive(Serialize, Deserialize, Default, Validate)]
-pub struct TokensArgs {
-    #[serde(default = "page_size_default")]
-    #[validate(range(min = page_size_default(), max = 20))]
-    pub page_size: usize,
-    #[validate(range(min = 1))]
-    #[serde(default = "first_page")]
-    pub page: usize,
-    #[serde(default)]
-    pub sort_by: SortBy,
-    #[serde(default)]
-    pub filter_by: FilterBy,
-    #[validate(length(min = 1, max = 4))]
-    pub search: Option<String>,
-}
-
 pub async fn tokens(
     State(server): State<Arc<Server>>,
-    Query(args): Query<TokensArgs>,
+    Query(args): Query<api::TokensArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_PARAMS)?;
     let search = args.search.map(|x| x.to_lowercase().as_bytes().to_vec());
@@ -135,9 +46,9 @@ pub async fn tokens(
         .token_to_meta
         .iter()
         .filter(|x| match args.filter_by {
-            FilterBy::All => true,
-            FilterBy::Completed => x.1.is_completed(),
-            FilterBy::InProgress => !x.1.is_completed(),
+            api::TokenFilterBy::All => true,
+            api::TokenFilterBy::Completed => x.1.is_completed(),
+            api::TokenFilterBy::InProgress => !x.1.is_completed(),
         })
         .filter(|x| match &search {
             Some(tick) => x.0.starts_with(tick),
@@ -146,22 +57,24 @@ pub async fn tokens(
 
     let stats = server.holders.stats();
     let all = match args.sort_by {
-        SortBy::DeployTimeAsc => iter.sorted_by_key(|(_, v)| v.proto.created).collect_vec(),
-        SortBy::DeployTimeDesc => iter
+        api::TokenSortBy::DeployTimeAsc => {
+            iter.sorted_by_key(|(_, v)| v.proto.created).collect_vec()
+        }
+        api::TokenSortBy::DeployTimeDesc => iter
             .sorted_by_key(|(_, v)| v.proto.created)
             .rev()
             .collect_vec(),
-        SortBy::HoldersAsc => iter
+        api::TokenSortBy::HoldersAsc => iter
             .sorted_by_key(|(_, proto)| stats.get(&proto.proto.tick))
             .collect_vec(),
-        SortBy::HoldersDesc => iter
+        api::TokenSortBy::HoldersDesc => iter
             .sorted_by_key(|(_, proto)| stats.get(&proto.proto.tick))
             .rev()
             .collect_vec(),
-        SortBy::TransactionsAsc => iter
+        api::TokenSortBy::TransactionsAsc => iter
             .sorted_by_key(|(_, v)| v.proto.transactions)
             .collect_vec(),
-        SortBy::TransactionsDesc => iter
+        api::TokenSortBy::TransactionsDesc => iter
             .sorted_by_key(|(_, v)| v.proto.transactions)
             .rev()
             .collect_vec(),
@@ -173,7 +86,7 @@ pub async fn tokens(
         .iter()
         .skip((args.page - 1) * args.page_size)
         .take(args.page_size)
-        .map(|(_, v)| Token {
+        .map(|(_, v)| api::Token {
             height: v.proto.height,
             created: v.proto.created,
             mint_percent: v.proto.mint_percent().to_string(),
@@ -194,7 +107,7 @@ pub async fn tokens(
         })
         .collect_vec();
 
-    Ok(Json(TokensResult {
+    Ok(Json(api::TokensResult {
         count,
         pages,
         tokens,

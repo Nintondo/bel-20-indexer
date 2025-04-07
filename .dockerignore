@@ -1,0 +1,7 @@
+./git
+./github
+clean.sh
+.env.example
+.gitignore
+docker-compose.yml
+/target

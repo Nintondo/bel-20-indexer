@@ -221,7 +221,7 @@ async fn indexer(
                 continue;
             } else {
                 info!(
-                    "Indexer has {}, elects has {}",
+                    "Indexer has {}, electrs has {}",
                     last_index_height, last_electrs_block.height
                 );
             }

@@ -127,22 +127,11 @@ pub async fn token_transfer_proof(
         .address_location_to_transfer
         .range(&from..&to, false)
         .map(|(_, TransferProtoDB { tick, amt, height })| {
-            anyhow::Ok(TokenTransferProof {
-                amt,
-                tick: tick.to_string(),
-                height,
-            })
+            anyhow::Ok(api::TokenTransferProof { amt, tick, height })
         })
         .try_collect()
         .track_with("")
         .internal(INTERNAL)?;
 
     Ok(Json(data))
-}
-
-#[derive(Serialize)]
-pub struct TokenTransferProof {
-    pub amt: Fixed128,
-    pub tick: String,
-    pub height: u32,
 }

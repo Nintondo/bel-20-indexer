@@ -23,7 +23,7 @@ pub async fn address_tokens_tick(
         )
         .into_iter()
         .flatten()
-        .map(|x| x.proto.tick)
+        .map(|x| x.proto.tick.to_string())
         .collect_vec();
 
     Ok(Json(data))
@@ -33,7 +33,7 @@ pub async fn address_token_balance(
     url: Uri,
     State(state): State<Arc<Server>>,
     Path((script_str, tick)): Path<(String, String)>,
-    Query(params): Query<AddressTokenBalanceArgs>,
+    Query(params): Query<api::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash =
@@ -72,7 +72,7 @@ pub async fn address_token_balance(
         })
         .collect_vec();
 
-    let data = TokenBalance {
+    let data = api::TokenBalance {
         transfers,
         tick: original_token_tick,
         balance: balance.balance,
@@ -81,20 +81,6 @@ pub async fn address_token_balance(
     };
 
     Ok(Json(data))
-}
-
-#[derive(Deserialize)]
-pub struct AddressTokenBalanceArgs {
-    pub offset: Option<Outpoint>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TokenBalance {
-    pub tick: OriginalTokenTick,
-    pub balance: Fixed128,
-    pub transferable_balance: Fixed128,
-    pub transfers: Vec<TokenTransfer>,
-    pub transfers_count: u64,
 }
 
 pub async fn address_tokens(

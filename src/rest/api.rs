@@ -360,3 +360,26 @@ where
     let str = token.to_string();
     serializer.serialize_str(&str)
 }
+
+#[derive(Deserialize)]
+pub struct AddressTokenBalanceArgs {
+    pub offset: Option<Outpoint>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TokenBalance {
+    #[serde(serialize_with = "serialize_original_token_tick")]
+    pub tick: OriginalTokenTick,
+    pub balance: Fixed128,
+    pub transferable_balance: Fixed128,
+    pub transfers: Vec<TokenTransfer>,
+    pub transfers_count: u64,
+}
+
+#[derive(Serialize)]
+pub struct TokenTransferProof {
+    pub amt: Fixed128,
+    #[serde(serialize_with = "serialize_original_token_tick")]
+    pub tick: OriginalTokenTick,
+    pub height: u32,
+}

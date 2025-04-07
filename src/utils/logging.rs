@@ -12,7 +12,6 @@ pub fn init_logger() {
         .with_writer(indicatif_layer.get_stderr_writer())
         .with_thread_names(true)
         .with_ansi(true)
-        .without_time()
         .with_filter(EnvFilter::new(logging_mode));
 
     let filter_layer = EnvFilter::try_from_default_env()

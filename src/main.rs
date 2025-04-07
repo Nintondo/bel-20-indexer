@@ -4,19 +4,13 @@ extern crate tracing;
 
 use {
     axum::{
-        Json, Router,
+        Router,
         body::Body,
-        extract::{Path, Query, State},
         http::{Response, StatusCode},
-        response::IntoResponse,
         routing::get,
     },
     db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
-    dutils::{
-        async_thread::Spawn,
-        error::{ApiError, ContextWrapper},
-        wait_token::WaitToken,
-    },
+    dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken},
     futures::future::join_all,
     inscriptions::Location,
     itertools::Itertools,
@@ -100,15 +94,49 @@ lazy_static! {
     static ref DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     dotenv::dotenv().unwrap();
     utils::init_logger();
 
-    let (raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
-
+    let (raw_event_tx, event_tx, server) = Server::new("rocksdb").unwrap();
     let server = Arc::new(server);
 
+    let rest_server = server.clone();
+    std::thread::spawn(move || {
+        let future = rest_main(rest_server.token.clone(), rest_server.clone());
+        let low_priority_runtime = spawn_runtime("rest".to_string(), None);
+        low_priority_runtime.block_on(future)
+    });
+
+    let high_priority_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));
+
+    high_priority_runtime.block_on(indexer_main(server.clone(), raw_event_tx, event_tx));
+}
+
+fn spawn_runtime(
+    name: String,
+    priority: Option<thread_priority::ThreadPriority>,
+) -> tokio::runtime::Runtime {
+    if let Some(priority) = priority {
+        if let Err(e) = thread_priority::set_current_thread_priority(priority) {
+            warn!("can't set priority {priority:?}, error {e:?}");
+        };
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .thread_name(&name)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime
+}
+
+async fn indexer_main(
+    server: Arc<Server>,
+    rx: kanal::Receiver<Vec<(AddressTokenId, HistoryValue)>>,
+    tx: tokio::sync::broadcast::Sender<ServerEvent>,
+) {
     let signal_handler = {
         let token = server.token.clone();
         async move {
@@ -120,14 +148,12 @@ async fn main() {
         .spawn()
     };
 
-    let server1 = server.clone();
-
+    let thread_server = server.clone();
     let result = join_all([
         signal_handler,
-        server1
-            .run_threads(server.token.clone(), raw_event_tx, event_tx)
+        thread_server
+            .run_threads(server.token.clone(), rx, tx)
             .spawn(),
-        run_rest(server.token.clone(), server.clone()).spawn(),
         inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
     ])
     .await;
@@ -141,7 +167,7 @@ async fn main() {
         .unwrap();
 }
 
-async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
+async fn rest_main(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
     info!("Start REST");
 
     let listener = tokio::net::TcpListener::bind(&*SERVER_URL).await.unwrap();

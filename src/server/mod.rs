@@ -15,7 +15,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(
+    pub fn new(
         db_path: &str,
     ) -> anyhow::Result<(
         kanal::Receiver<RawServerEvent>,

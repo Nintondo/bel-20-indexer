@@ -1,6 +1,5 @@
 use nintondo_dogecoin::consensus;
 use nintondo_dogecoin::hashes::hex::Error;
-use server::{AddressTokenIdEvent, HistoryValueEvent};
 use std::ops::RangeInclusive;
 
 use super::*;

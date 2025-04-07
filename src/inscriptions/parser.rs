@@ -232,14 +232,13 @@ impl InitialIndexer {
                 .db
                 .address_token_to_history
                 .extend(block_history.history.clone());
-        }
 
-        //write history proofs
-        server.db.proof_of_history.extend(
-            block_height_to_history
-                .iter()
-                .map(|(height, history)| (height, history.proof)),
-        );
+            //write history proof
+            server.db.proof_of_history.set(height, block_history.proof);
+
+            // write block hash
+            server.db.block_hashes.set(height, block_history.block_hash);
+        }
 
         server.db.last_history_id.set((), last_history_id);
         server.db.last_block.set((), last_block_height);

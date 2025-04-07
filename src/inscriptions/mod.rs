@@ -298,6 +298,10 @@ async fn load_blocks(
     })
     .await?;
 
+    if updates.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let (new_blocks, reorgs) = updates.iter().fold((0, 0), |(inserts, reorgs), v| match v {
         electrs_client::Update::AddBlock { .. } => (inserts + 1, reorgs),
         electrs_client::Update::RemoveBlock { .. } => (inserts, reorgs + 1),

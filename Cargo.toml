@@ -19,7 +19,7 @@ bellscoin = "0.30.5"
 rocksdb = { version = "0.22.0", features = ["multi-threaded-cf"] }
 postcard = "1.0.10"
 bytemuck = { version = "1.19.0", features = ["derive"] }
-tokio = { version = "1.41.0", features = ["full"] }
+tokio = { version = "1.43.1", features = ["full"] }
 itertools = "0.14.0"
 futures = "0.3.31"
 hex = "0.4.3"

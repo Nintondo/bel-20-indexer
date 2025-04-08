@@ -101,45 +101,52 @@ lazy_static! {
     static ref DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     dotenv::dotenv().unwrap();
     utils::init_logger();
 
-    let (addr_rx, raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
+    let indexer_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));
+    indexer_runtime.block_on(async {
+        let (addr_rx, raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
 
-    let server = Arc::new(server);
+        let server = Arc::new(server);
 
-    let signal_handler = {
-        let token = server.token.clone();
-        async move {
-            tokio::signal::ctrl_c().await.track().ok();
-            warn!("Ctrl-C received, shutting down...");
-            token.cancel();
-            anyhow::Result::Ok(())
-        }
-        .spawn()
-    };
+        let signal_handler = {
+            let token = server.token.clone();
+            async move {
+                tokio::signal::ctrl_c().await.track().ok();
+                warn!("Ctrl-C received, shutting down...");
+                token.cancel();
+                anyhow::Result::Ok(())
+            }
+            .spawn()
+        };
 
-    let server1 = server.clone();
+        let server1 = server.clone();
 
-    let result = join_all([
-        signal_handler,
-        server1
-            .run_threads(server.token.clone(), addr_rx, raw_event_tx, event_tx)
-            .spawn(),
-        run_rest(server.token.clone(), server.clone()).spawn(),
-        inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
-    ])
-    .await;
+        let rest_server = server.clone();
+        std::thread::spawn(move || {
+            let rest_runtime = spawn_runtime("rest".to_string(), Some(20.try_into().unwrap()));
+            rest_runtime.block_on(run_rest(rest_server.token.clone(), rest_server))
+        });
 
-    let _: Vec<_> = result
-        .into_iter()
-        .collect::<Result<anyhow::Result<Vec<()>>, _>>()
-        .track()
-        .unwrap()
-        .track()
-        .unwrap();
+        let result = join_all([
+            signal_handler,
+            server1
+                .run_threads(server.token.clone(), addr_rx, raw_event_tx, event_tx)
+                .spawn(),
+            inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
+        ])
+        .await;
+
+        let _: Vec<_> = result
+            .into_iter()
+            .collect::<Result<anyhow::Result<Vec<()>>, _>>()
+            .track()
+            .unwrap()
+            .track()
+            .unwrap();
+    })
 }
 
 async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
@@ -164,4 +171,23 @@ async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+fn spawn_runtime(
+    name: String,
+    priority: Option<thread_priority::ThreadPriority>,
+) -> tokio::runtime::Runtime {
+    if let Some(priority) = priority {
+        if let Err(e) = thread_priority::set_current_thread_priority(priority) {
+            warn!("can't set priority {priority:?}, error {e:?}");
+        };
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .thread_name(&name)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime
 }

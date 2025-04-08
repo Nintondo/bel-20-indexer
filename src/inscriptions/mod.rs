@@ -43,7 +43,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
     }
 
     if !token.is_cancelled() {
-        new_fether(last_block - 1, token, server.clone(), reorg_cache.clone())
+        new_fetcher(last_block - 1, token, server.clone(), reorg_cache.clone())
             .await
             .track()
             .ok();
@@ -58,7 +58,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
     Ok(())
 }
 
-async fn new_fether(
+async fn new_fetcher(
     last_block: u32,
     token: WaitToken,
     server: Arc<Server>,

@@ -95,7 +95,7 @@ lazy_static! {
 }
 
 fn main() {
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
     utils::init_logger();
 
     let (raw_event_tx, event_tx, server) = Server::new("rocksdb").unwrap();

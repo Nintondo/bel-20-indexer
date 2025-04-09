@@ -159,3 +159,39 @@ pub async fn address_tokens(
         .body(body)
         .internal(INTERNAL)
 }
+
+pub async fn search_address_tokens(
+    State(server): State<Arc<Server>>,
+    Path((script_str, tick)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let tick = tick.to_lowercase();
+    let scripthash =
+        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+
+    let account_tokens = server
+        .db
+        .address_token_to_balance
+        .range(
+            &AddressToken {
+                address: scripthash,
+                token: [0; 4].into(),
+            }..=&AddressToken {
+                address: scripthash,
+                token: [u8::MAX; 4].into(),
+            },
+            false,
+        )
+        .map(|(k, _)| k.token.to_string().to_lowercase())
+        .filter(|original_token| original_token.starts_with(&tick))
+        .collect_vec();
+
+    let data = serde_json::to_vec(&account_tokens).internal(INTERNAL)?;
+    let body = Body::from(data);
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("X-Powered-By", "NINTONDO")
+        .body(body)
+        .internal(INTERNAL)
+}

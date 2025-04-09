@@ -37,6 +37,7 @@ use {
     },
     tables::DB,
     tokens::*,
+    tokio::select,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
 };
@@ -140,9 +141,14 @@ async fn indexer_main(
     let signal_handler = {
         let token = server.token.clone();
         async move {
-            tokio::signal::ctrl_c().await.track().ok();
-            warn!("Ctrl-C received, shutting down...");
-            token.cancel();
+            select! {
+                _ =  token.cancelled() => {}
+                _ =  tokio::signal::ctrl_c() => {
+                    warn!("Ctrl-C received, shutting down...");
+                    token.cancel();
+                }
+            }
+
             anyhow::Result::Ok(())
         }
         .spawn()
@@ -154,7 +160,18 @@ async fn indexer_main(
         thread_server
             .run_threads(server.token.clone(), rx, tx)
             .spawn(),
-        inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
+        async move {
+            let main_task = inscriptions::main_loop(server.token.clone(), server.clone())
+                .spawn()
+                .await?;
+
+            if main_task.is_err() {
+                server.token.cancel();
+            }
+
+            main_task
+        }
+        .spawn(),
     ])
     .await;
 

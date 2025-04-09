@@ -40,34 +40,32 @@ where
             return Err(anyhow::anyhow!("Operation cancelled"));
         };
 
-        let response = match result {
-            Ok(response) => response,
-            Err(_) => {
-                error!("Operation timed out");
-                if attempt >= attempts {
-                    return Err(anyhow::anyhow!("Operation timed out"));
+        let error = match result {
+            Ok(response) => match response {
+                Ok(success) => {
+                    return Ok(success);
                 }
-                tokio::time::sleep(sleep).await;
-                continue;
+                Err(electrs_client::ClientError::Reqwest(e)) if e.is_request() => {
+                    anyhow::anyhow!(e)
+                }
+                Err(electrs_client::ClientError::Json(e)) => {
+                    anyhow::anyhow!(e)
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!(e));
+                }
+            },
+            Err(_) => {
+                anyhow::anyhow!("Operation timed out")
             }
         };
 
-        match response {
-            Ok(success) => {
-                return Ok(success);
-            }
-            Err(electrs_client::ClientError::Json(e)) => {
-                warn!("Got client recovery error {e}, trying again...");
-                if attempt >= attempts {
-                    return Err(anyhow::anyhow!(e));
-                }
-                tokio::time::sleep(sleep).await;
-                continue;
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(e));
-            }
+        if attempt >= attempts {
+            return Err(error);
         }
+
+        warn!("Got client recovery error {error}, trying again...");
+        tokio::time::sleep(sleep).await;
     }
 
     Err(anyhow::anyhow!("Maximum retry attempts reached"))

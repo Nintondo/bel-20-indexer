@@ -56,7 +56,10 @@ impl BlocksLoader {
         let result: Result<Vec<_>, electrs_client::ClientError> =
             join_all(features).await.into_iter().collect();
 
-        let blocks = result?;
+        let blocks = result?
+            .into_iter()
+            .filter(|batch| !batch.is_empty())
+            .collect::<Vec<_>>();
 
         if blocks.is_empty() {
             return Ok(Vec::new());

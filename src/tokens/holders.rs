@@ -4,8 +4,8 @@ use super::*;
 pub struct SortedByBalance(pub Fixed128, pub FullHash);
 
 pub struct Holders {
-    balances: parking_lot::RwLock<HashMap<LowerCaseTick, BTreeSet<SortedByBalance>>>,
-    stats: parking_lot::RwLock<HashMap<LowerCaseTick, usize>>,
+    balances: parking_lot::RwLock<HashMap<OriginalTokenTick, BTreeSet<SortedByBalance>>>,
+    stats: parking_lot::RwLock<HashMap<OriginalTokenTick, usize>>,
 }
 
 enum Action {
@@ -15,7 +15,7 @@ enum Action {
 
 impl Holders {
     pub fn init(db: &DB) -> Self {
-        let holders = HashMap::<LowerCaseTick, _>::from_iter(
+        let holders = HashMap::<OriginalTokenTick, _>::from_iter(
             db.address_token_to_balance
                 .iter()
                 .filter(|(_, v)| !v.balance.is_zero() || !v.transferable_balance.is_zero())
@@ -25,13 +25,16 @@ impl Holders {
                         SortedByBalance(v.balance + v.transferable_balance, k.address),
                     )
                 })
-                .sorted_unstable_by_key(|x| x.0.clone())
-                .chunk_by(|(k, _)| k.clone())
+                .sorted_unstable_by_key(|(tick, _)| *tick)
+                .chunk_by(|(tick, _)| *tick)
                 .into_iter()
                 .map(|(k, v)| (k, v.map(|(_, v)| v).collect::<BTreeSet<_>>())),
         );
 
-        let stats = holders.iter().map(|x| (x.0.clone(), x.1.len())).collect();
+        let stats = holders
+            .iter()
+            .map(|(tick, holders)| (*tick, holders.len()))
+            .collect();
 
         Self {
             balances: parking_lot::RwLock::new(holders),
@@ -39,7 +42,7 @@ impl Holders {
         }
     }
 
-    pub fn get_holders(&self, tick: &LowerCaseTick) -> Option<BTreeSet<SortedByBalance>> {
+    pub fn get_holders(&self, tick: &OriginalTokenTick) -> Option<BTreeSet<SortedByBalance>> {
         self.balances.read().get(tick).cloned()
     }
 
@@ -53,11 +56,11 @@ impl Holders {
         self.change(key, prev_balance, amt, Action::Increase)
     }
 
-    pub fn holders_by_tick(&self, tick: &LowerCaseTick) -> Option<usize> {
+    pub fn holders_by_tick(&self, tick: &OriginalTokenTick) -> Option<usize> {
         self.stats.read().get(tick).cloned()
     }
 
-    pub fn stats(&self) -> HashMap<LowerCaseTick, usize> {
+    pub fn stats(&self) -> HashMap<OriginalTokenTick, usize> {
         self.stats.read().clone()
     }
 
@@ -66,7 +69,7 @@ impl Holders {
         let old_balance = acc.balance + acc.transferable_balance;
         let mut balances = self.balances.write();
 
-        let v = balances.entry(key.token.clone()).or_default();
+        let v = balances.entry(key.token).or_default();
 
         let existed = v.remove(&SortedByBalance(old_balance, key.address));
 
@@ -75,7 +78,7 @@ impl Holders {
                 if !existed {
                     self.stats
                         .write()
-                        .entry(key.token.clone())
+                        .entry(key.token)
                         .and_modify(|x| *x += 1)
                         .or_insert(1);
                 }
@@ -87,10 +90,7 @@ impl Holders {
                 if !bal.is_zero() {
                     v.insert(SortedByBalance(bal, key.address));
                 } else {
-                    self.stats
-                        .write()
-                        .entry(key.token.clone())
-                        .and_modify(|x| *x -= 1);
+                    self.stats.write().entry(key.token).and_modify(|x| *x -= 1);
                 }
             }
         }

@@ -49,7 +49,7 @@ where
     val.map(|x| bel_20_validate::<D>(x)).transpose()
 }
 
-pub fn bel_20_tick<'de, D>(deserializer: D) -> Result<TokenTick, D::Error>
+pub fn bel_20_tick<'de, D>(deserializer: D) -> Result<OriginalTokenTick, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -88,7 +88,7 @@ pub enum MintProto {
     #[serde(rename = "bel-20")]
     Bel20 {
         #[serde(deserialize_with = "bel_20_tick")]
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         #[serde(deserialize_with = "bel_20_decimal")]
         amt: Fixed128,
     },
@@ -100,7 +100,7 @@ pub enum DeployProto {
     #[serde(rename = "bel-20")]
     Bel20 {
         #[serde(deserialize_with = "bel_20_tick")]
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         #[serde(deserialize_with = "bel_20_decimal")]
         max: Fixed128,
         #[serde(default, deserialize_with = "bel_20_option_decimal")]
@@ -113,7 +113,7 @@ pub enum DeployProto {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeployProtoDB {
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
     pub max: Fixed128,
     pub lim: Fixed128,
     pub dec: u8,
@@ -152,7 +152,7 @@ pub enum TransferProto {
     #[serde(rename = "bel-20")]
     Bel20 {
         #[serde(deserialize_with = "bel_20_tick")]
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         #[serde(deserialize_with = "bel_20_decimal")]
         amt: Fixed128,
     },
@@ -160,7 +160,7 @@ pub enum TransferProto {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TransferProtoDB {
-    pub tick: TokenTick,
+    pub tick: OriginalTokenTick,
     pub amt: Fixed128,
     pub height: u32,
 }
@@ -185,15 +185,15 @@ impl From<TransferProtoDB> for TransferProto {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Brc4Value {
     Mint {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     Transfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
     },
     Deploy {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         max: Fixed128,
         lim: Fixed128,
         dec: u8,

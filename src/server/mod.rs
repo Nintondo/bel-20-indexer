@@ -99,7 +99,8 @@ impl Server {
 
             for (k, v) in history {
                 let bytes = serde_json::to_vec(
-                    &HistoryRest::new(v.height, v.action.clone(), k.clone(), self).await?,
+                    &crate::rest::api::History::new(v.height, v.action.clone(), k.clone(), self)
+                        .await?,
                 )?;
                 res.extend(bytes);
             }

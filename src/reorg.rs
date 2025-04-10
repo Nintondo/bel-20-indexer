@@ -3,7 +3,7 @@ use super::*;
 pub const REORG_CACHE_MAX_LEN: usize = 30;
 
 enum TokenHistoryEntry {
-    RemoveDeployed(TokenTick),
+    RemoveDeployed(OriginalTokenTick),
     /// Second arg `Fixed128` is amount of mint to remove. We need to decrease user balance + mint count + total supply of deploy
     RemoveMint(AddressToken, Fixed128),
     /// Second arg `Fixed128` is amount of transfer to remove. We need to decrease user balance, transfers_count, transfers_amount + transfer count of deploy
@@ -50,7 +50,7 @@ impl ReorgCache {
             .insert(block_height, ReorgHistoryBlock::new(last_history_id));
     }
 
-    pub fn added_deployed_token(&mut self, tick: TokenTick) {
+    pub fn added_deployed_token(&mut self, tick: OriginalTokenTick) {
         self.blocks
             .last_entry()
             .unwrap()
@@ -134,20 +134,18 @@ impl ReorgCache {
                 for entry in data.token_history.into_iter().rev() {
                     match entry {
                         TokenHistoryEntry::RemoveDeployed(tick) => {
-                            to_remove_deployed.push(LowerCaseTick::from(tick));
+                            to_remove_deployed.push(LowerCaseTokenTick::from(tick));
                         }
                         TokenHistoryEntry::RemoveMint(receiver, amt) => {
-                            to_update_deployed
-                                .push(DeployedUpdate::Mint(receiver.token.clone(), amt));
+                            to_update_deployed.push(DeployedUpdate::Mint(receiver.token, amt));
                             to_remove_minted.push((receiver, amt));
                         }
                         TokenHistoryEntry::RemoveTransfer(location, receiver, amt) => {
-                            to_update_deployed
-                                .push(DeployedUpdate::Transfer(receiver.token.clone()));
+                            to_update_deployed.push(DeployedUpdate::Transfer(receiver.token));
                             to_remove_transfer.push((location, receiver, amt));
                         }
                         TokenHistoryEntry::RestoreTransferred(key, value, recipient) => {
-                            to_update_deployed.push(DeployedUpdate::Transferred(value.tick.into()));
+                            to_update_deployed.push(DeployedUpdate::Transferred(value.tick));
                             to_restore_transferred.push((key, value, recipient));
                         }
                         TokenHistoryEntry::RemoveHistory(key) => {
@@ -181,7 +179,7 @@ impl ReorgCache {
                         .map(|x| match x {
                             DeployedUpdate::Mint(tick, _)
                             | DeployedUpdate::Transfer(tick)
-                            | DeployedUpdate::Transferred(tick) => tick.clone(),
+                            | DeployedUpdate::Transferred(tick) => LowerCaseTokenTick::from(tick),
                         })
                         .unique()
                         .collect_vec();
@@ -198,7 +196,8 @@ impl ReorgCache {
 
                     let updated_values = to_update_deployed.into_iter().rev().map(|x| match x {
                         DeployedUpdate::Mint(tick, amt) => {
-                            let mut meta = deploys.get(&tick.clone()).unwrap().clone();
+                            let lower_case_tick: LowerCaseTokenTick = tick.into();
+                            let mut meta = deploys.get(&lower_case_tick).unwrap().clone();
                             let DeployProtoDB {
                                 supply,
                                 mint_count,
@@ -208,10 +207,11 @@ impl ReorgCache {
                             *supply -= amt;
                             *mint_count -= 1;
                             *transactions -= 1;
-                            (tick, meta)
+                            (lower_case_tick, meta)
                         }
                         DeployedUpdate::Transfer(tick) => {
-                            let mut meta = deploys.get(&tick.clone()).unwrap().clone();
+                            let lower_case_tick: LowerCaseTokenTick = tick.into();
+                            let mut meta = deploys.get(&lower_case_tick).unwrap().clone();
                             let DeployProtoDB {
                                 transfer_count,
                                 transactions,
@@ -219,13 +219,14 @@ impl ReorgCache {
                             } = &mut meta.proto;
                             *transfer_count -= 1;
                             *transactions -= 1;
-                            (tick, meta)
+                            (lower_case_tick, meta)
                         }
                         DeployedUpdate::Transferred(tick) => {
-                            let mut meta = deploys.get(&tick).unwrap().clone();
+                            let lower_case_tick: LowerCaseTokenTick = tick.into();
+                            let mut meta = deploys.get(&lower_case_tick).unwrap().clone();
                             let DeployProtoDB { transactions, .. } = &mut meta.proto;
                             *transactions -= 1;
-                            (tick, meta)
+                            (lower_case_tick, meta)
                         }
                     });
 
@@ -245,11 +246,11 @@ impl ReorgCache {
                             [
                                 AddressToken {
                                     address: k.address,
-                                    token: v.tick.into(),
+                                    token: v.tick,
                                 },
                                 AddressToken {
                                     address: *recipient,
-                                    token: v.tick.into(),
+                                    token: v.tick,
                                 },
                             ]
                             .into_iter()
@@ -294,7 +295,7 @@ impl ReorgCache {
                     for (k, v, recipient) in &to_restore_transferred {
                         let key = AddressToken {
                             address: k.address,
-                            token: v.tick.into(),
+                            token: v.tick,
                         };
 
                         let account = accounts.get_mut(&key).unwrap();
@@ -306,7 +307,7 @@ impl ReorgCache {
                         if !recipient.is_op_return_hash() {
                             let key = AddressToken {
                                 address: *recipient,
-                                token: v.tick.into(),
+                                token: v.tick,
                             };
 
                             let account = accounts.get_mut(&key).unwrap();
@@ -348,7 +349,7 @@ impl ReorgCache {
 }
 
 enum DeployedUpdate {
-    Mint(LowerCaseTick, Fixed128),
-    Transfer(LowerCaseTick),
-    Transferred(LowerCaseTick),
+    Mint(OriginalTokenTick, Fixed128),
+    Transfer(OriginalTokenTick),
+    Transferred(OriginalTokenTick),
 }

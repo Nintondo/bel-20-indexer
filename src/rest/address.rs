@@ -1,22 +1,4 @@
-use std::sync::Arc;
-
-use axum::{
-    extract::{Path, Query, State},
-    http::Uri,
-    response::IntoResponse,
-    Json,
-};
-use dutils::error::ApiError;
-use itertools::Itertools;
-use nintypes::common::inscriptions::Outpoint;
-use serde::{Deserialize, Serialize};
-
-use crate::LowerCaseTick;
-
-use super::{
-    utils::to_scripthash, AddressLocation, AddressToken, ApiResult, Fixed128, FullHash, Server,
-    TokenTick, TokenTransfer, INTERNAL, NETWORK,
-};
+use super::*;
 
 pub async fn address_tokens_tick(
     url: Uri,
@@ -35,7 +17,7 @@ pub async fn address_tokens_tick(
                 .db
                 .address_token_to_balance
                 .range(&from..&to, false)
-                .map(|(k, _)| k.token)
+                .map(|(k, _)| k.token.into())
                 .collect_vec()
                 .iter(),
         )
@@ -46,24 +28,17 @@ pub async fn address_tokens_tick(
     Ok(Json(data))
 }
 
-#[cfg_attr(test, derive(Debug))]
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct AddressTick {
-    pub address: FullHash,
-    pub tick: TokenTick,
-}
-
 pub async fn address_token_balance(
     url: Uri,
     State(state): State<Arc<Server>>,
     Path((script_str, tick)): Path<(String, String)>,
-    Query(params): Query<AddressTokenBalanceArgs>,
+    Query(params): Query<api::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash =
         to_scripthash(script_type, &script_str, *NETWORK).bad_request("Invalid address")?;
 
-    let token: LowerCaseTick = tick.into();
+    let token: LowerCaseTokenTick = tick.into();
 
     let deploy_proto = state
         .db
@@ -78,7 +53,7 @@ pub async fn address_token_balance(
         .address_token_to_balance
         .get(AddressToken {
             address: scripthash,
-            token: tick.into(),
+            token: tick,
         })
         .unwrap_or_default();
 
@@ -96,7 +71,7 @@ pub async fn address_token_balance(
         })
         .collect_vec();
 
-    let data = TokenBalance {
+    let data = api::TokenBalance {
         transfers,
         tick,
         balance: balance.balance,
@@ -107,16 +82,114 @@ pub async fn address_token_balance(
     Ok(Json(data))
 }
 
-#[derive(Deserialize)]
-pub struct AddressTokenBalanceArgs {
-    pub offset: Option<Outpoint>,
+pub async fn address_tokens(
+    State(server): State<Arc<Server>>,
+    Path(script_str): Path<String>,
+) -> ApiResult<Response<Body>> {
+    let scripthash =
+        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+
+    let mut data = server
+        .db
+        .address_token_to_balance
+        .range(
+            &AddressToken {
+                address: scripthash,
+                token: [0; 4].into(),
+            }..=&AddressToken {
+                address: scripthash,
+                token: [u8::MAX; 4].into(),
+            },
+            false,
+        )
+        .map(|(k, v)| api::TokenBalance {
+            tick: k.token,
+            balance: v.balance,
+            transferable_balance: v.transferable_balance,
+            transfers_count: v.transfers_count,
+            transfers: vec![],
+        })
+        .collect_vec();
+
+    let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProto)>>::new();
+
+    for (key, value) in server
+        .db
+        .address_location_to_transfer
+        .range(
+            &AddressLocation {
+                address: scripthash,
+                location: Location::zero(),
+            }..,
+            false,
+        )
+        .take_while(|x| x.0.address == scripthash)
+    {
+        transfers
+            .entry(value.tick)
+            .and_modify(|x| x.push((key.location, value.clone().into())))
+            .or_insert(vec![(key.location, value.into())]);
+    }
+
+    for token in data.iter_mut() {
+        let transfers = transfers
+            .remove(&token.tick)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|x| {
+                let TransferProto::Bel20 { amt, .. } = x.1;
+                TokenTransfer {
+                    outpoint: x.0.outpoint,
+                    amount: amt,
+                }
+            })
+            .collect();
+
+        token.transfers = transfers;
+    }
+
+    let data = serde_json::to_vec(&data).internal(INTERNAL)?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("X-Powered-By", "NINTONDO")
+        .body(data.into())
+        .internal(INTERNAL)
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct TokenBalance {
-    pub tick: TokenTick,
-    pub balance: Fixed128,
-    pub transferable_balance: Fixed128,
-    pub transfers: Vec<TokenTransfer>,
-    pub transfers_count: u64,
+pub async fn search_address_tokens(
+    State(server): State<Arc<Server>>,
+    Path((script_str, tick)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let tick = tick.to_lowercase();
+    let scripthash =
+        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+
+    let account_tokens = server
+        .db
+        .address_token_to_balance
+        .range(
+            &AddressToken {
+                address: scripthash,
+                token: [0; 4].into(),
+            }..=&AddressToken {
+                address: scripthash,
+                token: [u8::MAX; 4].into(),
+            },
+            false,
+        )
+        .map(|(k, _)| k.token.to_string().to_lowercase())
+        .filter(|original_token| original_token.starts_with(&tick))
+        .collect_vec();
+
+    let data = serde_json::to_vec(&account_tokens).internal(INTERNAL)?;
+    let body = Body::from(data);
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .header("X-Powered-By", "NINTONDO")
+        .body(body)
+        .internal(INTERNAL)
 }

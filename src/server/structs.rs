@@ -12,7 +12,7 @@ pub type RawServerEvent = Vec<(AddressTokenId, HistoryValue)>;
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct AddressTokenIdEvent {
     pub address: String,
-    pub token: TokenTick,
+    pub token: OriginalTokenTick,
     pub id: u64,
 }
 

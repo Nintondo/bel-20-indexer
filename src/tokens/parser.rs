@@ -5,13 +5,13 @@ use super::*;
 use super::proto::*;
 use super::structs::*;
 
-type Tickers = HashSet<LowerCaseTick>;
-type Users = HashSet<(FullHash, LowerCaseTick)>;
+type Tickers = HashSet<OriginalTokenTick>;
+type Users = HashSet<(FullHash, OriginalTokenTick)>;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum HistoryTokenAction {
     Deploy {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         max: Fixed128,
         lim: Fixed128,
         dec: u8,
@@ -20,21 +20,21 @@ pub enum HistoryTokenAction {
         vout: u32,
     },
     Mint {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
         recipient: FullHash,
         txid: Txid,
         vout: u32,
     },
     DeployTransfer {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
         recipient: FullHash,
         txid: Txid,
         vout: u32,
     },
     Send {
-        tick: TokenTick,
+        tick: OriginalTokenTick,
         amt: Fixed128,
         recipient: FullHash,
         sender: FullHash,
@@ -44,7 +44,7 @@ pub enum HistoryTokenAction {
 }
 
 impl HistoryTokenAction {
-    pub fn tick(&self) -> TokenTick {
+    pub fn tick(&self) -> OriginalTokenTick {
         match self {
             HistoryTokenAction::Deploy { tick, .. }
             | HistoryTokenAction::Mint { tick, .. }
@@ -73,7 +73,7 @@ impl HistoryTokenAction {
 #[derive(Clone, Default)]
 pub struct TokenCache {
     /// All tokens. Used to check if a transfer is valid. Used like a cache, loaded from db before parsing.
-    pub tokens: HashMap<LowerCaseTick, TokenMeta>,
+    pub tokens: HashMap<LowerCaseTokenTick, TokenMeta>,
 
     /// All token accounts. Used to check if a transfer is valid. Used like a cache, loaded from db before parsing.
     pub token_accounts: HashMap<AddressToken, TokenBalance>,
@@ -240,11 +240,12 @@ impl TokenCache {
     pub fn load_tokens_data(&mut self, db: &DB) -> anyhow::Result<()> {
         let (tickers, users) = self.fill_tickers_and_users();
 
+        let lower_case_ticks: Vec<_> = tickers.iter().map(LowerCaseTokenTick::from).collect();
         self.tokens = db
             .token_to_meta
-            .multi_get(tickers.iter())
+            .multi_get(lower_case_ticks.iter())
             .into_iter()
-            .zip(tickers)
+            .zip(lower_case_ticks)
             .filter_map(|(v, k)| v.map(|x| (k, TokenMeta::from(x))))
             .collect::<HashMap<_, _>>();
 
@@ -264,23 +265,23 @@ impl TokenCache {
                     ..
                 } => {
                     // Load ticks because we need to check if tick is deployed
-                    tickers.insert(tick.into());
+                    tickers.insert(*tick);
                 }
                 TokenAction::Mint {
                     owner,
                     proto: MintProto::Bel20 { tick, .. },
                     ..
                 } => {
-                    tickers.insert(tick.into());
-                    users.insert((*owner, tick.into()));
+                    tickers.insert(*tick);
+                    users.insert((*owner, *tick));
                 }
                 TokenAction::Transfer {
                     owner,
                     proto: TransferProto::Bel20 { tick, .. },
                     ..
                 } => {
-                    tickers.insert(tick.into());
-                    users.insert((*owner, tick.into()));
+                    tickers.insert(*tick);
+                    users.insert((*owner, *tick));
                 }
                 TokenAction::Transferred {
                     transfer_location,
@@ -297,13 +298,13 @@ impl TokenCache {
                         });
                     if let Some(TransferProtoDB { tick, .. }) = proto {
                         if !recipient.is_op_return_hash() {
-                            users.insert((*recipient, tick.into()));
+                            users.insert((*recipient, tick));
                         }
 
                         if let Some(transfer) = valid_transfer {
-                            users.insert((transfer.0, tick.into()));
+                            users.insert((transfer.0, tick));
                         }
-                        tickers.insert(tick.into());
+                        tickers.insert(tick);
                     }
                 }
             }
@@ -389,7 +390,7 @@ impl TokenCache {
 
                     let key = AddressToken {
                         address: owner,
-                        token: tick.into(),
+                        token: tick,
                     };
 
                     holders.increase(
@@ -445,7 +446,7 @@ impl TokenCache {
 
                     let key = AddressToken {
                         address: owner,
-                        token: tick.into(),
+                        token: tick,
                     };
                     let Some(account) = self.token_accounts.get_mut(&key) else {
                         continue;
@@ -494,7 +495,7 @@ impl TokenCache {
 
                     let old_key = AddressToken {
                         address: sender,
-                        token: tick.into(),
+                        token: tick,
                     };
 
                     let old_account = self.token_accounts.get_mut(&old_key).unwrap();
@@ -515,7 +516,7 @@ impl TokenCache {
                     if !recipient.is_op_return_hash() {
                         let recipient_key = AddressToken {
                             address: recipient,
-                            token: tick.into(),
+                            token: tick,
                         };
 
                         holders.increase(
@@ -570,7 +571,7 @@ impl TokenCache {
     }
 
     async fn _write_tokens_meta(
-        tokens: Vec<(LowerCaseTick, TokenMeta)>,
+        tokens: Vec<(LowerCaseTokenTick, TokenMeta)>,
         db: Arc<DB>,
     ) -> anyhow::Result<()> {
         if !tokens.is_empty() {

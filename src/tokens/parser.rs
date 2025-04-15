@@ -143,6 +143,7 @@ impl TokenCache {
                         supply,
                         mint_count,
                         transactions,
+                        tick,
                         ..
                     } = &mut token.proto;
 
@@ -163,7 +164,7 @@ impl TokenCache {
 
                     let key = AddressToken {
                         address: owner,
-                        token: tick,
+                        token: *tick,
                     };
 
                     holders.increase(
@@ -177,7 +178,7 @@ impl TokenCache {
                     *mint_count += 1;
 
                     history.push(HistoryTokenAction::Mint {
-                        tick,
+                        tick: *tick,
                         amt,
                         recipient: key.address,
                         txid,
@@ -209,6 +210,7 @@ impl TokenCache {
                         transfer_count,
                         dec,
                         transactions,
+                        tick,
                         ..
                     } = &mut token.proto;
 
@@ -219,7 +221,7 @@ impl TokenCache {
 
                     let key = AddressToken {
                         address: owner,
-                        token: tick,
+                        token: *tick,
                     };
                     let Some(account) = self.token_accounts.get_mut(&key) else {
                         continue;
@@ -238,7 +240,7 @@ impl TokenCache {
                     account.transferable_balance += amt;
 
                     history.push(HistoryTokenAction::DeployTransfer {
-                        tick,
+                        tick: *tick,
                         amt,
                         recipient: key.address,
                         txid,
@@ -262,25 +264,21 @@ impl TokenCache {
                         continue;
                     };
 
-                    if !self.tokens.contains_key(&tick.into()) {
-                        unreachable!();
-                    }
+                    let token = self.tokens.get_mut(&tick.into()).expect("Tick must exist");
+
+                    let DeployProtoDB {
+                        transactions, tick, ..
+                    } = &mut token.proto;
 
                     let old_key = AddressToken {
                         address: sender,
-                        token: tick,
+                        token: *tick,
                     };
 
                     let old_account = self.token_accounts.get_mut(&old_key).unwrap();
                     if old_account.transfers_count == 0 || old_account.transferable_balance < amt {
                         panic!("Invalid transfer sender balance");
                     }
-
-                    let Some(token) = self.tokens.get_mut(&tick.into()) else {
-                        continue;
-                    };
-
-                    let DeployProtoDB { transactions, .. } = &mut token.proto;
 
                     holders.decrease(&old_key, old_account, amt);
                     old_account.transfers_count -= 1;
@@ -290,7 +288,7 @@ impl TokenCache {
                     if !recipient.is_op_return_hash() {
                         let recipient_key = AddressToken {
                             address: recipient,
-                            token: tick,
+                            token: *tick,
                         };
 
                         holders.increase(
@@ -309,7 +307,7 @@ impl TokenCache {
 
                     history.push(HistoryTokenAction::Send {
                         amt,
-                        tick,
+                        tick: *tick,
                         recipient,
                         sender,
                         txid,
@@ -322,7 +320,11 @@ impl TokenCache {
                                 address: sender,
                                 location: transfer_location,
                             },
-                            TransferProtoDB { tick, amt, height },
+                            TransferProtoDB {
+                                tick: *tick,
+                                amt,
+                                height,
+                            },
                             recipient,
                         );
                     }

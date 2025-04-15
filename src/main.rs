@@ -2,27 +2,30 @@ extern crate serde;
 #[macro_use]
 extern crate tracing;
 
+use core_utils::db::{RocksDB, RocksTable, UsingConsensus, UsingSerde};
+use core_utils::utils;
 use {
     axum::{
-        Router,
         body::Body,
         http::{Response, StatusCode},
         routing::get,
+        Router,
     },
-    db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
+    core_utils::tables::DB,
+    core_utils::tokens::*,
     dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken},
     futures::future::join_all,
     inscriptions::Location,
     itertools::Itertools,
     lazy_static::lazy_static,
     nintondo_dogecoin::{
-        BlockHash, Network, OutPoint, TxOut, Txid,
-        hashes::{Hash, sha256},
-        script,
+        hashes::{sha256, Hash}, script, BlockHash, Network, OutPoint,
+        TxOut,
+        Txid,
     },
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
-    serde_with::{DisplayFromStr, serde_as},
+    serde_with::{serde_as, DisplayFromStr},
     server::{Server, ServerEvent},
     std::{
         borrow::{Borrow, Cow},
@@ -32,25 +35,19 @@ use {
         marker::PhantomData,
         ops::{Bound, RangeBounds},
         str::FromStr,
-        sync::{Arc, atomic::AtomicU64},
+        sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
     },
-    tables::DB,
-    tokens::*,
     tokio::select,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
 };
 
-mod db;
 mod inscriptions;
-mod reorg;
 mod rest;
-mod tables;
-mod tokens;
-#[macro_use]
-mod utils;
 mod server;
+#[macro_use]
+mod core_utils;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 

@@ -93,7 +93,7 @@ impl History {
     pub async fn new(
         height: u32,
         action: TokenHistoryDB,
-        address_token: crate::tokens::AddressTokenId,
+        address_token: crate::core_utils::tokens::AddressTokenId,
         server: &Server,
     ) -> anyhow::Result<Self> {
         let keys = [action.address().copied(), Some(address_token.address)]

@@ -12,7 +12,7 @@ pub struct LoadedBlocks {
 pub struct Blocks {
     pub from: BlockHeader,
     pub to: BlockHeader,
-    pub blocks: Vec<electrs_client::Update<inscriptions::types::TokenHistoryData>>,
+    pub blocks: Vec<electrs_client::Update<core_utils::types::TokenHistoryData>>,
 }
 
 impl LoadedBlocks {
@@ -24,7 +24,7 @@ impl LoadedBlocks {
 #[derive(Clone)]
 pub struct BlocksLoader {
     pub storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
-    pub client: Arc<electrs_client::Client<inscriptions::types::TokenHistoryData>>,
+    pub client: Arc<electrs_client::Client<core_utils::types::TokenHistoryData>>,
 }
 
 impl BlocksLoader {
@@ -44,12 +44,12 @@ impl BlocksLoader {
     }
 
     async fn fetch_blocks(
-        client: &electrs_client::Client<inscriptions::types::TokenHistoryData>,
+        client: &electrs_client::Client<core_utils::types::TokenHistoryData>,
         blocks: Vec<electrs_client::BlockMeta>,
     ) -> Result<Vec<Blocks>, electrs_client::ClientError> {
         let features = blocks.into_iter().map(|from| async move {
             client
-                .fetch_updates::<inscriptions::types::InscriptionsTokenHistory>(&[from])
+                .fetch_updates::<core_utils::types::InscriptionsTokenHistory>(&[from])
                 .await
         });
 

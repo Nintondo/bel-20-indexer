@@ -1,7 +1,7 @@
 use std::default::Default;
 
 use super::*;
-use crate::inscriptions::types::{HistoryLocation, Outpoint, ParsedTokenHistoryData};
+use crate::core_utils::types::{HistoryLocation, Outpoint, ParsedTokenHistoryData};
 
 pub struct InitialIndexer {}
 
@@ -35,7 +35,7 @@ impl InitialIndexer {
     pub async fn handle_batch(
         token_history_data: Vec<ParsedTokenHistoryData>,
         server: &Server,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+        reorg_cache: Option<Arc<parking_lot::Mutex<crate::core_utils::reorg::ReorgCache>>>,
     ) {
         // used to get all data from db and generate keys
         let batch_cache = BatchCache::load_cache(server, &token_history_data);

@@ -87,7 +87,7 @@ pub struct TokenCache {
 impl TokenCache {
     pub fn process_token_actions(
         &mut self,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+        reorg_cache: Option<Arc<parking_lot::Mutex<crate::core_utils::reorg::ReorgCache>>>,
         holders: &Holders,
     ) -> Vec<HistoryTokenAction> {
         let mut history = vec![];

@@ -44,7 +44,7 @@ macro_rules! generate_db_code {
 
         $(
             const _: fn() = || {
-                fn assert_pebble<T: $crate::db::Pebble>() {}
+                fn assert_pebble<T: $crate::core_utils::db::Pebble>() {}
                 assert_pebble::<$key_type>();
                 assert_pebble::<$value_type>();
             };

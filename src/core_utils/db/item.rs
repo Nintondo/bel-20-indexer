@@ -107,7 +107,7 @@ where
 #[macro_export]
 macro_rules! impl_pebble {
     (int $T:ty) => {
-        impl $crate::db::Pebble for $T {
+        impl $crate::core_utils::db::Pebble for $T {
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -121,7 +121,7 @@ macro_rules! impl_pebble {
     };
 
     ($WRAPPER:ty = $INNER:ty) => {
-        impl $crate::db::Pebble for $WRAPPER {
+        impl $crate::core_utils::db::Pebble for $WRAPPER {
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -135,7 +135,7 @@ macro_rules! impl_pebble {
     };
 
     ($WRAPPER:ty as $INNER:ty) => {
-        impl $crate::db::Pebble for $WRAPPER {
+        impl $crate::core_utils::db::Pebble for $WRAPPER {
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {

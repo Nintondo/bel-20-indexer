@@ -1,7 +1,7 @@
 use nintondo_dogecoin::consensus;
 use nintondo_dogecoin::hashes::hex::Error;
 use std::ops::RangeInclusive;
-
+use crate::core_utils::db;
 use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Default)]

@@ -5,15 +5,15 @@ use std::default::Default;
 
 pub mod parser;
 mod structs;
-pub mod types;
 mod utils;
 
 use dutils::async_thread::Thread;
 use electrs_client::{BlockMeta, Update};
-use types::{InscriptionsTokenHistory, TokenHistoryData};
+use crate::core_utils::types::{InscriptionsTokenHistory, TokenHistoryData};
 pub use utils::ScriptToAddr;
 
 pub use structs::Location;
+use crate::core_utils::{reorg, types};
 
 pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
     let client = Arc::new(

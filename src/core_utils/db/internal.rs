@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) const TABLE_INFO_CF: &str = "__TABLE_INFO_CF";
-pub(super) const DB_INFO_CF: &str = "__DB_INFO_CF";
+pub(crate) const TABLE_INFO_CF: &str = "__TABLE_INFO_CF";
+pub(crate) const DB_INFO_CF: &str = "__DB_INFO_CF";
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct TableInfo {

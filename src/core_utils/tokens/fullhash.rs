@@ -1,5 +1,5 @@
 use super::*;
-use crate::inscriptions::types::ParsedTokenAddress;
+use crate::core_utils::types::ParsedTokenAddress;
 use std::ops::Deref;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Copy)]

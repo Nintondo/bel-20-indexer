@@ -1,5 +1,5 @@
 use crate::Fixed128;
-use crate::tokens::{FullHash, OriginalTokenTick};
+use crate::core_utils::tokens::{FullHash, OriginalTokenTick};
 use dutils::error::ContextWrapper;
 use electrs_client::{Fetchable, UpdateCapable};
 use itertools::Itertools;
@@ -177,7 +177,7 @@ pub struct BlockInfo {
     pub prev_block_hash: BlockHash,
 }
 
-impl From<BlockInfo> for crate::tokens::BlockHeader {
+impl From<BlockInfo> for crate::core_utils::tokens::BlockHeader {
     fn from(v: BlockInfo) -> Self {
         Self {
             number: v.height,
@@ -187,7 +187,7 @@ impl From<BlockInfo> for crate::tokens::BlockHeader {
     }
 }
 
-impl From<&BlockInfo> for crate::tokens::BlockHeader {
+impl From<&BlockInfo> for crate::core_utils::tokens::BlockHeader {
     fn from(v: &BlockInfo) -> Self {
         Self {
             number: v.height,
@@ -197,7 +197,7 @@ impl From<&BlockInfo> for crate::tokens::BlockHeader {
     }
 }
 
-impl From<electrs_client::BlockMeta> for crate::tokens::BlockHeader {
+impl From<electrs_client::BlockMeta> for crate::core_utils::tokens::BlockHeader {
     fn from(v: electrs_client::BlockMeta) -> Self {
         Self {
             number: v.height,
@@ -207,8 +207,8 @@ impl From<electrs_client::BlockMeta> for crate::tokens::BlockHeader {
     }
 }
 
-impl From<&crate::tokens::BlockHeader> for electrs_client::BlockMeta {
-    fn from(v: &crate::tokens::BlockHeader) -> Self {
+impl From<&crate::core_utils::tokens::BlockHeader> for electrs_client::BlockMeta {
+    fn from(v: &crate::core_utils::tokens::BlockHeader) -> Self {
         Self {
             height: v.number,
             block_hash: v.hash.into(),

@@ -18,20 +18,12 @@ generate_db_code! {
 impl DB {
     pub fn load_token_accounts(
         &self,
-        keys: HashSet<(FullHash, OriginalTokenTick)>,
+        keys: Vec<AddressToken>,
     ) -> HashMap<AddressToken, TokenBalance> {
-        let db_keys = keys
-            .into_iter()
-            .map(|x| AddressToken {
-                address: x.0,
-                token: x.1,
-            })
-            .collect_vec();
-
         self.address_token_to_balance
-            .multi_get(db_keys.iter().collect_vec())
+            .multi_get(keys.iter().collect_vec())
             .into_iter()
-            .zip(db_keys)
+            .zip(keys)
             .flat_map(|(v, k)| v.map(|v| (k, v)))
             .collect()
     }
@@ -44,17 +36,14 @@ impl DB {
             .address_location_to_transfer
             .iter()
             .filter_map(|(k, v)| {
-                if keys.contains(&AddressLocation {
+                keys.contains(&AddressLocation {
                     address: k.address,
                     location: Location {
                         offset: 0,
                         outpoint: k.location.outpoint,
                     },
-                }) {
-                    Some((k.location, (k.address, v)))
-                } else {
-                    None
-                }
+                })
+                .then_some((k.location, (k.address, v)))
             })
             .collect_vec();
 

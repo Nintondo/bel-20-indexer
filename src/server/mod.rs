@@ -1,6 +1,6 @@
 use super::*;
 
-mod structs;
+pub mod structs;
 pub mod threads;
 pub use structs::*;
 

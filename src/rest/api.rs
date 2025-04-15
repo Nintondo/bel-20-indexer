@@ -1,6 +1,6 @@
 use nintondo_dogecoin::Txid;
 use validator::Validate;
-
+use crate::server;
 use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

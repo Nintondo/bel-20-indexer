@@ -2,8 +2,6 @@ extern crate serde;
 #[macro_use]
 extern crate tracing;
 
-use core_utils::db::{RocksDB, RocksTable, UsingConsensus, UsingSerde};
-use core_utils::utils;
 use {
     axum::{
         body::Body,
@@ -11,8 +9,12 @@ use {
         routing::get,
         Router,
     },
-    core_utils::tables::DB,
-    core_utils::tokens::*,
+    core_utils::{
+        db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
+        tables::DB,
+        tokens::*,
+        utils,
+    },
     dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken},
     futures::future::join_all,
     inscriptions::Location,
@@ -45,9 +47,9 @@ use {
 
 mod inscriptions;
 mod rest;
-mod server;
 #[macro_use]
 mod core_utils;
+pub mod server;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 

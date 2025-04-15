@@ -98,7 +98,7 @@ async fn initial_indexer(
         .await?;
 
     let blocks_storage = Arc::new(tokio::sync::Mutex::new(
-        crate::server::threads::blocks_loader::LoadedBlocks {
+        server::threads::blocks_loader::LoadedBlocks {
             from_block_number: last_indexer_block.height,
             to_block_number: last_electrs_block.height,
             ..Default::default()
@@ -106,7 +106,7 @@ async fn initial_indexer(
     ));
 
     let blocks_loader = dutils::async_thread::ThreadController::new(
-        crate::server::threads::blocks_loader::BlocksLoader {
+        server::threads::blocks_loader::BlocksLoader {
             storage: blocks_storage.clone(),
             client: client.clone(),
         },

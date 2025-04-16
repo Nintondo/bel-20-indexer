@@ -3,9 +3,10 @@ use crate::Fixed128;
 use dutils::error::ContextWrapper;
 use electrs_client::{Fetchable, UpdateCapable};
 use itertools::Itertools;
-use nintondo_dogecoin::{Address, BlockHash, OutPoint, ScriptBuf};
+use nintondo_dogecoin::{Address, BlockHash, OutPoint, ScriptBuf, Txid};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use nintondo_dogecoin::hashes::Hash;
 use crate::types::full_hash::{ComputeScriptHash, FullHash};
 use crate::types::structs::{BlockHeader, OriginalTokenTick};
 
@@ -237,6 +238,23 @@ impl From<&BlockHeader> for electrs_client::BlockMeta {
 pub struct Outpoint {
     pub txid: [u8; 32],
     pub vout: u32,
+}
+
+impl From<Outpoint> for OutPoint {
+    fn from(value: Outpoint) -> Self {
+        Self {
+            txid: TxidN(value.txid).into(),
+            vout: value.vout,
+        }
+    }
+}
+
+pub struct TxidN(pub [u8; 32]);
+
+impl From<TxidN> for Txid {
+    fn from(value: TxidN) -> Self {
+        Txid::from_slice(&value.0).expect("Unexpected txid")
+    }
 }
 
 impl std::fmt::Display for Outpoint {

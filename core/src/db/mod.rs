@@ -7,6 +7,7 @@ mod internal;
 mod item;
 mod storage;
 mod utils;
+pub mod tables;
 
 pub use item::{Pebble, UsingConsensus, UsingSerde};
 pub use storage::{RocksDB, RocksTable};

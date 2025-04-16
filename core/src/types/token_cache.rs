@@ -21,7 +21,7 @@ pub struct TokenCache {
     /// All transfer actions that are valid. Used to write to the db.
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
 }
-// impl TokenCache { // todo move
+// impl TokenCache { // todo move use reorg
 //     pub fn process_token_actions(
 //         &mut self,
 //         reorg_cache: Option<Arc<parking_lot::Mutex<crate::core_utils::reorg::ReorgCache>>>,

@@ -6,3 +6,5 @@ pub mod structs;
 pub mod history_token_action;
 pub mod token_history;
 pub mod location;
+pub mod rest;
+pub mod server;

@@ -1,6 +1,7 @@
-use super::*;
-use crate::core_utils::types::ParsedTokenAddress;
 use std::ops::Deref;
+use nintondo_dogecoin::script;
+use serde::{Deserialize, Serialize};
+use crate::impl_pebble;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Copy)]
 #[repr(transparent)]
@@ -91,12 +92,4 @@ impl ComputeScriptHash for String {
     }
 }
 
-impl ComputeScriptHash for ParsedTokenAddress {
-    fn compute_script_hash(&self) -> FullHash {
-        match self {
-            ParsedTokenAddress::Standard(str) if !str.is_op_return() => str.compute_script_hash(),
-            ParsedTokenAddress::Standard(_) => *OP_RETURN_HASH,
-            ParsedTokenAddress::NonStandard(hash) => *hash,
-        }
-    }
-}
+

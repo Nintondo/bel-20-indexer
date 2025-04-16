@@ -1,11 +1,13 @@
+use crate::OP_RETURN_HASH;
 use crate::Fixed128;
-use crate::core_utils::tokens::{FullHash, OriginalTokenTick};
 use dutils::error::ContextWrapper;
 use electrs_client::{Fetchable, UpdateCapable};
 use itertools::Itertools;
 use nintondo_dogecoin::{Address, BlockHash, OutPoint, ScriptBuf};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use crate::types::full_hash::{ComputeScriptHash, FullHash};
+use crate::types::structs::{BlockHeader, OriginalTokenTick};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TokenHistoryData {
@@ -177,7 +179,7 @@ pub struct BlockInfo {
     pub prev_block_hash: BlockHash,
 }
 
-impl From<BlockInfo> for crate::core_utils::tokens::BlockHeader {
+impl From<BlockInfo> for BlockHeader {
     fn from(v: BlockInfo) -> Self {
         Self {
             number: v.height,
@@ -187,7 +189,7 @@ impl From<BlockInfo> for crate::core_utils::tokens::BlockHeader {
     }
 }
 
-impl From<&BlockInfo> for crate::core_utils::tokens::BlockHeader {
+impl From<&BlockInfo> for BlockHeader {
     fn from(v: &BlockInfo) -> Self {
         Self {
             number: v.height,
@@ -197,7 +199,7 @@ impl From<&BlockInfo> for crate::core_utils::tokens::BlockHeader {
     }
 }
 
-impl From<electrs_client::BlockMeta> for crate::core_utils::tokens::BlockHeader {
+impl From<electrs_client::BlockMeta> for BlockHeader {
     fn from(v: electrs_client::BlockMeta) -> Self {
         Self {
             number: v.height,
@@ -207,8 +209,8 @@ impl From<electrs_client::BlockMeta> for crate::core_utils::tokens::BlockHeader 
     }
 }
 
-impl From<&crate::core_utils::tokens::BlockHeader> for electrs_client::BlockMeta {
-    fn from(v: &crate::core_utils::tokens::BlockHeader) -> Self {
+impl From<&BlockHeader> for electrs_client::BlockMeta {
+    fn from(v: &BlockHeader) -> Self {
         Self {
             height: v.number,
             block_hash: v.hash.into(),
@@ -267,6 +269,16 @@ pub enum ParsedTokenAction {
         tick: OriginalTokenTick,
         amt: Fixed128,
     },
+}
+
+impl ComputeScriptHash for ParsedTokenAddress {
+    fn compute_script_hash(&self) -> FullHash {
+        match self {
+            ParsedTokenAddress::Standard(str) if !str.is_op_return() => str.compute_script_hash(),
+            ParsedTokenAddress::Standard(_) => *OP_RETURN_HASH,
+            ParsedTokenAddress::NonStandard(hash) => *hash,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

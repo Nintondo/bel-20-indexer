@@ -1,3 +1,4 @@
+use tracing::warn;
 use super::*;
 
 pub trait RocksDbTablesDef: Sized {

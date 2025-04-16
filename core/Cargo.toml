@@ -1,0 +1,40 @@
+[package]
+name = "core_utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.41.0", features = ["full"] }
+
+anyhow = "1.0.91"
+thiserror = "2.0.12"
+
+num-traits = "0.2.19"
+rust_decimal = { version = "1.36.0", features = [
+    "serde-bincode",
+    "serde-with-float",
+] }
+
+serde = { version = "1.0.213", features = ["derive"] }
+serde_with = "3.11.0"
+postcard = "1.0.10"
+bytemuck = { version = "1.19.0", features = ["derive"] }
+
+tracing = "0.1.40"
+indicatif = "0.17.9"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-indicatif = "0.3.6"
+
+hex = "0.4.3"
+sha2 = "0.10.8"
+
+lazy_static = "1.5.0"
+itertools = "0.14.0"
+parking_lot = "0.12.3"
+
+rocksdb = { version = "0.22.0", features = ["multi-threaded-cf"] }
+
+dutils = "0.1.7"
+nintypes = { version = "0.1.23", features = ["dogecoin"] }
+electrs_client = { version = "0.1.0" }
+nintondo-dogecoin = { version = "0.30.6", features = ["serde"] }

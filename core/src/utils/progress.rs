@@ -1,4 +1,7 @@
-use super::*;
+use std::sync::atomic::AtomicU64;
+use std::time::Instant;
+use tracing::info;
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 
 pub struct Progress {
     span: tracing::Span,

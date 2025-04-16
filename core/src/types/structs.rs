@@ -1,8 +1,19 @@
-use nintondo_dogecoin::consensus;
+use crate::types::full_hash::FullHash;
+use crate::types::history_token_action::HistoryTokenAction;
+use crate::types::location::Location;
+use crate::types::protocol::DeployProtoDB;
+use crate::types::protocol::MintProto;
+use crate::types::protocol::TransferProto;
+use crate::{db, Fixed128};
+use dutils::error::ContextWrapper;
 use nintondo_dogecoin::hashes::hex::Error;
+use nintondo_dogecoin::hashes::Hash;
+use nintondo_dogecoin::{consensus, OutPoint, Txid};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
 use std::ops::RangeInclusive;
-use crate::core_utils::db;
-use super::*;
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Default)]
 pub struct BlockHeader {

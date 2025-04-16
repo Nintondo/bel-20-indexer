@@ -1,5 +1,7 @@
-use super::*;
+use dutils::error::ContextWrapper;
 use nintondo_dogecoin::consensus;
+use std::borrow::Cow;
+use std::marker::PhantomData;
 
 pub trait Pebble {
     type Inner;
@@ -107,7 +109,7 @@ where
 #[macro_export]
 macro_rules! impl_pebble {
     (int $T:ty) => {
-        impl $crate::core_utils::db::Pebble for $T {
+        impl $crate::db::Pebble for $T {
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -121,7 +123,7 @@ macro_rules! impl_pebble {
     };
 
     ($WRAPPER:ty = $INNER:ty) => {
-        impl $crate::core_utils::db::Pebble for $WRAPPER {
+        impl $crate::db::Pebble for $WRAPPER {
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -135,7 +137,7 @@ macro_rules! impl_pebble {
     };
 
     ($WRAPPER:ty as $INNER:ty) => {
-        impl $crate::core_utils::db::Pebble for $WRAPPER {
+        impl $crate::db::Pebble for $WRAPPER {
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {

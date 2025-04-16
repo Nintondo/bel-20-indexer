@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use super::*;
 
 pub trait RcUtils: Sized {

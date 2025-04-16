@@ -1,9 +1,13 @@
 use crate::Fixed128;
+use serde_with::{serde_as, DisplayFromStr};
+use std::borrow::Cow;
+use std::str::FromStr;
 
-use super::*;
-
+use crate::types::full_hash::FullHash;
+use crate::types::structs::{Brc4ActionErr, OriginalTokenTick};
 use num_traits::FromPrimitive;
 use serde::de::Error;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Protocol(pub Brc4Value, pub Option<Brc4ActionErr>);

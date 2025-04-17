@@ -1,11 +1,16 @@
-use axum::routing::post;
 use axum::routing::get;
+use axum::routing::post;
+use core_utils::types::rest::load_addresses::AddressesLoader;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use core_utils::types::{rest::load_addresses::AddressesLoader};
 
-use axum::{Json, extract::{Path, Query, State}, http::Uri, response::{IntoResponse, Sse, sse::Event}, Router};
 use axum::http::Response;
+use axum::{
+    extract::{Path, Query, State}, http::Uri,
+    response::{sse::Event, IntoResponse, Sse},
+    Json,
+    Router,
+};
 use validator::Validate;
 
 use dutils::error::ApiError;
@@ -16,20 +21,17 @@ use nintypes::common::inscriptions::Outpoint;
 
 use rust_decimal::Decimal;
 
+use core_utils::types::rest::rest_api;
+use core_utils::types::rest::rest_utils::to_scripthash;
+use electrs_indexer::server::Server;
 use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use core_utils::types::rest::rest_api;
-use electrs_indexer::server::Server;
-use utils::to_scripthash;
-
-use super::*;
 
 mod address;
 mod history;
 mod holders;
 mod tokens;
-mod utils;
 
 type ApiResult<T> = core::result::Result<T, Response<String>>;
 const INTERNAL: &str = "Can't handle request";

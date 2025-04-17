@@ -1,11 +1,9 @@
 use super::*;
-use super::*;
 use crate::reorg;
 use crate::token_cache::TokenCache;
 use crate::DEFAULT_HASH;
 use crate::NETWORK;
 use core_utils::types::full_hash::{ComputeScriptHash, FullHash};
-use core_utils::types::location::Location;
 use core_utils::types::protocol::TransferProto;
 use core_utils::types::protocol::TransferProtoDB;
 use core_utils::types::protocol::{DeployProtoDB, MintProto};
@@ -15,7 +13,7 @@ use core_utils::types::structs::{
     TokenAction, TokenBalance, TokenHistoryDB, TokenMeta, TokenMetaDB,
 };
 use core_utils::types::token_history::{
-    HistoryLocation, ParsedTokenActionRest, ParsedTokenAddress, ParsedTokenHistoryData,
+    ParsedTokenActionRest, ParsedTokenAddress, ParsedTokenHistoryData,
 };
 use core_utils::{Fixed128, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use itertools::Itertools;

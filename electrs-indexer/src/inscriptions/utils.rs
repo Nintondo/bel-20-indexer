@@ -1,6 +1,5 @@
 use crate::NETWORK;
 use std::str::FromStr;
-use super::*;
 use nintondo_dogecoin::{Address, Network, ScriptBuf};
 
 pub trait ScriptToAddr {

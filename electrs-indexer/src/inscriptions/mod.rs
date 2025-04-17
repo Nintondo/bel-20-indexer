@@ -5,20 +5,21 @@ use std::time::{Duration, Instant};
 pub mod parser;
 mod utils;
 
-use core_utils::types::token_history::{InscriptionsTokenHistory, ParsedTokenHistoryData, TokenHistoryData};
-use core_utils::utils::{retry_on_error, Progress};
+use crate::server::Server;
+use crate::{reorg, server};
+use core_utils::types::server::ServerEvent;
+use core_utils::types::structs::BlockHeader;
+use core_utils::types::token_history::{
+    InscriptionsTokenHistory, ParsedTokenHistoryData, TokenHistoryData,
+};
+use core_utils::utils::retry_on_error::retry_on_error;
+use core_utils::utils::Progress;
 use dutils::async_thread::Thread;
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;
 use electrs_client::{BlockMeta, Update};
 use tracing::{info, warn};
-use core_utils::types::server::ServerEvent;
-use core_utils::types::structs::BlockHeader;
-use core_utils::utils::retry_on_error::retry_on_error;
 pub use utils::ScriptToAddr;
-use super::*;
-use crate::{reorg, server};
-use crate::server::Server;
 
 pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
     let client = Arc::new(

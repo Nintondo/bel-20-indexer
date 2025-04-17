@@ -1,8 +1,7 @@
-use std::str::FromStr;
-use nintondo_dogecoin::{Address, Network, PublicKey, ScriptBuf};
-use validator::ValidationError;
 use crate::types::full_hash::{ComputeScriptHash, FullHash};
-use super::*;
+use nintondo_dogecoin::{Address, Network, PublicKey, ScriptBuf};
+use std::str::FromStr;
+use validator::ValidationError;
 
 pub fn to_scripthash(
     script_type: &str,

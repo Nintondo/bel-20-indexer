@@ -28,7 +28,7 @@ lazy_static! {
         Network::Dogecoin => MAINNET_START_HEIGHT,
         _ => 0,
     };
-    static ref SERVER_URL: String =
+    pub static ref SERVER_URL: String =
         load_opt_env!("SERVER_BIND_URL").unwrap_or("0.0.0.0:8000".to_string());
     pub static ref DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
 }

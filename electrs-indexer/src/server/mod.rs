@@ -5,12 +5,13 @@ use crate::USER;
 use core_utils::db::tables::DB;
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::holders::Holders;
+use core_utils::types::rest::load_addreses::AddressesLoader;
 use core_utils::types::rest::rest_api;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
 use core_utils::types::structs::{AddressTokenId, HistoryValue};
 use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use dutils::wait_token::WaitToken;
-use nintondo_dogecoin::hashes::{sha256, Hash};
+use nintondo_dogecoin::hashes::{Hash, sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,39 +60,6 @@ impl Server {
         Ok((raw_rx, tx, server))
     }
 
-    pub async fn load_addresses(
-        &self,
-        keys: impl IntoIterator<Item = FullHash>,
-        height: u32,
-    ) -> anyhow::Result<HashMap<FullHash, String>> {
-        let mut counter = 0;
-        while *self.last_indexed_address_height.read().await < height {
-            if counter > 100 {
-                anyhow::bail!("Something went wrong with the addresses");
-            }
-
-            counter += 1;
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-
-        let keys = keys.into_iter().collect::<HashSet<_>>();
-
-        Ok(self
-            .db
-            .fullhash_to_address
-            .multi_get(keys.iter())
-            .into_iter()
-            .zip(keys)
-            .map(|(v, k)| {
-                if k.is_op_return_hash() {
-                    (k, OP_RETURN_ADDRESS.to_string())
-                } else {
-                    (k, v.unwrap_or(NON_STANDARD_ADDRESS.to_string()))
-                }
-            })
-            .collect())
-    }
-
     pub fn generate_history_hash(
         prev_history_hash: sha256::Hash,
         history: &[(AddressTokenId, HistoryValue)],
@@ -129,5 +97,40 @@ impl Server {
         };
 
         Ok(new_hash)
+    }
+}
+
+impl AddressesLoader for Server {
+    async fn load_addresses(
+        &self,
+        keys: impl IntoIterator<Item = FullHash>,
+        height: u32,
+    ) -> anyhow::Result<HashMap<FullHash, String>> {
+        let mut counter = 0;
+        while *self.last_indexed_address_height.read().await < height {
+            if counter > 100 {
+                anyhow::bail!("Something went wrong with the addresses");
+            }
+
+            counter += 1;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        let keys = keys.into_iter().collect::<HashSet<_>>();
+
+        Ok(self
+            .db
+            .fullhash_to_address
+            .multi_get(keys.iter())
+            .into_iter()
+            .zip(keys)
+            .map(|(v, k)| {
+                if k.is_op_return_hash() {
+                    (k, OP_RETURN_ADDRESS.to_string())
+                } else {
+                    (k, v.unwrap_or(NON_STANDARD_ADDRESS.to_string()))
+                }
+            })
+            .collect())
     }
 }

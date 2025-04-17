@@ -1,3 +1,4 @@
+use super::load_addreses::AddressesLoader;
 use super::rest_utils::*;
 use crate::types::full_hash::FullHash;
 use crate::types::rest::rest_utils;
@@ -98,30 +99,30 @@ pub struct History {
     pub action: TokenAction,
 }
 
-// impl History { // todo move use server
-//     pub async fn new(
-//         height: u32,
-//         action: TokenHistoryDB,
-//         address_token: crate::types::structs::AddressTokenId,
-//         server: &Server,
-//     ) -> anyhow::Result<Self> {
-//         let keys = [action.address().copied(), Some(address_token.address)]
-//             .into_iter()
-//             .flatten();
-//
-//         let addresses = server.load_addresses(keys, height).await?;
-//
-//         Ok(Self {
-//             height,
-//             action: TokenAction::from_with_addresses(action, &addresses),
-//             address_token: AddressTokenId {
-//                 address: addresses.get(&address_token.address).unwrap().clone(),
-//                 id: address_token.id,
-//                 tick: address_token.token,
-//             },
-//         })
-//     }
-// }
+impl History {
+    pub async fn new(
+        height: u32,
+        action: TokenHistoryDB,
+        address_token: crate::types::structs::AddressTokenId,
+        addresses_loader: &impl AddressesLoader,
+    ) -> anyhow::Result<Self> {
+        let keys = [action.address().copied(), Some(address_token.address)]
+            .into_iter()
+            .flatten();
+
+        let addresses = addresses_loader.load_addresses(keys, height).await?;
+
+        Ok(Self {
+            height,
+            action: TokenAction::from_with_addresses(action, &addresses),
+            address_token: AddressTokenId {
+                address: addresses.get(&address_token.address).unwrap().clone(),
+                id: address_token.id,
+                tick: address_token.token,
+            },
+        })
+    }
+}
 
 #[derive(Serialize)]
 #[serde(tag = "type")]

@@ -2,7 +2,7 @@ use axum::routing::post;
 use axum::routing::get;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use core_utils::types::{rest::load_addreses::AddressesLoader};
+use core_utils::types::{rest::load_addresses::AddressesLoader};
 
 use axum::{Json, extract::{Path, Query, State}, http::Uri, response::{IntoResponse, Sse, sse::Event}, Router};
 use axum::http::Response;

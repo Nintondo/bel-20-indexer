@@ -5,7 +5,7 @@ use crate::USER;
 use core_utils::db::tables::DB;
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::holders::Holders;
-use core_utils::types::rest::load_addreses::AddressesLoader;
+use core_utils::types::rest::load_addresses::AddressesLoader;
 use core_utils::types::rest::rest_api;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
 use core_utils::types::structs::{AddressTokenId, HistoryValue};

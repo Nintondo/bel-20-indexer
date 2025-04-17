@@ -1,4 +1,4 @@
-use super::load_addreses::AddressesLoader;
+use super::load_addresses::AddressesLoader;
 use super::rest_utils::*;
 use crate::types::full_hash::FullHash;
 use crate::types::rest::rest_utils;

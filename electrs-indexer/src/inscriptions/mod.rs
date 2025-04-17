@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub mod parser;
-mod structs;
 mod utils;
 
 use core_utils::types::token_history::{InscriptionsTokenHistory, ParsedTokenHistoryData, TokenHistoryData};
@@ -17,8 +16,7 @@ use core_utils::types::server::ServerEvent;
 use core_utils::types::structs::BlockHeader;
 use core_utils::utils::retry_on_error::retry_on_error;
 pub use utils::ScriptToAddr;
-
-pub use structs::Location;
+use super::*;
 use crate::{reorg, server};
 use crate::server::Server;
 

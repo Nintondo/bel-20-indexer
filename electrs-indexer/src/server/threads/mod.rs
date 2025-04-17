@@ -1,4 +1,3 @@
-use crate::server::{RawServerEvent, Server, ServerEvent};
 use dutils::async_thread::{Handler, Thread, ThreadController};
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;
@@ -7,6 +6,7 @@ use itertools::Itertools;
 use std::sync::Arc;
 use std::time::Duration;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
+use crate::server::Server;
 
 pub mod blocks_loader;
 mod event_sender;

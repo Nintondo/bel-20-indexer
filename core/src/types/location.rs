@@ -4,6 +4,7 @@ use dutils::error::ContextWrapper;
 use nintondo_dogecoin::hashes::Hash;
 use nintondo_dogecoin::{OutPoint, Txid};
 use serde::{Deserialize, Serialize};
+use crate::types::token_history::HistoryLocation;
 
 #[derive(
     Serialize, Deserialize, Debug, Clone, PartialEq, Eq, core::hash::Hash, Ord, PartialOrd, Copy,
@@ -59,5 +60,14 @@ impl FromStr for Location {
             offset,
             outpoint: OutPoint { txid, vout },
         })
+    }
+}
+
+impl From<HistoryLocation> for Location {
+    fn from(value: HistoryLocation) -> Self {
+        Location {
+            outpoint: value.outpoint.into(),
+            offset: value.offset,
+        }
     }
 }

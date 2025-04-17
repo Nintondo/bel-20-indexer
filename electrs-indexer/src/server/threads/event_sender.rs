@@ -2,8 +2,8 @@ use std::sync::Arc;
 use dutils::async_thread::Handler;
 use dutils::wait_token::WaitToken;
 use itertools::Itertools;
-use core_utils::types::server::{AddressTokenIdEvent, HistoryValueEvent, ServerEvent};
-use crate::server::{AddressTokenIdEvent, HistoryValueEvent, RawServerEvent, Server, ServerEvent};
+use core_utils::types::server::{AddressTokenIdEvent, HistoryValueEvent, RawServerEvent, ServerEvent};
+use crate::server::Server;
 
 #[derive(Clone)]
 pub struct EventSender {

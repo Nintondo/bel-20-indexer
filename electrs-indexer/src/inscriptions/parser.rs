@@ -1,32 +1,31 @@
-use core_utils::types::protocol::{DeployProtoDB, MintProto};
-use crate::NETWORK;
-use crate::DEFAULT_HASH;
+use super::*;
 use super::*;
 use crate::reorg;
-use core_utils::types::token_history::{HistoryLocation, Outpoint, ParsedTokenActionRest, ParsedTokenAddress, ParsedTokenHistoryData};
+use crate::token_cache::TokenCache;
+use crate::DEFAULT_HASH;
+use crate::NETWORK;
+use core_utils::types::full_hash::{ComputeScriptHash, FullHash};
+use core_utils::types::location::Location;
+use core_utils::types::protocol::TransferProto;
+use core_utils::types::protocol::TransferProtoDB;
+use core_utils::types::protocol::{DeployProtoDB, MintProto};
+use core_utils::types::server::ServerEvent;
+use core_utils::types::structs::{
+    AddressLocation, AddressToken, AddressTokenId, HistoryValue, InscriptionId, LowerCaseTokenTick,
+    TokenAction, TokenBalance, TokenHistoryDB, TokenMeta, TokenMetaDB,
+};
+use core_utils::types::token_history::{
+    HistoryLocation, ParsedTokenActionRest, ParsedTokenAddress, ParsedTokenHistoryData,
+};
+use core_utils::{Fixed128, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
+use itertools::Itertools;
 use nintondo_dogecoin::hashes::{sha256, Hash};
-use nintondo_dogecoin::{BlockHash, OutPoint, Txid};
+use nintondo_dogecoin::{BlockHash, Txid};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
-use itertools::Itertools;
 use tracing::debug;
-use core_utils::{Fixed128, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
-use core_utils::types::full_hash::{ComputeScriptHash, FullHash};
-use core_utils::types::protocol::TransferProtoDB;
-use core_utils::types::server::ServerEvent;
-use core_utils::types::structs::{AddressLocation, AddressToken, AddressTokenId, HistoryValue, InscriptionId, LowerCaseTokenTick, TokenAction, TokenBalance, TokenHistoryDB, TokenMeta, TokenMetaDB};
-use core_utils::types::token_cache::TokenCache;
 
-pub struct InitialIndexer {}
-
-impl From<HistoryLocation> for Location {
-    fn from(value: HistoryLocation) -> Self {
-        Location {
-            outpoint: value.outpoint.into(),
-            offset: value.offset,
-        }
-    }
-}
+pub struct InitialIndexer;
 
 impl InitialIndexer {
     pub async fn handle_batch(
@@ -387,9 +386,7 @@ impl BatchCache {
                         addresses.insert(inscription.from.clone());
                         addresses.insert(inscription.to.clone());
                     }
-                    ParsedTokenActionRest::DeployTransfer { tick, amt }
-                        if !inscription.leaked =>
-                    {
+                    ParsedTokenActionRest::DeployTransfer { tick, amt } if !inscription.leaked => {
                         let account = AddressToken {
                             address: inscription.to.compute_script_hash(),
                             token: tick,

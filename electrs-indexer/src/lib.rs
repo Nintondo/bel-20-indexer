@@ -9,6 +9,7 @@ use std::str::FromStr;
 pub mod inscriptions;
 pub mod server;
 pub mod reorg;
+pub mod token_cache;
 
 lazy_static! {
     static ref URL: String = load_env!("RPC_URL");

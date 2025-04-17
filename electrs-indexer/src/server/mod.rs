@@ -1,19 +1,21 @@
+use super::*;
+use crate::DEFAULT_HASH;
+use crate::PASS;
+use crate::USER;
+use core_utils::db::tables::DB;
+use core_utils::types::full_hash::FullHash;
+use core_utils::types::holders::Holders;
+use core_utils::types::rest::rest_api;
+use core_utils::types::server::{RawServerEvent, ServerEvent};
+use core_utils::types::structs::{AddressTokenId, HistoryValue};
+use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
+use dutils::wait_token::WaitToken;
+use nintondo_dogecoin::hashes::{sha256, Hash};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-use dutils::wait_token::WaitToken;
-use nintondo_dogecoin::hashes::{sha256, Hash};
-use core_utils::db::tables::DB;
-use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
-use core_utils::types::full_hash::FullHash;
-use core_utils::types::holders::Holders;
-use core_utils::types::server::{RawServerEvent, ServerEvent};
-use core_utils::types::structs::{AddressTokenId, HistoryValue};
 
-pub mod structs;
 pub mod threads;
-pub use structs::*;
-use crate::{DEFAULT_HASH, PASS, URL, USER};
 
 pub struct Server {
     pub db: Arc<DB>,
@@ -101,13 +103,13 @@ impl Server {
             let mut buffer = Vec::<u8>::new();
 
             for (address_token, action) in history {
-                let rest = rest::api::History {
+                let rest = rest_api::History {
                     height: action.height,
-                    action: rest::api::TokenAction::from_with_addresses(
+                    action: rest_api::TokenAction::from_with_addresses(
                         action.action.clone(),
                         addresses,
                     ),
-                    address_token: rest::api::AddressTokenId {
+                    address_token: rest_api::AddressTokenId {
                         address: addresses.get(&address_token.address).unwrap().clone(),
                         id: address_token.id,
                         tick: address_token.token,

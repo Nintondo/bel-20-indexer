@@ -13,16 +13,16 @@ pub struct LoadedBlocks {
     pub blocks: VecDeque<Blocks>,
 }
 
-pub struct Blocks {
-    pub from: BlockHeader,
-    pub to: BlockHeader,
-    pub blocks: Vec<electrs_client::Update<TokenHistoryData>>,
-}
-
 impl LoadedBlocks {
     pub fn take_blocks(&mut self) -> Option<Blocks> {
         self.blocks.pop_front()
     }
+}
+
+pub struct Blocks {
+    pub from: BlockHeader,
+    pub to: BlockHeader,
+    pub blocks: Vec<electrs_client::Update<TokenHistoryData>>,
 }
 
 #[derive(Clone)]

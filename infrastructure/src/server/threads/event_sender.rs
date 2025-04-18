@@ -3,7 +3,6 @@ use dutils::async_thread::Handler;
 use dutils::wait_token::WaitToken;
 use itertools::Itertools;
 use core_utils::types::{rest::load_addresses::AddressesLoader, server::{AddressTokenIdEvent, HistoryValueEvent, RawServerEvent, ServerEvent}};
-use crate::server::Server;
 
 #[derive(Clone)]
 pub struct EventSender {

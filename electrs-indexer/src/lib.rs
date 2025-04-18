@@ -7,7 +7,6 @@ use nintondo_dogecoin::Network;
 use std::str::FromStr;
 
 pub mod inscriptions;
-pub mod server;
 pub mod reorg;
 pub mod token_cache;
 

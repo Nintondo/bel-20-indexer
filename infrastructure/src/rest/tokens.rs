@@ -3,7 +3,7 @@ use core_utils::types::rest::rest_api;
 use core_utils::types::structs::{AddressLocation, LowerCaseTokenTick};
 use core_utils::NON_STANDARD_ADDRESS;
 use dutils::error::ContextWrapper;
-use electrs_indexer::server::Server;
+use crate::server::Server;
 use electrs_indexer::NETWORK;
 use super::*;
 

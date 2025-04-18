@@ -5,7 +5,7 @@ use core_utils::types::protocol::TransferProto;
 use core_utils::types::location::Location;
 use core_utils::types::rest::rest_api;
 use core_utils::types::structs::{AddressLocation, AddressToken, LowerCaseTokenTick, OriginalTokenTick, TokenTransfer};
-use electrs_indexer::server::Server;
+use crate::server::Server;
 use electrs_indexer::NETWORK;
 use super::*;
 

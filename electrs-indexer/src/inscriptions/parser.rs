@@ -1,8 +1,14 @@
 use super::*;
-use crate::reorg;
-use crate::token_cache::TokenCache;
 use crate::DEFAULT_HASH;
 use crate::NETWORK;
+use crate::reorg;
+use crate::token_cache::TokenCache;
+use core_utils::ports::server::DBPort;
+use core_utils::ports::server::EventSenderPort;
+use core_utils::ports::server::HistoryHashGenerator;
+use core_utils::ports::server::HoldersPort;
+use core_utils::ports::server::LastIndexedAddressPort;
+use core_utils::ports::server::TokenPort;
 use core_utils::types::full_hash::{ComputeScriptHash, FullHash};
 use core_utils::types::protocol::TransferProto;
 use core_utils::types::protocol::TransferProtoDB;
@@ -17,7 +23,7 @@ use core_utils::types::token_history::{
 };
 use core_utils::{Fixed128, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use itertools::Itertools;
-use nintondo_dogecoin::hashes::{sha256, Hash};
+use nintondo_dogecoin::hashes::{Hash, sha256};
 use nintondo_dogecoin::{BlockHash, Txid};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
@@ -26,28 +32,36 @@ use tracing::debug;
 pub struct InitialIndexer;
 
 impl InitialIndexer {
-    pub async fn handle_batch(
+    pub async fn handle_batch<T>(
         token_history_data: Vec<ParsedTokenHistoryData>,
-        server: &Server,
+        server: &T,
         reorg_cache: Option<Arc<parking_lot::Mutex<reorg::ReorgCache>>>,
-    ) {
+    ) where
+        T: DBPort
+            + HoldersPort
+            + LastIndexedAddressPort
+            + EventSenderPort
+            + TokenPort
+            + HistoryHashGenerator
+            + ?Sized,
+    {
         // used to get all data from db and generate keys
         let batch_cache = BatchCache::load_cache(server, &token_history_data);
 
         // generate shared cache for updates
         let mut shared_cache = batch_cache.shared_cache();
 
-        let mut last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
+        let mut last_history_id = server.get_db().last_history_id.get(()).unwrap_or_default();
 
         // store all proofs for batch
         let mut block_height_to_history = HashMap::<u32, BlockHistory>::new();
 
         // last proof from db
         let mut prev_proof = server
-            .db
+            .get_db()
             .last_block
             .get(())
-            .and_then(|height| server.db.proof_of_history.get(height))
+            .and_then(|height| server.get_db().proof_of_history.get(height))
             .unwrap_or(*DEFAULT_HASH);
 
         // store only standard addresses
@@ -70,7 +84,8 @@ impl InitialIndexer {
                 .expect("Block cache must exist, generated above");
 
             let mut token_cache = shared_cache.generate_block_token_cache(&block_cache);
-            let history = token_cache.process_token_actions(reorg_cache.clone(), &server.holders);
+            let history =
+                token_cache.process_token_actions(reorg_cache.clone(), &server.get_holders());
             shared_cache.update_cache(token_cache);
 
             let mut block_history: Vec<(AddressTokenId, HistoryValue)> = Vec::new();
@@ -149,9 +164,9 @@ impl InitialIndexer {
                 })
                 .collect();
 
-            let new_block_proof =
-                Server::generate_history_hash(prev_proof, &block_history, &rest_addresses)
-                    .expect("Must generate history proof");
+            let new_block_proof = server
+                .generate_history_hash(prev_proof, &block_history, &rest_addresses)
+                .expect("Must generate history proof");
 
             block_height_to_history.insert(
                 block.block_info.height,
@@ -172,7 +187,7 @@ impl InitialIndexer {
             .expect("Last block height must exist in batch");
 
         // write/rewrite tokens
-        server.db.token_to_meta.extend(
+        server.get_db().token_to_meta.extend(
             shared_cache
                 .token_to_meta
                 .into_iter()
@@ -181,24 +196,27 @@ impl InitialIndexer {
 
         // write/rewrite address token balance
         server
-            .db
+            .get_db()
             .address_token_to_balance
             .extend(shared_cache.account_to_balance);
 
         // remove spent token transfers
         server
-            .db
+            .get_db()
             .address_location_to_transfer
             .remove_batch(shared_cache.transfer_to_remove.into_iter());
 
         // write new address token transfers
         server
-            .db
+            .get_db()
             .address_location_to_transfer
             .extend(shared_cache.address_location_to_transfer);
 
         // write all addresses
-        server.db.fullhash_to_address.extend(full_hash_to_address);
+        server
+            .get_db()
+            .fullhash_to_address
+            .extend(full_hash_to_address);
 
         for (height, block_history) in block_height_to_history
             .iter()
@@ -211,7 +229,7 @@ impl InitialIndexer {
                 .sorted_unstable_by_key(|address_token_id| address_token_id.id)
                 .collect_vec();
 
-            server.db.block_events.set(height, history_idx);
+            server.get_db().block_events.set(height, history_idx);
 
             let outpoint_idx = block_history
                 .history
@@ -220,23 +238,29 @@ impl InitialIndexer {
                     (history.action.outpoint(), address_token_id.clone())
                 });
 
-            server.db.outpoint_to_event.extend(outpoint_idx);
+            server.get_db().outpoint_to_event.extend(outpoint_idx);
 
             server
-                .db
+                .get_db()
                 .address_token_to_history
                 .extend(block_history.history.clone());
 
             //write history proof
-            server.db.proof_of_history.set(height, block_history.proof);
+            server
+                .get_db()
+                .proof_of_history
+                .set(height, block_history.proof);
 
             // write block hash
-            server.db.block_hashes.set(height, block_history.block_hash);
+            server
+                .get_db()
+                .block_hashes
+                .set(height, block_history.block_hash);
         }
 
-        server.db.last_history_id.set((), last_history_id);
-        server.db.last_block.set((), last_block_height);
-        *server.last_indexed_address_height.write().await = last_block_height;
+        server.get_db().last_history_id.set((), last_history_id);
+        server.get_db().last_block.set((), last_block_height);
+        *server.get_last_indexed_address_height().write().await = last_block_height;
 
         for (block_height, block_history) in block_height_to_history
             .into_iter()
@@ -251,7 +275,7 @@ impl InitialIndexer {
             };
 
             server
-                .event_sender
+                .get_event_sender()
                 .send(ServerEvent::NewBlock(
                     block_height,
                     block_history.proof,
@@ -259,8 +283,11 @@ impl InitialIndexer {
                 ))
                 .ok();
 
-            if server.raw_event_sender.send(block_history.history).is_err()
-                && !server.token.is_cancelled()
+            if server
+                .get_raw_event_sender()
+                .send(block_history.history)
+                .is_err()
+                && !server.get_token().is_cancelled()
             {
                 panic!("Failed to send raw event");
             }
@@ -349,7 +376,10 @@ pub struct BlockCache {
 }
 
 impl BatchCache {
-    pub fn load_cache(server: &Server, history: &[ParsedTokenHistoryData]) -> Self {
+    pub fn load_cache<T>(server: &T, history: &[ParsedTokenHistoryData]) -> Self
+    where
+        T: DBPort + ?Sized,
+    {
         let mut block_number_to_block_cache = HashMap::<u32, BlockCache>::new();
 
         for block in history {
@@ -529,7 +559,7 @@ impl BatchCache {
             .collect();
 
         let token_to_meta = server
-            .db
+            .get_db()
             .token_to_meta
             .multi_get(ticks.iter())
             .into_iter()
@@ -538,7 +568,7 @@ impl BatchCache {
             .collect::<HashMap<_, _>>();
 
         let account_to_balance = server
-            .db
+            .get_db()
             .address_token_to_balance
             .multi_get(address_token.iter())
             .into_iter()
@@ -549,7 +579,7 @@ impl BatchCache {
             .collect::<HashMap<_, _>>();
 
         let address_location_to_transfer = server
-            .db
+            .get_db()
             .address_location_to_transfer
             .multi_get(address_transfer_location.iter())
             .into_iter()

@@ -1,15 +1,26 @@
 use std::{sync::Arc, time::Duration};
 
-use core_utils::{types::{server::ServerEvent, structs::{AddressTokenId, HistoryValue}}, utils};
+use core_utils::{
+    types::{
+        server::ServerEvent,
+        structs::{AddressTokenId, HistoryValue},
+    },
+    utils,
+};
 use dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken};
-use electrs_indexer::{inscriptions::main_loop, server::Server, SERVER_URL};
+use electrs_indexer::{inscriptions::main_loop, SERVER_URL};
 use futures::future::join_all;
 use tokio::select;
 use tracing::{info, warn};
+use server::Server;
 
 mod rest;
+pub mod server;
 
 fn main() {
+    let version = env!("CARGO_PKG_VERSION");
+    println!("Version: {}", version);
+    
     dotenv::dotenv().ok();
     utils::init_logger();
 

@@ -23,7 +23,7 @@ use rust_decimal::Decimal;
 
 use core_utils::types::rest::rest_api;
 use core_utils::types::rest::rest_utils::to_scripthash;
-use electrs_indexer::server::Server;
+use crate::server::Server;
 use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

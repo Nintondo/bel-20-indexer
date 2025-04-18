@@ -5,15 +5,18 @@ use std::time::{Duration, Instant};
 pub mod parser;
 mod utils;
 
-use crate::server::Server;
-use crate::{reorg, server};
+use crate::reorg;
+use core_utils::ports::server::{
+    ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
+    TokenPort,
+};
 use core_utils::types::server::ServerEvent;
 use core_utils::types::structs::BlockHeader;
 use core_utils::types::token_history::{
     InscriptionsTokenHistory, ParsedTokenHistoryData, TokenHistoryData,
 };
-use core_utils::utils::retry_on_error::retry_on_error;
 use core_utils::utils::Progress;
+use core_utils::utils::retry_on_error::retry_on_error;
 use dutils::async_thread::Thread;
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;
@@ -21,9 +24,19 @@ use electrs_client::{BlockMeta, Update};
 use tracing::{info, warn};
 pub use utils::ScriptToAddr;
 
-pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
+pub async fn main_loop<T>(token: WaitToken, server: Arc<T>) -> anyhow::Result<()>
+where
+    T: DBPort
+        + HoldersPort
+        + LastIndexedAddressPort
+        + EventSenderPort
+        + ClientPort
+        + TokenPort
+        + HistoryHashGenerator
+        + ?Sized,
+{
     let client = Arc::new(
-        electrs_client::Client::<TokenHistoryData>::new_from_cfg(server.client.clone())
+        electrs_client::Client::<TokenHistoryData>::new_from_cfg(server.get_client().clone())
             .await
             .inspect_err(|e| {
                 dbg!(e);
@@ -33,7 +46,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
     let last_electrs_block =
         retry_on_error(30, 20, &token, || client.get_last_electrs_block_meta()).await?;
 
-    let last_indexed_block = server.db.last_block.get(()).unwrap_or_default();
+    let last_indexed_block = server.get_db().last_block.get(()).unwrap_or_default();
 
     if let Some(block_number) = last_electrs_block
         .height
@@ -51,13 +64,13 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
 
     let reorg_cache = Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new()));
     if !token.is_cancelled() {
-        let indexer_block_number = server.db.last_block.get(()).unwrap_or_default();
+        let indexer_block_number = server.get_db().last_block.get(()).unwrap_or_default();
         let indexer_block_meta = retry_on_error(30, 20, &token, || {
             client.get_electrs_block_meta(indexer_block_number)
         })
         .await?;
 
-        let last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
+        let last_history_id = server.get_db().last_history_id.get(()).unwrap_or_default();
         // set mock reorg data for block to start indexer
         // it's safe because this mock data will be dropped
         reorg_cache
@@ -75,23 +88,32 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
 
     info!("Server is finished");
 
-    reorg_cache.lock().restore_all(&server).track().ok();
+    reorg_cache.lock().restore_all(server.as_ref()).track().ok();
 
-    server.db.flush_all();
+    server.get_db().flush_all();
 
     indexer_result
 }
 
-async fn initial_indexer(
+async fn initial_indexer<T>(
     token: WaitToken,
-    server: Arc<Server>,
+    server: Arc<T>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
     end: BlockMeta,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    T: DBPort
+        + HoldersPort
+        + LastIndexedAddressPort
+        + EventSenderPort
+        + TokenPort
+        + HistoryHashGenerator
+        + ?Sized,
+{
     info!("Start Initial Indexer");
 
     let last_electrs_block = client.get_last_electrs_block_meta().await?;
-    let last_indexer_block_number = server.db.last_block.get(()).unwrap_or_default();
+    let last_indexer_block_number = server.get_db().last_block.get(()).unwrap_or_default();
 
     let progress = Progress::begin(
         "Indexing",
@@ -103,24 +125,21 @@ async fn initial_indexer(
         .get_electrs_block_meta(last_indexer_block_number)
         .await?;
 
-    let blocks_storage = Arc::new(tokio::sync::Mutex::new(
-        server::threads::blocks_loader::LoadedBlocks {
-            from_block_number: last_indexer_block.height,
-            to_block_number: last_electrs_block.height,
-            ..Default::default()
-        },
-    ));
+    let blocks_storage = Arc::new(tokio::sync::Mutex::new(LoadedBlocks {
+        from_block_number: last_indexer_block.height,
+        to_block_number: last_electrs_block.height,
+        ..Default::default()
+    }));
 
-    let blocks_loader =
-        dutils::async_thread::ThreadController::new(server::threads::blocks_loader::BlocksLoader {
-            storage: blocks_storage.clone(),
-            client: client.clone(),
-        })
-        .with_name("BlocksLoader")
-        .with_restart(Duration::from_secs(5))
-        .with_invoke_frq(Duration::from_millis(100))
-        .with_cancellation(token.clone())
-        .run();
+    let blocks_loader = dutils::async_thread::ThreadController::new(BlocksLoader {
+        storage: blocks_storage.clone(),
+        client: client.clone(),
+    })
+    .with_name("BlocksLoader")
+    .with_restart(Duration::from_secs(5))
+    .with_invoke_frq(Duration::from_millis(100))
+    .with_cancellation(token.clone())
+    .run();
 
     let mut sleep = token.repeat_until_cancel(Duration::from_secs(1));
     let mut is_reach_end = false;
@@ -132,7 +151,7 @@ async fn initial_indexer(
             continue;
         };
 
-        let last_indexer_block_number = server.db.last_block.get(()).unwrap_or_default();
+        let last_indexer_block_number = server.get_db().last_block.get(()).unwrap_or_default();
         let first_block_number = blocks
             .blocks
             .first()
@@ -179,11 +198,11 @@ async fn initial_indexer(
         let blocks_counter = updates.len();
 
         let now = Instant::now();
-        parser::InitialIndexer::handle_batch(updates, &server, None).await;
+        parser::InitialIndexer::handle_batch(updates, server.as_ref(), None).await;
 
         info!(
             "handle_batch #{} took {}s",
-            server.db.last_block.get(()).unwrap_or_default(),
+            server.get_db().last_block.get(()).unwrap_or_default(),
             now.elapsed().as_secs_f32()
         );
 
@@ -195,17 +214,26 @@ async fn initial_indexer(
     Ok(())
 }
 
-async fn indexer(
+async fn indexer<T>(
     token: WaitToken,
-    server: Arc<Server>,
+    server: Arc<T>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
     reorg_cache: Arc<parking_lot::Mutex<reorg::ReorgCache>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    T: DBPort
+        + HoldersPort
+        + LastIndexedAddressPort
+        + EventSenderPort
+        + TokenPort
+        + HistoryHashGenerator
+        + ?Sized,
+{
     info!("Start Indexer");
 
     let mut repeater = token.repeat_until_cancel(Duration::from_secs(3));
     while repeater.next().await {
-        let last_index_height = server.db.last_block.get(()).unwrap_or_default();
+        let last_index_height = server.get_db().last_block.get(()).unwrap_or_default();
 
         let last_indexer_block = retry_on_error(u64::MAX, 20, &token, || {
             client.get_electrs_block_meta(last_index_height)
@@ -240,7 +268,7 @@ async fn indexer(
 
         let blocks = reorg_cache.lock().get_blocks_headers();
 
-        let updates = load_blocks(&server.token, &client, &blocks).await?;
+        let updates = load_blocks(&server.get_token(), &client, &blocks).await?;
 
         if updates.is_empty() {
             info!("Got empty updates, sleep for a while ...");
@@ -259,13 +287,13 @@ async fn indexer(
 
                     parser::InitialIndexer::handle_batch(
                         vec![casted_block],
-                        &server,
+                        server.as_ref(),
                         Some(reorg_cache.clone()),
                     )
                     .await;
                 }
                 Update::RemoveBlock { height } | Update::RemoveCachedBlock { height, .. } => {
-                    let last_index_height = server.db.last_block.get(()).unwrap_or_default();
+                    let last_index_height = server.get_db().last_block.get(()).unwrap_or_default();
                     let reorg_counter = last_index_height - height;
 
                     warn!(
@@ -275,13 +303,13 @@ async fn indexer(
 
                     reorg_cache
                         .lock()
-                        .restore(&server, height)
+                        .restore(server.as_ref(), height)
                         .inspect_err(|e| {
                             dbg!(e);
                         })?;
 
                     server
-                        .event_sender
+                        .get_event_sender()
                         .send(ServerEvent::Reorg(reorg_counter, height))
                         .ok();
                 }

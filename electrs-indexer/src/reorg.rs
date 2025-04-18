@@ -1,14 +1,17 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
-use dutils::error::ContextWrapper;
-use itertools::Itertools;
-use nintondo_dogecoin::{OutPoint, TxOut};
-use tracing::warn;
-use core_utils::{Fixed128, IsOpReturnHash};
+use core_utils::ports::server::{DBPort, HoldersPort};
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::location::Location;
 use core_utils::types::protocol::{DeployProtoDB, TransferProtoDB};
-use core_utils::types::structs::{AddressLocation, AddressToken, AddressTokenId, BlockHeader, LowerCaseTokenTick, OriginalTokenTick};
-use crate::server::Server;
+use core_utils::types::structs::{
+    AddressLocation, AddressToken, AddressTokenId, BlockHeader, LowerCaseTokenTick,
+    OriginalTokenTick,
+};
+use core_utils::{Fixed128, IsOpReturnHash};
+use dutils::error::ContextWrapper;
+use itertools::Itertools;
+use nintondo_dogecoin::{OutPoint, TxOut};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use tracing::warn;
 
 pub const REORG_CACHE_MAX_LEN: usize = 30;
 
@@ -125,13 +128,19 @@ impl ReorgCache {
             .push(TokenHistoryEntry::RestoreTransferred(key, value, recipient));
     }
 
-    pub fn restore(&mut self, server: &Server, block_height: u32) -> anyhow::Result<()> {
+    pub fn restore<T>(&mut self, server: &T, block_height: u32) -> anyhow::Result<()>
+    where
+        T: DBPort + HoldersPort + ?Sized,
+    {
         while !self.blocks.is_empty() && block_height <= *self.blocks.last_key_value().unwrap().0 {
             let (height, data) = self.blocks.pop_last().anyhow()?;
 
-            server.db.last_block.set((), height - 1);
-            server.db.last_history_id.set((), data.last_history_id);
-            server.db.block_hashes.remove(height);
+            server.get_db().last_block.set((), height - 1);
+            server
+                .get_db()
+                .last_history_id
+                .set((), data.last_history_id);
+            server.get_db().block_hashes.remove(height);
 
             {
                 let mut to_remove_deployed: Vec<LowerCaseTokenTick> = vec![];
@@ -169,20 +178,26 @@ impl ReorgCache {
                 }
 
                 let keys_to_remove = server
-                    .db
+                    .get_db()
                     .address_token_to_history
                     .multi_get(to_remove_history.iter())
                     .into_iter()
                     .flatten()
                     .map(|x| x.action.outpoint());
 
-                server.db.outpoint_to_event.remove_batch(keys_to_remove);
+                server
+                    .get_db()
+                    .outpoint_to_event
+                    .remove_batch(keys_to_remove);
 
                 server
-                    .db
+                    .get_db()
                     .address_token_to_history
                     .remove_batch(to_remove_history.into_iter());
-                server.db.prevouts.extend(to_restore_prevout.into_iter());
+                server
+                    .get_db()
+                    .prevouts
+                    .extend(to_restore_prevout.into_iter());
 
                 {
                     let deploy_keys = to_update_deployed
@@ -197,7 +212,7 @@ impl ReorgCache {
                         .collect_vec();
 
                     let deploys = server
-                        .db
+                        .get_db()
                         .token_to_meta
                         .multi_get(deploy_keys.iter())
                         .into_iter()
@@ -242,9 +257,9 @@ impl ReorgCache {
                         }
                     });
 
-                    server.db.token_to_meta.extend(updated_values);
+                    server.get_db().token_to_meta.extend(updated_values);
                     server
-                        .db
+                        .get_db()
                         .token_to_meta
                         .remove_batch(to_remove_deployed.into_iter());
                 }
@@ -269,7 +284,7 @@ impl ReorgCache {
                         .collect_vec();
 
                     server
-                        .db
+                        .get_db()
                         .address_token_to_balance
                         .multi_get(keys.iter())
                         .into_iter()
@@ -282,7 +297,7 @@ impl ReorgCache {
                 {
                     for (key, amt) in to_remove_minted.into_iter().rev() {
                         let account = accounts.get_mut(&key).unwrap();
-                        server.holders.decrease(&key, account, amt);
+                        server.get_holders().decrease(&key, account, amt);
                         account.balance = account.balance.checked_sub(amt).anyhow()?;
                     }
 
@@ -311,7 +326,7 @@ impl ReorgCache {
 
                         let account = accounts.get_mut(&key).unwrap();
 
-                        server.holders.increase(&key, account, v.amt);
+                        server.get_holders().increase(&key, account, v.amt);
                         account.transferable_balance += v.amt;
                         account.transfers_count += 1;
 
@@ -323,24 +338,24 @@ impl ReorgCache {
 
                             let account = accounts.get_mut(&key).unwrap();
 
-                            server.holders.decrease(&key, account, v.amt);
+                            server.get_holders().decrease(&key, account, v.amt);
                             account.balance = account.balance.checked_sub(v.amt).anyhow()?;
                         }
                     }
 
                     server
-                        .db
+                        .get_db()
                         .address_token_to_balance
                         .extend(accounts.into_iter());
 
-                    server.db.address_location_to_transfer.extend(
+                    server.get_db().address_location_to_transfer.extend(
                         to_restore_transferred
                             .into_iter()
                             .map(|x| (x.0, x.1))
                             .filter(|x| !transfer_locations_to_remove.contains(&x.0)),
                     );
                     server
-                        .db
+                        .get_db()
                         .address_location_to_transfer
                         .remove_batch(transfer_locations_to_remove.into_iter());
                 }
@@ -350,7 +365,10 @@ impl ReorgCache {
         Ok(())
     }
 
-    pub fn restore_all(&mut self, server: &Server) -> anyhow::Result<()> {
+    pub fn restore_all<T>(&mut self, server: &T) -> anyhow::Result<()>
+    where
+        T: DBPort + HoldersPort + ?Sized,
+    {
         let from = self.blocks.first_key_value().map(|x| *x.0);
         let to = self.blocks.last_key_value().map(|x| *x.0);
 

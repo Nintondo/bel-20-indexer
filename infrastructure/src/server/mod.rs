@@ -1,8 +1,8 @@
-use super::*;
 use crate::DEFAULT_HASH;
 use crate::PASS;
 use crate::USER;
 use core_utils::db::tables::DB;
+use core_utils::ports::server::HistoryHashGenerator;
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::holders::Holders;
 use core_utils::types::rest::load_addresses::AddressesLoader;
@@ -59,8 +59,11 @@ impl Server {
 
         Ok((raw_rx, tx, server))
     }
+}
 
-    pub fn generate_history_hash(
+impl HistoryHashGenerator for Server {
+    fn generate_history_hash(
+        &self,
         prev_history_hash: sha256::Hash,
         history: &[(AddressTokenId, HistoryValue)],
         addresses: &HashMap<FullHash, String>,

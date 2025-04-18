@@ -6,7 +6,6 @@ use itertools::Itertools;
 use std::sync::Arc;
 use std::time::Duration;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
-use crate::server::Server;
 
 pub mod blocks_loader;
 mod event_sender;

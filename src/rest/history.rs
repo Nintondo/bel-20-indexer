@@ -104,8 +104,9 @@ pub async fn address_token_history(
     Path(script_str): Path<String>,
     Query(query): Query<api::AddressTokenHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
-    let scripthash =
-        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+    let scripthash = server
+        .to_scripthash("address", &script_str)
+        .bad_request("Invalid address")?;
 
     if let Some(limit) = query.limit {
         if limit > 100 {

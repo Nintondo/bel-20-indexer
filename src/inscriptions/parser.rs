@@ -7,7 +7,7 @@ pub struct ParseInscription<'a> {
     inputs_cum: &'a [u64],
 }
 
-pub struct InitialIndexer {}
+pub struct InitialIndexer;
 
 impl InitialIndexer {
     fn parse_block(
@@ -117,22 +117,33 @@ impl InitialIndexer {
         let block = server.client.get_block(&current_hash).await?;
         let created = block.header.time;
 
-        match server.addr_tx.send(server::threads::AddressesToLoad {
-            height: block_height,
-            addresses: block
-                .txdata
-                .iter()
-                .flat_map(|x| &x.output)
-                .map(|x| x.script_pubkey.clone())
-                .collect(),
-        }) {
-            Ok(_) => {}
-            _ => {
-                if !server.token.is_cancelled() {
-                    panic!("Failed to send addresses to load");
-                }
-            }
-        }
+        let prev_block_height = block_height.checked_sub(1).unwrap_or_default();
+        let prev_block_proof = server
+            .db
+            .proof_of_history
+            .get(prev_block_height)
+            .unwrap_or(*DEFAULT_HASH);
+
+        // store only standard addresses
+        let mut fullhash_to_address = HashMap::<FullHash, String>::new();
+        let rest_addresses = block
+            .txdata
+            .iter()
+            .flat_map(|x| &x.output)
+            .map(|x| {
+                let fullhash = x.script_pubkey.compute_script_hash();
+                let address = match bellscoin::address::Payload::from_script(&x.script_pubkey) {
+                    _ if x.script_pubkey.is_op_return() => OP_RETURN_ADDRESS.to_string(),
+                    Ok(payload) => {
+                        let address = server.address_decoder.encode(&payload);
+                        fullhash_to_address.insert(fullhash, address.clone());
+                        address
+                    }
+                    Err(_) => NON_STANDARD_ADDRESS.to_string(),
+                };
+                (fullhash, address)
+            })
+            .collect();
 
         let prevouts = block
             .txdata
@@ -160,7 +171,17 @@ impl InitialIndexer {
 
         if block.txdata.len() == 1 {
             server.db.last_block.set((), block_height);
-            return server.new_hash(block_height, current_hash, &[]).await;
+            let new_proof = Server::generate_history_hash(prev_block_proof, &[], &rest_addresses)?;
+            server.db.proof_of_history.set(block_height, new_proof);
+            server
+                .event_sender
+                .send(ServerEvent::NewBlock(
+                    block_height,
+                    new_proof,
+                    block.block_hash(),
+                ))
+                .ok();
+            return Ok(());
         }
 
         let mut token_cache = TokenCache::default();
@@ -253,17 +274,15 @@ impl InitialIndexer {
                         },
                     ));
                 }
-                match server.raw_event_sender.send(results.clone()) {
-                    Ok(_) => {}
-                    _ => {
-                        if !server.token.is_cancelled() {
-                            panic!("Failed to send raw event");
-                        }
-                    }
-                }
+
                 results
             })
             .collect_vec();
+
+        let new_proof = Server::generate_history_hash(prev_block_proof, &history, &rest_addresses)?;
+        server.db.proof_of_history.set(block_height, new_proof);
+
+        server.db.fullhash_to_address.extend(fullhash_to_address);
 
         if let Some(reorg_cache) = reorg_cache.as_ref() {
             let mut cache = reorg_cache.lock();
@@ -284,17 +303,45 @@ impl InitialIndexer {
             server.db.outpoint_to_event.extend(keys)
         }
 
-        server
-            .new_hash(block_height, current_hash, &history)
-            .await?;
+        server.db.address_token_to_history.extend(history.clone());
 
-        server.db.address_token_to_history.extend(history);
+        server.db.token_to_meta.extend(
+            token_cache
+                .tokens
+                .into_iter()
+                .map(|(k, v)| (k, TokenMetaDB::from(v))),
+        );
 
-        token_cache.write_token_data(server.db.clone()).await?;
-        token_cache.write_valid_transfers(&server.db)?;
+        server.db.address_location_to_transfer.extend(
+            token_cache
+                .valid_transfers
+                .into_iter()
+                .map(|(location, (address, proto))| (AddressLocation { address, location }, proto)),
+        );
 
         server.db.last_block.set((), block_height);
         server.db.last_history_id.set((), last_history_id);
+
+        *server.last_indexed_address_height.write().await = block_height;
+
+        server
+            .event_sender
+            .send(ServerEvent::NewBlock(
+                block_height,
+                new_proof,
+                block.block_hash(),
+            ))
+            .ok();
+
+        match server.raw_event_sender.send(history) {
+            Ok(_) => {}
+            _ => {
+                if !server.token.is_cancelled() {
+                    panic!("Failed to send raw event");
+                }
+            }
+        }
+
         Ok(())
     }
 

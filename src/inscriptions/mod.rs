@@ -1,3 +1,5 @@
+use crate::utils::address_encoder::{Decoder, Encoder};
+
 use super::*;
 
 pub const PROTOCOL_ID: &[u8; 3] = b"ord";
@@ -11,12 +13,23 @@ mod tag;
 mod utils;
 
 use envelope::{ParsedEnvelope, RawEnvelope};
+use parser::InitialIndexer;
 use searcher::InscriptionSearcher;
 use structs::{Inscription, ParsedInscription};
 use tag::Tag;
-pub use utils::ScriptToAddr;
 
 pub use structs::Location;
+
+pub fn load_decoder() -> Box<dyn Decoder> {
+    let encoder_network = (*NETWORK).into();
+    let decoder: Box<dyn Decoder> = match (*BLOCKCHAIN).as_ref() {
+        "bells" => Box::new(BellscoinDecoder::new(encoder_network)),
+        "doge" => Box::new(DogecoinDecoder::new(encoder_network)),
+        _ => unimplemented!("Got unsupported blockchain"),
+    };
+
+    decoder
+}
 
 pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
     let reorg_cache = Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new()));
@@ -33,7 +46,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
         let progress = crate::utils::Progress::begin("Indexing", tip_height as _, last_block as _);
 
         while last_block < tip_height - reorg::REORG_CACHE_MAX_LEN as u32 && !token.is_cancelled() {
-            parser::InitialIndexer::handle(last_block, server.clone(), None)
+            InitialIndexer::handle(last_block, server.clone(), None)
                 .await
                 .track()
                 .ok();
@@ -65,7 +78,6 @@ async fn new_fetcher(
     reorg_cache: Arc<parking_lot::Mutex<reorg::ReorgCache>>,
 ) -> anyhow::Result<()> {
     let mut tip = server.client.get_block_hash(last_block).await?;
-
     let mut repeater = token.repeat_until_cancel(Duration::from_millis(50));
 
     while repeater.next().await {
@@ -108,12 +120,8 @@ async fn new_fetcher(
                 reorg_cache.lock().restore(&server, current_height)?;
             }
 
-            parser::InitialIndexer::handle(
-                current_height,
-                server.clone(),
-                Some(reorg_cache.clone()),
-            )
-            .await?;
+            InitialIndexer::handle(current_height, server.clone(), Some(reorg_cache.clone()))
+                .await?;
 
             tip = next_hash;
         }

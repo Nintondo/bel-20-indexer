@@ -1,25 +1,5 @@
 use super::*;
 
-pub trait ScriptToAddr {
-    fn to_address_str(&self, network: Network) -> Option<String>;
-}
-
-impl ScriptToAddr for bellscoin::ScriptBuf {
-    fn to_address_str(&self, network: Network) -> Option<String> {
-        bellscoin::Address::from_script(self, network)
-            .map(|s| s.to_string())
-            .ok()
-    }
-}
-
-impl ScriptToAddr for &bellscoin::ScriptBuf {
-    fn to_address_str(&self, network: Network) -> Option<String> {
-        bellscoin::Address::from_script(self, network)
-            .map(|s| s.to_string())
-            .ok()
-    }
-}
-
 pub fn load_prevouts_for_block(
     db: Arc<DB>,
     txs: &[Transaction],

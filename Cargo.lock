@@ -270,6 +270,7 @@ dependencies = [
  "jsonrpc-async",
  "kanal",
  "lazy_static",
+ "nintondo-dogecoin",
  "nintypes",
  "num-traits",
  "parking_lot",
@@ -281,6 +282,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha2",
+ "thiserror 2.0.12",
  "thread-priority",
  "tokio",
  "tokio-stream",
@@ -1638,6 +1640,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nintondo-dogecoin"
+version = "0.30.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "137737ff61fea76319703fa03cb4c4f525db394eb066aa7b8ec0b552369471b7"
+dependencies = [
+ "bech32",
+ "bitcoin-private",
+ "bitcoin_hashes 0.12.0",
+ "hex-conservative 0.2.1",
+ "hex_lit",
+ "secp256k1",
+]
+
+[[package]]
 name = "nintypes"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1682,7 +1698,7 @@ dependencies = [
  "static_assertions",
  "strum",
  "superslice",
- "thiserror 2.0.11",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-graceful-shutdown",
  "tracing",
@@ -2549,11 +2565,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.11"
+version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d452f284b73e6d76dd36758a0c8684b1d5be31f92b89d07fd5822175732206fc"
+checksum = "567b8a2dae586314f7be2a752ec7474332959c6460e02bde30d702a66d488708"
 dependencies = [
- "thiserror-impl 2.0.11",
+ "thiserror-impl 2.0.12",
 ]
 
 [[package]]
@@ -2569,9 +2585,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.11"
+version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26afc1baea8a989337eeb52b6e72a039780ce45c3edfcc9c5b9d112feeb173c2"
+checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2687,7 +2703,7 @@ dependencies = [
  "bytemuck",
  "miette",
  "pin-project-lite",
- "thiserror 2.0.11",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-util",
  "tracing",

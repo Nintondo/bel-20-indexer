@@ -118,7 +118,9 @@ pub async fn token_transfer_proof(
     State(state): State<Arc<Server>>,
     Path((address, outpoint)): Path<(String, Outpoint)>,
 ) -> ApiResult<impl IntoResponse> {
-    let scripthash = to_scripthash("address", &address, *NETWORK).bad_request("Invalid address")?;
+    let scripthash = state
+        .to_scripthash("address", &address)
+        .bad_request("Invalid address")?;
 
     let (from, to) = AddressLocation::search(scripthash, Some(outpoint.into())).into_inner();
 

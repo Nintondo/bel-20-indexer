@@ -6,8 +6,9 @@ pub async fn address_tokens_tick(
     Path(script_str): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
-    let scripthash =
-        to_scripthash(script_type, &script_str, *NETWORK).bad_request("Invalid address")?;
+    let scripthash = state
+        .to_scripthash(script_type, &script_str)
+        .bad_request("Invalid address")?;
     let (from, to) = AddressToken::search(scripthash).into_inner();
     let data = state
         .db
@@ -35,8 +36,9 @@ pub async fn address_token_balance(
     Query(params): Query<api::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
-    let scripthash =
-        to_scripthash(script_type, &script_str, *NETWORK).bad_request("Invalid address")?;
+    let scripthash = state
+        .to_scripthash(script_type, &script_str)
+        .bad_request("Invalid address")?;
 
     let token: LowerCaseTokenTick = tick.into();
 
@@ -86,8 +88,9 @@ pub async fn address_tokens(
     State(server): State<Arc<Server>>,
     Path(script_str): Path<String>,
 ) -> ApiResult<Response<Body>> {
-    let scripthash =
-        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+    let scripthash = server
+        .to_scripthash("address", &script_str)
+        .bad_request("Invalid address")?;
 
     let mut data = server
         .db
@@ -163,8 +166,9 @@ pub async fn search_address_tokens(
     Path((script_str, tick)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
     let tick = tick.to_lowercase();
-    let scripthash =
-        to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
+    let scripthash = server
+        .to_scripthash("address", &script_str)
+        .bad_request("Invalid address")?;
 
     let account_tokens = server
         .db

@@ -9,7 +9,6 @@ use nintypes::common::inscriptions::Outpoint;
 use rust_decimal::Decimal;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use utils::to_scripthash;
 use validator::Validate;
 
 mod address;
@@ -122,11 +121,13 @@ async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRespons
         .last_block
         .get(())
         .internal("Failed to get last height")?;
+
     let last_poh = server
         .db
         .proof_of_history
         .get(last_height)
         .internal("Failed to get last proof of history")?;
+
     let last_block_hash = server
         .db
         .block_hashes

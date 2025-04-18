@@ -16,6 +16,8 @@ serde_with = "3.11.0"
 tracing = "0.1.40"
 serde_json = "1.0.132"
 bellscoin = "0.30.5"
+nintondo-dogecoin = "0.30.6"
+
 rocksdb = { version = "0.22.0", features = ["multi-threaded-cf"] }
 postcard = "1.0.10"
 bytemuck = { version = "1.19.0", features = ["derive"] }
@@ -40,3 +42,4 @@ kanal = "0.1.0-pre8"
 nintypes = { version = "0.1.14", features = ["bellscoin"] }
 validator = { version = "0.20.0", features = ["derive"] }
 thread-priority = "1.2.0"
+thiserror = "2.0.12"

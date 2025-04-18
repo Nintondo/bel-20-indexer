@@ -22,7 +22,7 @@ use {
         wait_token::WaitToken,
     },
     futures::future::join_all,
-    inscriptions::{Location, ScriptToAddr},
+    inscriptions::Location,
     itertools::Itertools,
     lazy_static::lazy_static,
     num_traits::Zero,
@@ -45,7 +45,10 @@ use {
     tokens::*,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
-    utils::AsyncClient,
+    utils::{
+        address_encoder::{BellscoinDecoder, DogecoinDecoder},
+        AsyncClient,
+    },
 };
 
 mod db;
@@ -78,11 +81,11 @@ impl IsOpReturnHash for FullHash {
         self.eq(&*OP_RETURN_HASH)
     }
 }
-
 lazy_static! {
     static ref URL: String = load_env!("RPC_URL");
     static ref USER: String = load_env!("RPC_USER");
     static ref PASS: String = load_env!("RPC_PASS");
+    static ref BLOCKCHAIN: String = load_env!("BLOCKCHAIN").to_lowercase();
     static ref NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);
@@ -107,7 +110,7 @@ fn main() {
 
     let indexer_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));
     indexer_runtime.block_on(async {
-        let (addr_rx, raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
+        let (raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
 
         let server = Arc::new(server);
 
@@ -133,7 +136,7 @@ fn main() {
         let result = join_all([
             signal_handler,
             server1
-                .run_threads(server.token.clone(), addr_rx, raw_event_tx, event_tx)
+                .run_threads(server.token.clone(), raw_event_tx, event_tx)
                 .spawn(),
             inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
         ])

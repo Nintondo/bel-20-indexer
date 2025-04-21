@@ -6,7 +6,7 @@ pub mod parser;
 mod utils;
 
 use crate::reorg;
-use core_utils::ports::server::{
+use core_utils::interfaces::server::{
     ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
     TokenPort,
 };

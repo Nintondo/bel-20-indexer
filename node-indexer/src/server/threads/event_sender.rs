@@ -1,4 +1,4 @@
-use core_utils::ports::server::AddressesLoader;
+use core_utils::interfaces::server::AddressesLoader;
 use core_utils::types::server::{
     AddressTokenIdEvent, HistoryValueEvent, RawServerEvent, ServerEvent,
 };

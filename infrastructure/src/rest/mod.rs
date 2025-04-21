@@ -1,6 +1,6 @@
 use axum::routing::get;
 use axum::routing::post;
-use core_utils::ports::server::AddressesLoader;
+use core_utils::interfaces::server::AddressesLoader;
 use electrs_indexer::server::Server;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

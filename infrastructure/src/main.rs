@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use application::SERVER_URL;
 use core_utils::{
-    ports::server::{ClientPort, DBPort},
+    interfaces::server::{ClientPort, DBPort},
     types::{
         loaded_blocks::LoadedBlocks,
         server::ServerEvent,

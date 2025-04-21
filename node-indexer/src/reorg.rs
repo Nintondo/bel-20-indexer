@@ -1,5 +1,5 @@
 use bellscoin::{OutPoint, TxOut};
-use core_utils::ports::server::{DBPort, HoldersPort};
+use core_utils::interfaces::server::{DBPort, HoldersPort};
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::location::Location;
 use core_utils::types::protocol::{DeployProtoDB, TransferProtoDB};

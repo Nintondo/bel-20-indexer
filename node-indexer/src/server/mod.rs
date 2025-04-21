@@ -3,8 +3,8 @@ use application::{DEFAULT_HASH, PASS, URL, USER};
 use bellscoin::hashes::{Hash, sha256};
 use bellscoin::BlockHash;
 use core_utils::db::tables::DB;
-use core_utils::ports::server::AddressesLoader;
-use core_utils::ports::server::{
+use core_utils::interfaces::server::AddressesLoader;
+use core_utils::interfaces::server::{
     ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
     TokenPort,
 };

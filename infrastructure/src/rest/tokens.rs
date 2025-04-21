@@ -4,7 +4,6 @@ use core_utils::types::structs::{AddressLocation, LowerCaseTokenTick};
 use core_utils::NON_STANDARD_ADDRESS;
 use dutils::error::ContextWrapper;
 use application::NETWORK;
-use application::server::Server;
 use super::*;
 
 pub async fn token(

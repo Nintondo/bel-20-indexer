@@ -5,8 +5,8 @@ use crate::types::server::{AddressTokenIdEvent, HistoryValueEvent, TokenHistoryE
 use crate::types::structs::{InscriptionId, OriginalTokenTick, TokenHistoryDB, TokenTransfer};
 use crate::types::token_history::Outpoint;
 use crate::Fixed128;
-use nintondo_dogecoin::hashes::sha256;
-use nintondo_dogecoin::{BlockHash, Txid};
+use bellscoin::hashes::sha256;
+use bellscoin::{BlockHash, Txid};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};

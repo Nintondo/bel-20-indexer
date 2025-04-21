@@ -169,6 +169,14 @@ pub struct TransferProtoDB {
     pub height: u32,
 }
 
+impl TransferProtoDB {
+    pub fn from_proto(value: TransferProto, height: u32) -> Self {
+        match value {
+            TransferProto::Bel20 { tick, amt } => TransferProtoDB { tick, amt, height },
+        }
+    }
+}
+
 impl From<TransferProtoDB> for TransferProto {
     fn from(v: TransferProtoDB) -> Self {
         TransferProto::Bel20 {

@@ -1,5 +1,5 @@
+use bellscoin::Txid;
 use serde::{Deserialize, Serialize};
-use nintondo_dogecoin::Txid;
 use crate::Fixed128;
 use crate::types::full_hash::FullHash;
 use crate::types::structs::OriginalTokenTick;

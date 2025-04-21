@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 pub mod parser;
 mod utils;
 
-use application::reorg;
+use crate::reorg;
 use core_utils::ports::server::{
     ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
     TokenPort,
@@ -36,7 +36,7 @@ where
         + HoldersPort
         + LastIndexedAddressPort
         + EventSenderPort
-        + ClientPort
+        + ClientPort<electrs_client::Config>
         + TokenPort
         + HistoryHashGenerator
         + ?Sized,

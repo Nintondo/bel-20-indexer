@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use nintondo_dogecoin::script;
+use bellscoin::script;
 use serde::{Deserialize, Serialize};
 use crate::impl_pebble;
 

@@ -1,10 +1,10 @@
 use crate::types::full_hash::FullHash;
 use crate::types::structs::{AddressTokenId, HistoryValue, OriginalTokenTick, TokenHistoryDB};
 use crate::Fixed128;
-use nintondo_dogecoin::hashes::sha256;
-use nintondo_dogecoin::{BlockHash, Txid};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use bellscoin::{BlockHash, Txid};
+use bellscoin::hashes::sha256;
 
 #[derive(Clone, Debug)]
 pub enum ServerEvent {

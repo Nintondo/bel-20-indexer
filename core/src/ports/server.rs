@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use bellscoin::hashes::sha256;
 use dutils::wait_token::WaitToken;
-use nintondo_dogecoin::hashes::sha256;
 
 use crate::{
     db::tables::DB,
@@ -36,8 +36,8 @@ pub trait TokenPort {
     fn get_token(&self) -> WaitToken;
 }
 
-pub trait ClientPort {
-    fn get_client(&self) -> electrs_client::Config;
+pub trait ClientPort<T> {
+    fn get_client(&self) -> T;
 }
 
 pub trait AddressesLoader {

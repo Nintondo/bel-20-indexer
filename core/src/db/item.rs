@@ -1,5 +1,5 @@
+use bellscoin::consensus;
 use dutils::error::ContextWrapper;
-use nintondo_dogecoin::consensus;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 

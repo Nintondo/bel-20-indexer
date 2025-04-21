@@ -15,7 +15,7 @@ pub const OP_RETURN_ADDRESS: &str = "BURNED";
 pub const NON_STANDARD_ADDRESS: &str = "non-standard";
 
 lazy_static! {
-    static ref OP_RETURN_HASH: FullHash = OP_RETURN_ADDRESS.compute_script_hash();
+    pub static ref OP_RETURN_HASH: FullHash = OP_RETURN_ADDRESS.compute_script_hash();
 }
 
 pub trait IsOpReturnHash {

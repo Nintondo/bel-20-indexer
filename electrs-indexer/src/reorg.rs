@@ -1,3 +1,4 @@
+use bellscoin::{OutPoint, TxOut};
 use core_utils::ports::server::{DBPort, HoldersPort};
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::location::Location;
@@ -9,7 +10,6 @@ use core_utils::types::structs::{
 use core_utils::{Fixed128, IsOpReturnHash};
 use dutils::error::ContextWrapper;
 use itertools::Itertools;
-use nintondo_dogecoin::{OutPoint, TxOut};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tracing::warn;
 

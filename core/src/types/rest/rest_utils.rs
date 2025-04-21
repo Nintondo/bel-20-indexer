@@ -1,6 +1,6 @@
 use crate::types::full_hash::{ComputeScriptHash, FullHash};
-use nintondo_dogecoin::{Address, Network, PublicKey, ScriptBuf};
 use std::str::FromStr;
+use bellscoin::{Address, Network, PublicKey, ScriptBuf};
 use validator::ValidationError;
 
 pub fn to_scripthash(

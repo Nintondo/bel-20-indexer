@@ -1,4 +1,5 @@
 pub mod inscriptions;
 pub mod server;
-pub mod token_cache;
+mod client;
 pub mod reorg;
+pub mod token_cache;

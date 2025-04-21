@@ -1,3 +1,5 @@
+use application::{DEFAULT_HASH, PASS, URL, USER};
+use bellscoin::hashes::{Hash, sha256};
 use core_utils::db::tables::DB;
 use core_utils::ports::server::AddressesLoader;
 use core_utils::ports::server::{
@@ -11,11 +13,9 @@ use core_utils::types::server::{RawServerEvent, ServerEvent};
 use core_utils::types::structs::{AddressTokenId, HistoryValue};
 use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use dutils::wait_token::WaitToken;
-use nintondo_dogecoin::hashes::{Hash, sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
-use crate::{DEFAULT_HASH, PASS, URL, USER};
 
 pub mod threads;
 
@@ -172,7 +172,7 @@ impl TokenPort for Server {
     }
 }
 
-impl ClientPort for Server {
+impl ClientPort<electrs_client::Config> for Server {
     fn get_client(&self) -> electrs_client::Config {
         self.client.clone()
     }

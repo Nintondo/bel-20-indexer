@@ -1,12 +1,17 @@
 use crate::OP_RETURN_HASH;
 use crate::Fixed128;
+use bellscoin::address::Error;
+use bellscoin::hashes::Hash;
+use bellscoin::Address;
+use bellscoin::BlockHash;
+use bellscoin::OutPoint;
+use bellscoin::ScriptBuf;
+use bellscoin::Txid;
 use dutils::error::ContextWrapper;
 use electrs_client::{Fetchable, UpdateCapable};
 use itertools::Itertools;
-use nintondo_dogecoin::{Address, BlockHash, OutPoint, ScriptBuf, Txid};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use nintondo_dogecoin::hashes::Hash;
 use crate::types::full_hash::{ComputeScriptHash, FullHash};
 use crate::types::structs::{BlockHeader, OriginalTokenTick};
 
@@ -76,7 +81,7 @@ pub enum ParsedTokenAddress {
 }
 
 impl TryFrom<TokenAddress> for ParsedTokenAddress {
-    type Error = nintondo_dogecoin::address::Error;
+    type Error = Error;
 
     fn try_from(value: TokenAddress) -> Result<Self, Self::Error> {
         match value {
@@ -155,7 +160,7 @@ pub struct TokenHistory {
 pub enum TokenHistoryError {
     #[error("Failed to parse address({address:?}) from str, {error}")]
     ParseAddress {
-        error: nintondo_dogecoin::address::Error,
+        error: Error,
         address: TokenAddress,
     },
 }

@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Duration};
 
-use application::server::Server;
 use application::SERVER_URL;
 use core_utils::{
     ports::server::{ClientPort, DBPort},
@@ -13,7 +12,7 @@ use core_utils::{
     utils,
 };
 use dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken};
-use electrs_indexer::inscriptions::main_loop;
+use electrs_indexer::{inscriptions::main_loop, server::Server};
 use futures::future::join_all;
 use tokio::select;
 use tracing::{info, warn};

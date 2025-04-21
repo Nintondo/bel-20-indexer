@@ -1,10 +1,10 @@
+use crate::types::token_history::HistoryLocation;
+use bellscoin::hashes::Hash;
+use bellscoin::{OutPoint, Txid};
+use dutils::error::ContextWrapper;
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::str::FromStr;
-use dutils::error::ContextWrapper;
-use nintondo_dogecoin::hashes::Hash;
-use nintondo_dogecoin::{OutPoint, Txid};
-use serde::{Deserialize, Serialize};
-use crate::types::token_history::HistoryLocation;
 
 #[derive(
     Serialize, Deserialize, Debug, Clone, PartialEq, Eq, core::hash::Hash, Ord, PartialOrd, Copy,

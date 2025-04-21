@@ -5,15 +5,15 @@ use crate::types::protocol::DeployProtoDB;
 use crate::types::protocol::MintProto;
 use crate::types::protocol::TransferProto;
 use crate::{db, Fixed128};
+use bellscoin::hashes::hex::Error;
 use dutils::error::ContextWrapper;
-use nintondo_dogecoin::hashes::hex::Error;
-use nintondo_dogecoin::hashes::Hash;
-use nintondo_dogecoin::{consensus, OutPoint, Txid};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
 use std::ops::RangeInclusive;
 use std::str::FromStr;
+use bellscoin::{consensus, OutPoint, Txid};
+use bellscoin::hashes::Hash;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Default)]
 pub struct BlockHeader {

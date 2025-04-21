@@ -3,10 +3,14 @@ name = "infrastructure"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 core_utils = { path = "../core" }
 electrs_indexer = { path = "../electrs-indexer" }
 application = { path = "../application" }
+node_indexer = {path = "../node-indexer"}
 
 anyhow = "1.0.91"
 rust_decimal = { version = "1.36.0", features = [

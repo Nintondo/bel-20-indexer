@@ -107,7 +107,7 @@ impl HistoryHashGenerator for Server {
 impl AddressesLoader for Server {
     async fn load_addresses(
         &self,
-        keys: impl IntoIterator<Item = FullHash>,
+        keys: impl IntoIterator<Item = FullHash> + Send + Sync,
         height: u32,
     ) -> anyhow::Result<HashMap<FullHash, String>> {
         let mut counter = 0;

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use crate::types::full_hash::FullHash;
 
-pub trait DBPort {
+pub trait DBPort: Send + Sync + 'static {
     fn get_db(&self) -> Arc<DB>;
 }
 
@@ -43,9 +43,11 @@ pub trait ClientPort<T> {
 pub trait AddressesLoader {
     fn load_addresses(
         &self,
-        keys: impl IntoIterator<Item = FullHash>,
+        keys: impl IntoIterator<Item = FullHash> + Send + Sync,
         height: u32,
-    ) -> impl std::future::Future<Output = anyhow::Result<HashMap<FullHash, String>>>;
+    ) -> impl std::future::Future<Output = anyhow::Result<HashMap<FullHash, String>>>
+    + Send
+    + Sync;
 }
 
 pub trait HistoryHashGenerator {

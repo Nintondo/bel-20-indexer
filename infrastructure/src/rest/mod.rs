@@ -1,10 +1,13 @@
 use axum::routing::get;
 use axum::routing::post;
-use core_utils::interfaces::server::AddressesLoader;
+use core_utils::interfaces::server::{
+    AddressesLoader, DBPort, EventSenderPort, HoldersPort, LastIndexedAddressPort, TokenPort,
+};
 use electrs_indexer::server::Server;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use axum::handler::Handler;
 use axum::http::Response;
 use axum::{
     extract::{Path, Query, State}, http::Uri,
@@ -39,7 +42,19 @@ const BAD_REQUEST: &str = "Can't handle request";
 const BAD_PARAMS: &str = "Can't handle request";
 const NOT_FOUND: &str = "Can't handle request";
 
-pub fn get_router(server: Arc<Server>) -> Router {
+pub fn get_router<T>(server: Arc<T>) -> Router
+where
+    T: DBPort
+        + AddressesLoader
+        + HoldersPort
+        + EventSenderPort
+        + LastIndexedAddressPort
+        + TokenPort
+        + Send
+        + Sync
+        + 'static
+        + Sized,
+{
     Router::new()
         .route("/address/{address}", get(address::address_tokens))
         .route("/address/{address}/tokens", get(address::address_tokens))
@@ -76,11 +91,14 @@ pub fn get_router(server: Arc<Server>) -> Router {
         .with_state(server)
 }
 
-async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
+async fn all_addresses<T>(State(server): State<Arc<T>>) -> ApiResult<impl IntoResponse>
+where
+    T: DBPort + AddressesLoader + LastIndexedAddressPort + Send + Sync + 'static + ?Sized,
+{
     let (tx, rx) = tokio::sync::mpsc::channel(1000);
     tokio::spawn(async move {
         let addresses = server
-            .db
+            .get_db()
             .address_token_to_balance
             .iter()
             .map(|x| x.0.address)
@@ -89,7 +107,7 @@ async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl Into
         let addresses = server
             .load_addresses(
                 addresses.iter().copied(),
-                *server.last_indexed_address_height.read().await,
+                *server.get_last_indexed_address_height().read().await,
             )
             .await
             .unwrap();
@@ -130,21 +148,21 @@ async fn all_tokens(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRes
     Ok(axum_streams::StreamBodyAs::json_array(stream))
 }
 
-async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
+async fn status<T: DBPort + ?Sized>(State(server): State<Arc<T>>) -> ApiResult<impl IntoResponse> {
     let last_height = server
-        .db
+        .get_db()
         .last_block
         .get(())
         .internal("Failed to get last height")?;
 
     let last_poh = server
-        .db
+        .get_db()
         .proof_of_history
         .get(last_height)
         .internal("Failed to get last proof of history")?;
 
     let last_block_hash = server
-        .db
+        .get_db()
         .block_hashes
         .get(last_height)
         .internal("Failed to get last block hash")?;

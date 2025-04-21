@@ -1,6 +1,9 @@
 use std::time::Duration;
 
 use super::*;
+use application::NETWORK;
+use bellscoin::{OutPoint, Txid};
+use core_utils::interfaces::server::{DBPort, EventSenderPort, TokenPort};
 use core_utils::types::{
     rest::rest_api::{self},
     server::ServerEvent,
@@ -8,20 +11,18 @@ use core_utils::types::{
 };
 use electrs_indexer::server::Server;
 use futures::future::join_all;
-use bellscoin::{OutPoint, Txid};
 use tracing::error;
-use application::NETWORK;
 
-pub async fn events_by_height(
-    State(server): State<Arc<Server>>,
+pub async fn events_by_height<T: DBPort + AddressesLoader + Sized>(
+    State(server): State<Arc<T>>,
     Path(height): Path<u32>,
 ) -> ApiResult<impl IntoResponse> {
-    let keys = server.db.block_events.get(height).unwrap_or_default();
+    let keys = server.get_db().block_events.get(height).unwrap_or_default();
 
     let mut res = Vec::<rest_api::History>::new();
 
     let iterator = server
-        .db
+        .get_db()
         .address_token_to_history
         .multi_get(keys.iter())
         .into_iter()
@@ -39,8 +40,8 @@ pub async fn events_by_height(
     Ok(Json(res))
 }
 
-pub async fn proof_of_history(
-    State(server): State<Arc<Server>>,
+pub async fn proof_of_history<T: DBPort + ?Sized>(
+    State(server): State<Arc<T>>,
     Query(query): Query<rest_api::ProofHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
     if let Some(limit) = query.limit {
@@ -50,7 +51,7 @@ pub async fn proof_of_history(
     }
 
     let res = server
-        .db
+        .get_db()
         .proof_of_history
         .range(..&query.offset.unwrap_or(u32::MAX), true)
         .map(|(height, hash)| rest_api::ProofOfHistory {
@@ -63,8 +64,8 @@ pub async fn proof_of_history(
     Ok(Json(res))
 }
 
-pub async fn subscribe(
-    State(server): State<Arc<Server>>,
+pub async fn subscribe<T: DBPort + EventSenderPort + TokenPort + Send + Sync + 'static>(
+    State(server): State<Arc<T>>,
     Json(payload): Json<rest_api::SubscribeArgs>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>> {
     let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(200_000);
@@ -78,10 +79,10 @@ pub async fn subscribe(
         .collect::<HashSet<_>>();
 
     {
-        let mut rx = server.event_sender.subscribe();
+        let mut rx = server.get_event_sender().subscribe();
 
         tokio::spawn(async move {
-            while !server.token.is_cancelled() {
+            while !server.get_token().is_cancelled() {
                 match rx.try_recv() {
                     Ok(event) => {
                         match event {
@@ -162,11 +163,14 @@ pub async fn subscribe(
     Ok(Sse::new(stream))
 }
 
-pub async fn address_token_history(
-    State(server): State<Arc<Server>>,
+pub async fn address_token_history<T>(
+    State(server): State<Arc<T>>,
     Path(script_str): Path<String>,
     Query(query): Query<rest_api::AddressTokenHistoryArgs>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<impl IntoResponse>
+where
+    T: DBPort + AddressesLoader + Send + Sync + 'static,
+{
     let scripthash =
         to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
 
@@ -178,7 +182,7 @@ pub async fn address_token_history(
     let token: LowerCaseTokenTick = query.tick.into();
 
     let deploy_proto = server
-        .db
+        .get_db()
         .token_to_meta
         .get(&token)
         .not_found("Token not found")?;
@@ -200,7 +204,7 @@ pub async fn address_token_history(
     let mut res = Vec::<rest_api::History>::new();
 
     for (k, v) in server
-        .db
+        .get_db()
         .address_token_to_history
         .range(&from..&to, true)
         .take(query.limit.unwrap_or(100))
@@ -216,12 +220,12 @@ pub async fn address_token_history(
     Ok(Json(res))
 }
 
-pub async fn txid_events(
-    State(server): State<Arc<Server>>,
+pub async fn txid_events<T: DBPort + AddressesLoader + Send + Sync + 'static + Sized>(
+    State(server): State<Arc<T>>,
     Path(txid): Path<Txid>,
 ) -> ApiResult<impl IntoResponse> {
     let keys = server
-        .db
+        .get_db()
         .outpoint_to_event
         .range(
             &OutPoint { txid, vout: 0 }..&OutPoint {
@@ -235,7 +239,7 @@ pub async fn txid_events(
 
     let mut events = join_all(
         server
-            .db
+            .get_db()
             .address_token_to_history
             .multi_get(keys.iter())
             .into_iter()

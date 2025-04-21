@@ -16,8 +16,7 @@ use electrs_indexer::{inscriptions::main_loop, server::Server};
 use futures::future::join_all;
 use tokio::select;
 use tracing::{info, warn};
-
-mod rest;
+use infrastructure::rest;
 
 fn main() {
     let version = env!("CARGO_PKG_VERSION");
@@ -80,7 +79,7 @@ async fn indexer_main(
 
             anyhow::Result::Ok(())
         }
-        .spawn()
+            .spawn()
     };
 
     let client = Arc::new(
@@ -128,9 +127,9 @@ async fn indexer_main(
 
             main_task
         }
-        .spawn(),
+            .spawn(),
     ])
-    .await;
+        .await;
 
     let _: Vec<_> = result
         .into_iter()

@@ -1,17 +1,19 @@
+use super::*;
+use application::NETWORK;
 use axum::body::Body;
 use axum::http::StatusCode;
 use axum::response::Response;
-use application::NETWORK;
-use core_utils::types::protocol::TransferProto;
+use core_utils::interfaces::server::DBPort;
 use core_utils::types::location::Location;
+use core_utils::types::protocol::TransferProto;
 use core_utils::types::rest::rest_api;
-use core_utils::types::structs::{AddressLocation, AddressToken, LowerCaseTokenTick, OriginalTokenTick, TokenTransfer};
-use electrs_indexer::server::Server;
-use super::*;
+use core_utils::types::structs::{
+    AddressLocation, AddressToken, LowerCaseTokenTick, OriginalTokenTick, TokenTransfer,
+};
 
-pub async fn address_tokens_tick(
+pub async fn address_tokens_tick<T: DBPort + ?Sized>(
     url: Uri,
-    State(state): State<Arc<Server>>,
+    State(state): State<Arc<T>>,
     Path(script_str): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
@@ -19,11 +21,11 @@ pub async fn address_tokens_tick(
         to_scripthash(script_type, &script_str, *NETWORK).bad_request("Invalid address")?;
     let (from, to) = AddressToken::search(scripthash).into_inner();
     let data = state
-        .db
+        .get_db()
         .token_to_meta
         .multi_get(
             state
-                .db
+                .get_db()
                 .address_token_to_balance
                 .range(&from..&to, false)
                 .map(|(k, _)| LowerCaseTokenTick::from(k.token))
@@ -38,9 +40,9 @@ pub async fn address_tokens_tick(
     Ok(Json(data))
 }
 
-pub async fn address_token_balance(
+pub async fn address_token_balance<T: DBPort + ?Sized>(
     url: Uri,
-    State(state): State<Arc<Server>>,
+    State(state): State<Arc<T>>,
     Path((script_str, tick)): Path<(String, String)>,
     Query(params): Query<rest_api::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
@@ -51,7 +53,7 @@ pub async fn address_token_balance(
     let token: LowerCaseTokenTick = tick.into();
 
     let deploy_proto = state
-        .db
+        .get_db()
         .token_to_meta
         .get(&token)
         .not_found("Token not found")?;
@@ -59,7 +61,7 @@ pub async fn address_token_balance(
     let original_token_tick = deploy_proto.proto.tick;
 
     let balance = state
-        .db
+        .get_db()
         .address_token_to_balance
         .get(AddressToken {
             address: scripthash,
@@ -71,7 +73,7 @@ pub async fn address_token_balance(
         AddressLocation::search(scripthash, params.offset.map(|x| x.into())).into_inner();
 
     let transfers = state
-        .db
+        .get_db()
         .address_location_to_transfer
         .range(&from..&to, false)
         .filter(|(_, v)| v.tick == original_token_tick)
@@ -92,15 +94,15 @@ pub async fn address_token_balance(
     Ok(Json(data))
 }
 
-pub async fn address_tokens(
-    State(server): State<Arc<Server>>,
+pub async fn address_tokens<T: DBPort + ?Sized>(
+    State(server): State<Arc<T>>,
     Path(script_str): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let scripthash =
         to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
 
     let mut data = server
-        .db
+        .get_db()
         .address_token_to_balance
         .range(
             &AddressToken {
@@ -124,7 +126,7 @@ pub async fn address_tokens(
     let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProto)>>::new();
 
     for (key, value) in server
-        .db
+        .get_db()
         .address_location_to_transfer
         .range(
             &AddressLocation {
@@ -169,8 +171,8 @@ pub async fn address_tokens(
         .internal(INTERNAL)
 }
 
-pub async fn search_address_tokens(
-    State(server): State<Arc<Server>>,
+pub async fn search_address_tokens<T: DBPort + ?Sized>(
+    State(server): State<Arc<T>>,
     Path((script_str, tick)): Path<(String, String)>,
 ) -> ApiResult<impl IntoResponse> {
     let tick = tick.to_lowercase();
@@ -178,7 +180,7 @@ pub async fn search_address_tokens(
         to_scripthash("address", &script_str, *NETWORK).bad_request("Invalid address")?;
 
     let account_tokens = server
-        .db
+        .get_db()
         .address_token_to_balance
         .range(
             &AddressToken {

@@ -1,6 +1,6 @@
 use crate::client::AsyncClient;
 use application::{DEFAULT_HASH, PASS, URL, USER};
-use bellscoin::hashes::{Hash, sha256};
+use bellscoin::hashes::{sha256, Hash};
 use bellscoin::BlockHash;
 use core_utils::db::tables::DB;
 use core_utils::interfaces::server::AddressesLoader;
@@ -83,8 +83,7 @@ impl Server {
 
             for (k, v) in history {
                 let bytes = serde_json::to_vec(
-                    &History::new(v.height, v.action.clone(), k.clone(), self)
-                        .await?,
+                    &History::new(v.height, v.action.clone(), k.clone(), self).await?,
                 )?;
                 res.extend(bytes);
             }
@@ -160,7 +159,7 @@ impl HistoryHashGenerator for Server {
 impl AddressesLoader for Server {
     async fn load_addresses(
         &self,
-        keys: impl IntoIterator<Item = FullHash>,
+        keys: impl IntoIterator<Item = FullHash> + Send + Sync,
         height: u32,
     ) -> anyhow::Result<HashMap<FullHash, String>> {
         let mut counter = 0;

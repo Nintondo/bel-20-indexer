@@ -1,31 +1,34 @@
+use super::*;
+use application::NETWORK;
 use core_utils::types::protocol::TransferProtoDB;
 use core_utils::types::rest::rest_api;
 use core_utils::types::structs::{AddressLocation, LowerCaseTokenTick};
 use core_utils::NON_STANDARD_ADDRESS;
 use dutils::error::ContextWrapper;
-use application::NETWORK;
-use super::*;
 
-pub async fn token(
-    State(back): State<Arc<Server>>,
+pub async fn token<T: DBPort + HoldersPort + ?Sized>(
+    State(back): State<Arc<T>>,
     Query(args): Query<rest_api::TokenArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_REQUEST)?;
     let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
     let token = back
-        .db
+        .get_db()
         .token_to_meta
         .get(lower_case_token_tick.clone())
         .map(|v| rest_api::Token {
             height: v.proto.height,
             created: v.proto.created,
             deployer: back
-                .db
+                .get_db()
                 .fullhash_to_address
                 .get(v.proto.deployer)
                 .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
             transactions: v.proto.transactions,
-            holders: back.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
+            holders: back
+                .get_holders()
+                .holders_by_tick(&v.proto.tick)
+                .unwrap_or(0) as u32,
             tick: v.proto.tick,
             genesis: v.genesis,
             supply: v.proto.supply,
@@ -40,15 +43,16 @@ pub async fn token(
     Ok(Json(token))
 }
 
-pub async fn tokens(
-    State(server): State<Arc<Server>>,
+pub async fn tokens<T: DBPort + HoldersPort + ?Sized>(
+    State(server): State<Arc<T>>,
     Query(args): Query<rest_api::TokensArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_PARAMS)?;
     let search = args.search.map(|x| x.to_lowercase().as_bytes().to_vec());
 
-    let iter = server
-        .db
+    let db = server.get_db();
+
+    let iter = db
         .token_to_meta
         .iter()
         .filter(|x| match args.filter_by {
@@ -61,7 +65,7 @@ pub async fn tokens(
             _ => true,
         });
 
-    let stats = server.holders.stats();
+    let stats = server.get_holders().stats();
     let all = match args.sort_by {
         rest_api::TokenSortBy::DeployTimeAsc => {
             iter.sorted_by_key(|(_, v)| v.proto.created).collect_vec()
@@ -99,12 +103,15 @@ pub async fn tokens(
             tick: v.proto.tick,
             genesis: v.genesis,
             deployer: server
-                .db
+                .get_db()
                 .fullhash_to_address
                 .get(v.proto.deployer)
                 .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
             transactions: v.proto.transactions,
-            holders: server.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
+            holders: server
+                .get_holders()
+                .holders_by_tick(&v.proto.tick)
+                .unwrap_or(0) as u32,
             supply: v.proto.supply,
             completed: v.proto.is_completed(),
             max: v.proto.max,
@@ -120,8 +127,8 @@ pub async fn tokens(
     }))
 }
 
-pub async fn token_transfer_proof(
-    State(state): State<Arc<Server>>,
+pub async fn token_transfer_proof<T: DBPort + ?Sized>(
+    State(state): State<Arc<T>>,
     Path((address, outpoint)): Path<(String, Outpoint)>,
 ) -> ApiResult<impl IntoResponse> {
     let scripthash = to_scripthash("address", &address, *NETWORK).bad_request("Invalid address")?;
@@ -129,7 +136,7 @@ pub async fn token_transfer_proof(
     let (from, to) = AddressLocation::search(scripthash, Some(outpoint.into())).into_inner();
 
     let data: Vec<_> = state
-        .db
+        .get_db()
         .address_location_to_transfer
         .range(&from..&to, false)
         .map(|(_, TransferProtoDB { tick, amt, height })| {

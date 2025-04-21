@@ -1,24 +1,25 @@
 use core_utils::Fixed128;
+use core_utils::interfaces::server::HoldersPort;
 use core_utils::types::rest::rest_api;
 use core_utils::types::structs::LowerCaseTokenTick;
 use electrs_indexer::server::Server;
 use super::*;
 
-pub async fn holders(
-    State(server): State<Arc<Server>>,
+pub async fn holders<T: DBPort + HoldersPort + ?Sized>(
+    State(server): State<Arc<T>>,
     Query(query): Query<rest_api::HoldersArgs>,
 ) -> ApiResult<impl IntoResponse> {
     query.validate().bad_request(BAD_PARAMS)?;
 
     let lower_case_token_tick: LowerCaseTokenTick = query.tick.into();
     let proto = server
-        .db
+        .get_db()
         .token_to_meta
         .get(&lower_case_token_tick)
         .map(|x| x.proto)
         .not_found("Tick not found")?;
 
-    let result = if let Some(data) = server.holders.get_holders(&proto.tick) {
+    let result = if let Some(data) = server.get_holders().get_holders(&proto.tick) {
         let count = data.len();
         let pages = count.div_ceil(query.page_size);
         let mut holders = Vec::with_capacity(query.page_size);
@@ -36,7 +37,7 @@ pub async fn holders(
             .map(|(rank, x)| (rank + 1, x.0, x.1));
 
         for (rank, balance, hash) in keys {
-            let address = server.db.fullhash_to_address.get(hash).internal(INTERNAL)?;
+            let address = server.get_db().fullhash_to_address.get(hash).internal(INTERNAL)?;
             let percent =
                 balance.into_decimal() * Decimal::new(100, 0) / proto.supply.into_decimal();
 

@@ -35,6 +35,26 @@ pub fn load_decoder() -> Box<dyn Decoder> {
     decoder
 }
 
+pub fn load_magic() -> [u8; 4] {
+    match (*BLOCKCHAIN).as_ref() {
+        "bells" => match *NETWORK {
+            Network::Bellscoin => bellscoin::network::constants::Magic::BELLSCOIN.to_bytes(),
+            Network::Testnet => bellscoin::network::constants::Magic::TESTNET.to_bytes(),
+            Network::Signet => bellscoin::network::constants::Magic::SIGNET.to_bytes(),
+            Network::Regtest => bellscoin::network::constants::Magic::REGTEST.to_bytes(),
+            _ => unimplemented!(),
+        },
+        "doge" => match *NETWORK {
+            Network::Bellscoin => nintondo_dogecoin::network::constants::Magic::BITCOIN.to_bytes(),
+            Network::Testnet => nintondo_dogecoin::network::constants::Magic::TESTNET.to_bytes(),
+            Network::Signet => nintondo_dogecoin::network::constants::Magic::SIGNET.to_bytes(),
+            Network::Regtest => nintondo_dogecoin::network::constants::Magic::REGTEST.to_bytes(),
+            _ => unimplemented!(),
+        },
+        _ => unimplemented!("Got unsupported blockchain"),
+    }
+}
+
 pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
     let reorg_cache = Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new()));
     let tip_hash = server.client.best_block_hash().await?;
@@ -48,7 +68,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
         let (block_tx, block_rx) = bounded(50);
 
         let blk_loader = Arc::new(parking_lot::Mutex::new(BlockBlkLoader {
-            magic: [0, 0, 0, 0],
+            magic: load_magic(),
             blk_dir: PathBuf::from_str(&BLK_DIR)?,
             from_block: Some(last_block),
             to_block: Some(tip_height - reorg::REORG_CACHE_MAX_LEN as u32),

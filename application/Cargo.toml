@@ -1,12 +1,10 @@
 [package]
-name = "infrastructure"
+name = "application"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 core_utils = { path = "../core" }
-electrs_indexer = { path = "../electrs-indexer" }
-application = { path = "../application" }
 
 anyhow = "1.0.91"
 rust_decimal = { version = "1.36.0", features = [
@@ -30,4 +28,8 @@ validator = { version = "0.20.0", features = ["derive"] }
 
 nintondo-dogecoin = { version = "0.30.6", features = ["serde"] }
 thread-priority = "1.2.0"
+
+parking_lot = "0.12.3"
+lazy_static = "1.5.0"
+
 electrs_client = { version = "0.1.0" }

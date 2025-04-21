@@ -1,12 +1,12 @@
 use axum::body::Body;
 use axum::http::StatusCode;
 use axum::response::Response;
+use application::NETWORK;
 use core_utils::types::protocol::TransferProto;
 use core_utils::types::location::Location;
 use core_utils::types::rest::rest_api;
 use core_utils::types::structs::{AddressLocation, AddressToken, LowerCaseTokenTick, OriginalTokenTick, TokenTransfer};
-use crate::server::Server;
-use electrs_indexer::NETWORK;
+use application::server::Server;
 use super::*;
 
 pub async fn address_tokens_tick(

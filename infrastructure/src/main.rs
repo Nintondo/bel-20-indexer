@@ -1,26 +1,29 @@
 use std::{sync::Arc, time::Duration};
 
+use application::server::Server;
+use application::SERVER_URL;
 use core_utils::{
+    ports::server::{ClientPort, DBPort},
     types::{
+        loaded_blocks::LoadedBlocks,
         server::ServerEvent,
         structs::{AddressTokenId, HistoryValue},
+        token_history::TokenHistoryData,
     },
     utils,
 };
 use dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken};
-use electrs_indexer::{inscriptions::main_loop, SERVER_URL};
+use electrs_indexer::inscriptions::main_loop;
 use futures::future::join_all;
 use tokio::select;
 use tracing::{info, warn};
-use server::Server;
 
 mod rest;
-pub mod server;
 
 fn main() {
     let version = env!("CARGO_PKG_VERSION");
     println!("Version: {}", version);
-    
+
     dotenv::dotenv().ok();
     utils::init_logger();
 
@@ -62,6 +65,8 @@ async fn indexer_main(
     server: Arc<Server>,
     rx: kanal::Receiver<Vec<(AddressTokenId, HistoryValue)>>,
     tx: tokio::sync::broadcast::Sender<ServerEvent>,
+    // blocks_storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
+    // client: Arc<electrs_client::Client<TokenHistoryData>>,
 ) {
     let signal_handler = {
         let token = server.token.clone();
@@ -79,14 +84,42 @@ async fn indexer_main(
         .spawn()
     };
 
+    let client = Arc::new(
+        electrs_client::Client::<TokenHistoryData>::new_from_cfg(server.get_client().clone())
+            .await
+            .inspect_err(|e| {
+                dbg!(e);
+            })
+            .unwrap(),
+    );
+
+    let last_electrs_block = client.get_last_electrs_block_meta().await.unwrap();
+    let last_indexer_block_number = server.get_db().last_block.get(()).unwrap_or_default();
+    let last_indexer_block = client
+        .get_electrs_block_meta(last_indexer_block_number)
+        .await
+        .unwrap();
+
+    let blocks_storage = Arc::new(tokio::sync::Mutex::new(LoadedBlocks {
+        from_block_number: last_indexer_block.height,
+        to_block_number: last_electrs_block.height,
+        ..Default::default()
+    }));
+
     let thread_server = server.clone();
     let result = join_all([
         signal_handler,
         thread_server
-            .run_threads(server.token.clone(), rx, tx)
+            .run_threads(
+                server.token.clone(),
+                rx,
+                tx,
+                blocks_storage.clone(),
+                client.clone(),
+            )
             .spawn(),
         async move {
-            let main_task = main_loop(server.token.clone(), server.clone())
+            let main_task = main_loop(server.token.clone(), server.clone(), blocks_storage, client)
                 .spawn()
                 .await?;
 

@@ -7,3 +7,4 @@ pub mod token_history;
 pub mod location;
 pub mod rest;
 pub mod server;
+pub mod loaded_blocks;

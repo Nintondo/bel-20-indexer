@@ -1,11 +1,11 @@
-use crate::DEFAULT_HASH;
-use crate::PASS;
-use crate::USER;
 use core_utils::db::tables::DB;
-use core_utils::ports::server::HistoryHashGenerator;
+use core_utils::ports::server::AddressesLoader;
+use core_utils::ports::server::{
+    ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
+    TokenPort,
+};
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::holders::Holders;
-use core_utils::types::rest::load_addresses::AddressesLoader;
 use core_utils::types::rest::rest_api;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
 use core_utils::types::structs::{AddressTokenId, HistoryValue};
@@ -15,6 +15,7 @@ use nintondo_dogecoin::hashes::{Hash, sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+use crate::{DEFAULT_HASH, PASS, URL, USER};
 
 pub mod threads;
 
@@ -135,5 +136,44 @@ impl AddressesLoader for Server {
                 }
             })
             .collect())
+    }
+}
+
+impl DBPort for Server {
+    fn get_db(&self) -> Arc<DB> {
+        self.db.clone()
+    }
+}
+
+impl HoldersPort for Server {
+    fn get_holders(&self) -> Arc<Holders> {
+        self.holders.clone()
+    }
+}
+
+impl LastIndexedAddressPort for Server {
+    fn get_last_indexed_address_height(&self) -> Arc<tokio::sync::RwLock<u32>> {
+        self.last_indexed_address_height.clone()
+    }
+}
+
+impl EventSenderPort for Server {
+    fn get_event_sender(&self) -> tokio::sync::broadcast::Sender<ServerEvent> {
+        self.event_sender.clone()
+    }
+    fn get_raw_event_sender(&self) -> kanal::Sender<RawServerEvent> {
+        self.raw_event_sender.clone()
+    }
+}
+
+impl TokenPort for Server {
+    fn get_token(&self) -> WaitToken {
+        self.token.clone()
+    }
+}
+
+impl ClientPort for Server {
+    fn get_client(&self) -> electrs_client::Config {
+        self.client.clone()
     }
 }

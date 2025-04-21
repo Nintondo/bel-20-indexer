@@ -1,7 +1,7 @@
 use core_utils::Fixed128;
 use core_utils::types::rest::rest_api;
 use core_utils::types::structs::LowerCaseTokenTick;
-use crate::server::Server;
+use application::server::Server;
 use super::*;
 
 pub async fn holders(

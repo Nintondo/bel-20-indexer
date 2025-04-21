@@ -1,6 +1,6 @@
 use axum::routing::get;
 use axum::routing::post;
-use core_utils::types::rest::load_addresses::AddressesLoader;
+use core_utils::ports::server::AddressesLoader;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ use rust_decimal::Decimal;
 
 use core_utils::types::rest::rest_api;
 use core_utils::types::rest::rest_utils::to_scripthash;
-use crate::server::Server;
+use application::server::Server;
 use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

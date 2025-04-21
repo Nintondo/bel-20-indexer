@@ -1,8 +1,6 @@
 use super::*;
-use crate::DEFAULT_HASH;
-use crate::NETWORK;
-use crate::reorg;
-use crate::token_cache::TokenCache;
+use application::{reorg, DEFAULT_HASH, NETWORK};
+use application::token_cache::TokenCache;
 use core_utils::ports::server::DBPort;
 use core_utils::ports::server::EventSenderPort;
 use core_utils::ports::server::HistoryHashGenerator;
@@ -23,7 +21,7 @@ use core_utils::types::token_history::{
 };
 use core_utils::{Fixed128, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use itertools::Itertools;
-use nintondo_dogecoin::hashes::{Hash, sha256};
+use nintondo_dogecoin::hashes::{sha256, Hash};
 use nintondo_dogecoin::{BlockHash, Txid};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;

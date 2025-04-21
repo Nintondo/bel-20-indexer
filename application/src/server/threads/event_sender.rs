@@ -1,8 +1,12 @@
-use std::sync::Arc;
+use core_utils::ports::server::AddressesLoader;
+use core_utils::types::server::{
+    AddressTokenIdEvent, HistoryValueEvent, RawServerEvent, ServerEvent,
+};
 use dutils::async_thread::Handler;
 use dutils::wait_token::WaitToken;
 use itertools::Itertools;
-use core_utils::types::{rest::load_addresses::AddressesLoader, server::{AddressTokenIdEvent, HistoryValueEvent, RawServerEvent, ServerEvent}};
+use std::sync::Arc;
+use crate::server::Server;
 
 #[derive(Clone)]
 pub struct EventSender {
@@ -49,6 +53,7 @@ impl Handler for EventSender {
 
             let addresses = self
                 .server
+                .as_ref()
                 .load_addresses(keys, events.last().unwrap().1.height)
                 .await?;
 

@@ -5,11 +5,12 @@ use std::time::{Duration, Instant};
 pub mod parser;
 mod utils;
 
-use crate::reorg;
+use application::reorg;
 use core_utils::ports::server::{
     ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
     TokenPort,
 };
+use core_utils::types::loaded_blocks::LoadedBlocks;
 use core_utils::types::server::ServerEvent;
 use core_utils::types::structs::BlockHeader;
 use core_utils::types::token_history::{
@@ -24,7 +25,12 @@ use electrs_client::{BlockMeta, Update};
 use tracing::{info, warn};
 pub use utils::ScriptToAddr;
 
-pub async fn main_loop<T>(token: WaitToken, server: Arc<T>) -> anyhow::Result<()>
+pub async fn main_loop<T>(
+    token: WaitToken,
+    server: Arc<T>,
+    blocks_storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
+    client: Arc<electrs_client::Client<TokenHistoryData>>,
+) -> anyhow::Result<()>
 where
     T: DBPort
         + HoldersPort
@@ -35,13 +41,6 @@ where
         + HistoryHashGenerator
         + ?Sized,
 {
-    let client = Arc::new(
-        electrs_client::Client::<TokenHistoryData>::new_from_cfg(server.get_client().clone())
-            .await
-            .inspect_err(|e| {
-                dbg!(e);
-            })?,
-    );
 
     let last_electrs_block =
         retry_on_error(30, 20, &token, || client.get_last_electrs_block_meta()).await?;
@@ -58,7 +57,14 @@ where
             })
             .await?;
 
-            initial_indexer(token.clone(), server.clone(), client.clone(), end_block).await?;
+            initial_indexer(
+                token.clone(),
+                server.clone(),
+                client.clone(),
+                blocks_storage,
+                end_block,
+            )
+            .await?;
         }
     }
 
@@ -99,6 +105,7 @@ async fn initial_indexer<T>(
     token: WaitToken,
     server: Arc<T>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
+    blocks_storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
     end: BlockMeta,
 ) -> anyhow::Result<()>
 where
@@ -121,25 +128,7 @@ where
         last_indexer_block_number as _,
     );
 
-    let last_indexer_block = client
-        .get_electrs_block_meta(last_indexer_block_number)
-        .await?;
-
-    let blocks_storage = Arc::new(tokio::sync::Mutex::new(LoadedBlocks {
-        from_block_number: last_indexer_block.height,
-        to_block_number: last_electrs_block.height,
-        ..Default::default()
-    }));
-
-    let blocks_loader = dutils::async_thread::ThreadController::new(BlocksLoader {
-        storage: blocks_storage.clone(),
-        client: client.clone(),
-    })
-    .with_name("BlocksLoader")
-    .with_restart(Duration::from_secs(5))
-    .with_invoke_frq(Duration::from_millis(100))
-    .with_cancellation(token.clone())
-    .run();
+    
 
     let mut sleep = token.repeat_until_cancel(Duration::from_secs(1));
     let mut is_reach_end = false;
@@ -209,7 +198,7 @@ where
         progress.inc(blocks_counter as _);
     }
 
-    blocks_loader.abort();
+    // blocks_loader.abort();
 
     Ok(())
 }

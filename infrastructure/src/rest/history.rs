@@ -6,10 +6,10 @@ use core_utils::types::{
     server::ServerEvent,
     structs::{AddressTokenId, LowerCaseTokenTick},
 };
-use electrs_indexer::NETWORK;
 use futures::future::join_all;
 use nintondo_dogecoin::{OutPoint, Txid};
 use tracing::error;
+use application::NETWORK;
 
 pub async fn events_by_height(
     State(server): State<Arc<Server>>,

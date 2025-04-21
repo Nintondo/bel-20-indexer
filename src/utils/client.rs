@@ -6,7 +6,7 @@ use bellscoin::{
 };
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
 use jsonrpc_async::Client;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{value::RawValue, Value};
 
 pub struct AsyncClient {
@@ -64,7 +64,7 @@ impl AsyncClient {
     pub async fn get_block_info(
         &self,
         hash: &bellscoin::BlockHash,
-    ) -> anyhow::Result<bellscoincore_rpc::json::GetBlockResult> {
+    ) -> anyhow::Result<GetBlockResult> {
         self.request("getblock", &[serde_json::to_value(hash)?, 1.into()])
             .await
     }
@@ -85,4 +85,29 @@ fn deserialize_hex<T: Decodable>(hex: &str) -> anyhow::Result<T> {
     } else {
         Ok(object)
     }
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockResult {
+    pub hash: bellscoin::BlockHash,
+    pub confirmations: i32,
+    pub size: usize,
+    pub strippedsize: Option<usize>,
+    pub weight: usize,
+    pub height: usize,
+    pub version: i32,
+    #[serde(default, with = "bellscoincore_rpc::json::serde_hex::opt")]
+    pub version_hex: Option<Vec<u8>>,
+    pub merkleroot: bellscoin::hash_types::TxMerkleNode,
+    pub tx: Vec<bellscoin::Txid>,
+    pub time: usize,
+    pub mediantime: Option<usize>,
+    pub nonce: u32,
+    pub bits: String,
+    pub difficulty: f64,
+    #[serde(with = "bellscoincore_rpc::json::serde_hex")]
+    pub chainwork: Vec<u8>,
+    pub previousblockhash: Option<bellscoin::BlockHash>,
+    pub nextblockhash: Option<bellscoin::BlockHash>,
 }

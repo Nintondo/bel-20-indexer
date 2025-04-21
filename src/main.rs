@@ -37,6 +37,7 @@ use {
         iter::Peekable,
         marker::PhantomData,
         ops::{Bound, RangeBounds},
+        path::PathBuf,
         str::FromStr,
         sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
@@ -82,6 +83,7 @@ impl IsOpReturnHash for FullHash {
     }
 }
 lazy_static! {
+    static ref BLK_DIR: String = load_env!("BLK_DIR");
     static ref URL: String = load_env!("RPC_URL");
     static ref USER: String = load_env!("RPC_USER");
     static ref PASS: String = load_env!("RPC_PASS");

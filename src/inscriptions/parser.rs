@@ -98,10 +98,11 @@ impl InitialIndexer {
 
     pub async fn handle(
         block_height: u32,
+        block: bellscoin::Block,
         server: Arc<Server>,
         reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
     ) -> anyhow::Result<()> {
-        let current_hash = server.client.get_block_hash(block_height).await?;
+        let current_hash = block.block_hash();
         let mut last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
 
         if let Some(cache) = reorg_cache.as_ref() {
@@ -114,7 +115,6 @@ impl InitialIndexer {
             debug!("Syncing block: {} ({})", current_hash, block_height);
         }
 
-        let block = server.client.get_block(&current_hash).await?;
         let created = block.header.time;
 
         let prev_block_height = block_height.checked_sub(1).unwrap_or_default();

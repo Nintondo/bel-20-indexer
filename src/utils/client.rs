@@ -45,8 +45,8 @@ impl AsyncClient {
             match self.client.call::<T>(method, &params.clone()).await {
                 Ok(res) => return Ok(res),
                 Err(e) => {
-                    tokio::time::sleep(Duration::from_secs(3)).await;
-                    error!("Node is not replying, retrying: {}", e);
+                    tokio::time::sleep(Duration::from_secs(12)).await;
+                    error!("Node is not for method {}, retrying: {}", method, e);
                     continue;
                 }
             };

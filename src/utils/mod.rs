@@ -1,6 +1,7 @@
 use super::*;
 
 pub mod address_encoder;
+pub mod blk;
 mod client;
 mod logging;
 mod progress;

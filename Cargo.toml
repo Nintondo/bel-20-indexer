@@ -43,3 +43,4 @@ nintypes = { version = "0.1.14", features = ["bellscoin"] }
 validator = { version = "0.20.0", features = ["derive"] }
 thread-priority = "1.2.0"
 thiserror = "2.0.12"
+derive_deref = "1.1.1"

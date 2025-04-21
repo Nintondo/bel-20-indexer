@@ -23,6 +23,7 @@ mod utils;
 use blk_index_to_blk_recap::*;
 use blk_metadata::*;
 use block_state::*;
+use serde::{Deserialize, Serialize};
 use utils::*;
 
 pub trait InnerBlockHash: Sized + Send + Sync {
@@ -68,9 +69,21 @@ impl NodeClient for bellscoincore_rpc::Client {
             hash.to_byte_array(),
         );
 
-        bellscoincore_rpc::RpcApi::get_block_header_info(self, &hash)
-            .map(|x| (x.height as u32, x.confirmations))
+        let header: GetBlockHeaderResult = bellscoincore_rpc::RpcApi::call(
+            self,
+            "getblockheader",
+            &[serde_json::to_value(hash)?, true.into()],
+        )?;
+
+        Ok((header.height as u32, header.confirmations))
     }
+}
+
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockHeaderResult {
+    pub confirmations: i32,
+    pub height: usize,
 }
 
 pub struct Parser<T: InnerBlockHash, U: NodeClient> {

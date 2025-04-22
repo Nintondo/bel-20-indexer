@@ -1,11 +1,10 @@
 use bellscoin::{OutPoint, TxOut};
-use core_utils::interfaces::server::{DBPort, HoldersPort};
+use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::location::Location;
 use core_utils::types::protocol::{DeployProtoDB, TransferProtoDB};
 use core_utils::types::structs::{
-    AddressLocation, AddressToken, AddressTokenId, BlockHeader, LowerCaseTokenTick,
-    OriginalTokenTick,
+    AddressLocation, AddressToken, AddressTokenId, LowerCaseTokenTick, OriginalTokenTick,
 };
 use core_utils::{Fixed128, IsOpReturnHash};
 use dutils::error::ContextWrapper;
@@ -49,6 +48,58 @@ pub struct ReorgCache {
     len: usize,
 }
 
+impl ReorgCacheInterface for ReorgCache {
+    fn added_deployed_token(&mut self, tick: OriginalTokenTick) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveDeployed(tick));
+    }
+
+    fn added_minted_token(&mut self, token: AddressToken, amount: Fixed128) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveMint(token, amount));
+    }
+
+    fn added_history(&mut self, key: AddressTokenId) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveHistory(key));
+    }
+
+    fn added_transfer_token(&mut self, location: Location, token: AddressToken, amount: Fixed128) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveTransfer(location, token, amount));
+    }
+
+    fn removed_transfer_token(
+        &mut self,
+        key: AddressLocation,
+        value: TransferProtoDB,
+        recipient: FullHash,
+    ) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RestoreTransferred(key, value, recipient));
+    }
+}
+
 impl ReorgCache {
     pub fn new() -> Self {
         Self {
@@ -65,33 +116,6 @@ impl ReorgCache {
             .insert(block_height, ReorgHistoryBlock::new(last_history_id));
     }
 
-    pub fn added_deployed_token(&mut self, tick: OriginalTokenTick) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveDeployed(tick));
-    }
-
-    pub fn added_minted_token(&mut self, token: AddressToken, amount: Fixed128) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveMint(token, amount));
-    }
-
-    pub fn added_history(&mut self, key: AddressTokenId) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveHistory(key));
-    }
-
     pub fn removed_prevout(&mut self, key: OutPoint, value: TxOut) {
         self.blocks
             .last_entry()
@@ -99,34 +123,6 @@ impl ReorgCache {
             .get_mut()
             .token_history
             .push(TokenHistoryEntry::RestorePrevout(key, value));
-    }
-
-    pub fn added_transfer_token(
-        &mut self,
-        location: Location,
-        token: AddressToken,
-        amount: Fixed128,
-    ) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveTransfer(location, token, amount));
-    }
-
-    pub fn removed_transfer_token(
-        &mut self,
-        key: AddressLocation,
-        value: TransferProtoDB,
-        recipient: FullHash,
-    ) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RestoreTransferred(key, value, recipient));
     }
 
     pub fn restore(&mut self, server: &Server, block_height: u32) -> anyhow::Result<()> {

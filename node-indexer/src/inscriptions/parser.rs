@@ -1,13 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{reorg, server::{threads::address_hash_saver::AddressesToLoad, Server}, token_cache::{InscriptionTemplate, TokenCache}};
+use crate::{reorg, server::{threads::address_hash_saver::AddressesToLoad, Server}};
 use application::{MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, START_HEIGHT};
 use bellscoin::{OutPoint, Transaction, TxOut};
-use core_utils::{types::{full_hash::{ComputeScriptHash, FullHash}, location::Location, protocol::TransferProtoDB, structs::{AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB}}, OP_RETURN_HASH};
+use core_utils::{interfaces::reorg_cache::ReorgCacheInterface, types::{full_hash::{ComputeScriptHash, FullHash}, location::Location, protocol::TransferProtoDB, structs::{AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB}}, OP_RETURN_HASH};
 use itertools::Itertools;
 use tracing::debug;
-
-
+use application::token_cache::{InscriptionTemplate, TokenCache};
 use super::{searcher::InscriptionSearcher, structs::{Inscription, ParsedInscription}, utils::load_prevouts_for_block};
 
 

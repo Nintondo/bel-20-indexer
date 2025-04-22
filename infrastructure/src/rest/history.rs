@@ -9,7 +9,6 @@ use core_utils::types::{
     server::ServerEvent,
     structs::{AddressTokenId, LowerCaseTokenTick},
 };
-use electrs_indexer::server::Server;
 use futures::future::join_all;
 use tracing::error;
 

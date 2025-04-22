@@ -7,13 +7,12 @@ use electrs_indexer::server::Server;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use axum::handler::Handler;
 use axum::http::Response;
 use axum::{
-    extract::{Path, Query, State}, http::Uri,
-    response::{sse::Event, IntoResponse, Sse},
-    Json,
-    Router,
+    Json, Router,
+    extract::{Path, Query, State},
+    http::Uri,
+    response::{IntoResponse, Sse, sse::Event},
 };
 use validator::Validate;
 

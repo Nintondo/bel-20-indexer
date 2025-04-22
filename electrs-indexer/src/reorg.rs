@@ -1,4 +1,5 @@
 use bellscoin::{OutPoint, TxOut};
+use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
 use core_utils::interfaces::server::{DBPort, HoldersPort};
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::location::Location;
@@ -48,14 +49,59 @@ pub struct ReorgCache {
     len: usize,
 }
 
-impl ReorgCache {
-    pub fn new() -> Self {
-        Self {
-            blocks: BTreeMap::new(),
-            len: REORG_CACHE_MAX_LEN,
-        }
+impl ReorgCacheInterface for ReorgCache {
+    fn added_deployed_token(&mut self, tick: OriginalTokenTick) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveDeployed(tick));
     }
 
+    fn added_minted_token(&mut self, token: AddressToken, amount: Fixed128) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveMint(token, amount));
+    }
+
+    fn added_history(&mut self, key: AddressTokenId) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveHistory(key));
+    }
+
+    fn added_transfer_token(&mut self, location: Location, token: AddressToken, amount: Fixed128) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RemoveTransfer(location, token, amount));
+    }
+
+    fn removed_transfer_token(
+        &mut self,
+        key: AddressLocation,
+        value: TransferProtoDB,
+        recipient: FullHash,
+    ) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RestoreTransferred(key, value, recipient));
+    }
+}
+
+impl ReorgCache {
     pub fn get_blocks_headers(&self) -> Vec<BlockHeader> {
         self.blocks
             .values()
@@ -71,61 +117,6 @@ impl ReorgCache {
             block_header.number,
             ReorgHistoryBlock::new(block_header, last_history_id),
         );
-    }
-
-    pub fn added_deployed_token(&mut self, tick: OriginalTokenTick) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveDeployed(tick));
-    }
-
-    pub fn added_minted_token(&mut self, token: AddressToken, amount: Fixed128) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveMint(token, amount));
-    }
-
-    pub fn added_history(&mut self, key: AddressTokenId) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveHistory(key));
-    }
-
-    pub fn added_transfer_token(
-        &mut self,
-        location: Location,
-        token: AddressToken,
-        amount: Fixed128,
-    ) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RemoveTransfer(location, token, amount));
-    }
-
-    pub fn removed_transfer_token(
-        &mut self,
-        key: AddressLocation,
-        value: TransferProtoDB,
-        recipient: FullHash,
-    ) {
-        self.blocks
-            .last_entry()
-            .unwrap()
-            .get_mut()
-            .token_history
-            .push(TokenHistoryEntry::RestoreTransferred(key, value, recipient));
     }
 
     pub fn restore<T>(&mut self, server: &T, block_height: u32) -> anyhow::Result<()>
@@ -374,6 +365,15 @@ impl ReorgCache {
 
         warn!("Restoring savepoints from {:?} to {:?}", from, to);
         self.restore(server, 0)
+    }
+}
+
+impl ReorgCache {
+    pub fn new() -> Self {
+        Self {
+            blocks: BTreeMap::new(),
+            len: REORG_CACHE_MAX_LEN,
+        }
     }
 }
 

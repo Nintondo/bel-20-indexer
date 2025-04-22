@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use super::*;
 
 #[derive(Copy, Clone)]
 #[repr(u8)]

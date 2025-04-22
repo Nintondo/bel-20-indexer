@@ -17,8 +17,6 @@ mod tag;
 mod utils;
 
 use envelope::{ParsedEnvelope, RawEnvelope};
-use searcher::InscriptionSearcher;
-use structs::{Inscription, ParsedInscription};
 use tag::Tag;
 pub use utils::ScriptToAddr;
 

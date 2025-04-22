@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::iter::Peekable;
+use super::structs::Inscription;
 use super::*;
 
 pub type RawEnvelope = Envelope<Vec<Vec<u8>>>;

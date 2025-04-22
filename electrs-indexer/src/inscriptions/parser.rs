@@ -1,8 +1,10 @@
 use super::*;
-use crate::{reorg, token_cache::TokenCache};
+use crate::reorg;
+use application::token_cache::TokenCache;
 use application::{DEFAULT_HASH, NETWORK};
 use bellscoin::hashes::{Hash, sha256};
 use bellscoin::{BlockHash, Txid};
+use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
 use core_utils::interfaces::server::DBPort;
 use core_utils::interfaces::server::EventSenderPort;
 use core_utils::interfaces::server::HistoryHashGenerator;

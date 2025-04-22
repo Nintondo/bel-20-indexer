@@ -4,6 +4,8 @@ use bellscoin::hashes::{sha256, Hash};
 use bellscoin::Network;
 use core_utils::{load_env, load_opt_env, MAINNET_START_HEIGHT};
 
+pub mod token_cache;
+
 lazy_static! {
     pub static ref URL: String = load_env!("RPC_URL");
     pub static ref USER: String = load_env!("RPC_USER");

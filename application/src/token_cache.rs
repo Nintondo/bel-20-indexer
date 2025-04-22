@@ -1,32 +1,28 @@
 use bellscoin::Txid;
 use core_utils::db::tables::DB;
-use core_utils::types::protocol::Brc4;
-use core_utils::types::protocol::DeployProto;
-use core_utils::types::protocol::TransferProto;
-use core_utils::types::protocol::MintProto;
-use core_utils::types::structs::Brc4ParseErr;
-use core_utils::types::structs::InscriptionId;
-use core_utils::types::structs::OriginalTokenTick;
-use core_utils::types::structs::TokenMetaDB;
-use core_utils::OP_RETURN_HASH;
-use dutils::async_thread::Spawn;
-use dutils::error::ContextWrapper;
-use itertools::Itertools;
-use std::collections::HashSet;
-use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
-use core_utils::{Fixed128, IsOpReturnHash};
+use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
 use core_utils::types::full_hash::FullHash;
 use core_utils::types::history_token_action::HistoryTokenAction;
 use core_utils::types::holders::Holders;
 use core_utils::types::location::Location;
+use core_utils::types::protocol::MintProto;
+use core_utils::types::protocol::{Brc4, DeployProto, TransferProto};
 use core_utils::types::protocol::{DeployProtoDB, TransferProtoDB};
-use core_utils::types::structs::{AddressLocation, AddressToken, LowerCaseTokenTick, TokenAction, TokenBalance, TokenMeta};
-use crate::reorg;
-use num_traits::identities::Zero;
+use core_utils::types::structs::{
+    AddressLocation, AddressToken, Brc4ParseErr, InscriptionId, LowerCaseTokenTick,
+    OriginalTokenTick, TokenAction, TokenBalance, TokenMeta, TokenMetaDB,
+};
+use core_utils::{Fixed128, IsOpReturnHash, OP_RETURN_HASH};
+use dutils::async_thread::Spawn;
+use dutils::error::ContextWrapper;
+use itertools::Itertools;
+use rust_decimal::prelude::Zero;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct InscriptionTemplate { // todo maybe move
+pub struct InscriptionTemplate {
+    // todo maybe move
     pub genesis: InscriptionId,
     pub location: Location,
     pub content_type: Option<String>,
@@ -69,13 +65,13 @@ impl TokenCache {
                     Err(error) => match error.to_string().as_str() {
                         "Invalid decimal: empty" => return Err(Brc4ParseErr::DecimalEmpty),
                         "Invalid decimal: overflow from too many digits" => {
-                            return Err(Brc4ParseErr::DecimalOverflow)
+                            return Err(Brc4ParseErr::DecimalOverflow);
                         }
                         "value cannot start from + or -" => {
-                            return Err(Brc4ParseErr::DecimalPlusMinus)
+                            return Err(Brc4ParseErr::DecimalPlusMinus);
                         }
                         "value cannot start or end with ." => {
-                            return Err(Brc4ParseErr::DecimalDotStartEnd)
+                            return Err(Brc4ParseErr::DecimalDotStartEnd);
                         }
                         "value cannot contain spaces" => return Err(Brc4ParseErr::DecimalSpaces),
                         "invalid digit found in string" => return Err(Brc4ParseErr::InvalidDigit),
@@ -291,11 +287,14 @@ impl TokenCache {
         (tickers, users)
     }
 
-    pub fn process_token_actions(
+    pub fn process_token_actions<T>(
         &mut self,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+        reorg_cache: Option<Arc<parking_lot::Mutex<T>>>,
         holders: &Holders,
-    ) -> Vec<HistoryTokenAction> {
+    ) -> Vec<HistoryTokenAction>
+    where
+        T: ReorgCacheInterface + Send + Sync + ?Sized + 'static,
+    {
         let mut history = vec![];
 
         for action in self.token_actions.drain(..) {

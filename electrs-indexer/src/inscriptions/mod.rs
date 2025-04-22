@@ -1,4 +1,3 @@
-use std::default::Default;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -18,7 +17,6 @@ use core_utils::types::token_history::{
 };
 use core_utils::utils::Progress;
 use core_utils::utils::retry_on_error::retry_on_error;
-use dutils::async_thread::Thread;
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;
 use electrs_client::{BlockMeta, Update};
@@ -41,7 +39,6 @@ where
         + HistoryHashGenerator
         + ?Sized,
 {
-
     let last_electrs_block =
         retry_on_error(30, 20, &token, || client.get_last_electrs_block_meta()).await?;
 
@@ -127,8 +124,6 @@ where
         last_electrs_block.height as _,
         last_indexer_block_number as _,
     );
-
-    
 
     let mut sleep = token.repeat_until_cancel(Duration::from_secs(1));
     let mut is_reach_end = false;

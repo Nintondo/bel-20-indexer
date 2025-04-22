@@ -1,9 +1,8 @@
+use super::*;
 use core_utils::Fixed128;
 use core_utils::interfaces::server::HoldersPort;
 use core_utils::types::rest::rest_api;
 use core_utils::types::structs::LowerCaseTokenTick;
-use electrs_indexer::server::Server;
-use super::*;
 
 pub async fn holders<T: DBPort + HoldersPort + ?Sized>(
     State(server): State<Arc<T>>,
@@ -37,7 +36,11 @@ pub async fn holders<T: DBPort + HoldersPort + ?Sized>(
             .map(|(rank, x)| (rank + 1, x.0, x.1));
 
         for (rank, balance, hash) in keys {
-            let address = server.get_db().fullhash_to_address.get(hash).internal(INTERNAL)?;
+            let address = server
+                .get_db()
+                .fullhash_to_address
+                .get(hash)
+                .internal(INTERNAL)?;
             let percent =
                 balance.into_decimal() * Decimal::new(100, 0) / proto.supply.into_decimal();
 

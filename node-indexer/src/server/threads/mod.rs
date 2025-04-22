@@ -1,7 +1,5 @@
 use address_hash_saver::AddressesToLoad;
-use core_utils::types::loaded_blocks::LoadedBlocks;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
-use core_utils::types::token_history::TokenHistoryData;
 use dutils::async_thread::{Handler, Thread, ThreadController};
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;

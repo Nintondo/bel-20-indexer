@@ -8,6 +8,17 @@ use super::*;
 pub struct BlockRpcLoader {
     pub server: Arc<Server>,
     pub tx: Sender<(u32, bellscoin::Block, bellscoin::hashes::sha256d::Hash)>,
+    pub last_sent_block: Arc<Mutex<u32>>,
+}
+
+impl BlockRpcLoader {
+    pub fn get_last_sent_block(&self) -> u32 {
+        *self.last_sent_block.lock()
+    }
+
+    pub fn set_last_sent_block(&self, height: u32) {
+        *self.last_sent_block.lock() = height;
+    }
 }
 
 impl Handler for BlockRpcLoader {
@@ -15,17 +26,19 @@ impl Handler for BlockRpcLoader {
         loop {
             let current_block_height = self.server.db.last_block.get(()).unwrap_or(0);
             let current_block_hash = self.server.db.block_hashes.get(current_block_height);
-            let mut next_block_height = self
-                .server
-                .db
-                .last_block
-                .get(())
-                .map(|x| x + 1)
-                .unwrap_or(1);
+            let mut next_block_height = current_block_height + 1;
+
+            // if loader send block/blocks but indexer didn't handle them
+            // sleep for a while
+            if self.get_last_sent_block() >= next_block_height {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
 
             let tip_hash = self.server.client.best_block_hash().await?;
             let tip_height = self.server.client.get_block_info(&tip_hash).await?.height as u32;
 
+            // skip block if already indexed block
             if tip_height == current_block_height {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 continue;
@@ -37,17 +50,21 @@ impl Handler for BlockRpcLoader {
                 let hash = self.server.client.get_block_hash(next_block_height).await?;
                 let block = self.server.client.get_block(&hash).await?;
 
+                // try get prev block hash, if none db is empty
                 let Some(current_block_hash) = current_block_hash else {
                     self.tx
                         .send((next_block_height, block, *hash.as_raw_hash()))?;
+                    self.set_last_sent_block(next_block_height);
                     next_block_height += 1;
                     continue;
                 };
 
+                // if hash the same skip reorg handle
                 if current_block_hash == block.header.prev_blockhash {
                     continue;
                 }
 
+                // blocks to send, not reversed
                 let mut blocks = vec![(next_block_height, block)];
                 let mut prev_height = next_block_height - 1;
                 loop {
@@ -62,9 +79,11 @@ impl Handler for BlockRpcLoader {
 
                     let prev_block = self.server.client.get_block(&prev_block_hash).await?;
                     if db_prev_hash == prev_block.header.prev_blockhash {
+                        // send new rev blocks to handle reorg
                         for (height, block) in blocks.into_iter().rev() {
                             let hash = block.block_hash();
                             self.tx.send((height, block, *hash.as_raw_hash()))?;
+                            self.set_last_sent_block(height);
                         }
                         next_block_height += 1;
                         break;

@@ -124,13 +124,14 @@ async fn new_fetcher(
     let block_loader = BlockRpcLoader {
         server: server.clone(),
         tx: block_tx,
+        last_sent_block: Arc::default(),
     };
 
     ThreadController::new(block_loader)
         .with_name("BlockRpcLoader")
         .with_cancellation(token.clone())
-        .with_invoke_frq(Duration::from_millis(100))
-        .with_timeout(Duration::from_secs(180))
+        .with_invoke_frq(Duration::from_millis(250))
+        .with_restart(Duration::from_secs(5))
         .kill()
         .run();
 

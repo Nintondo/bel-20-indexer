@@ -1,0 +1,13 @@
+.git/
+.github/
+clean.sh
+*.log
+*cache/
+.env.example
+.env
+.gitignore
+Dockerfile
+docker-compose.yml
+/target
+logs/
+.vscode

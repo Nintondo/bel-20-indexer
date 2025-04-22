@@ -100,11 +100,7 @@ impl BlockBlkLoader {
         let parser: utils::blk::Parser<bellscoin::Block, bellscoincore_rpc::Client> =
             utils::blk::Parser::new(blk_dir, client, magic);
 
-        std::thread::spawn(move || {
-            parser.parse(tx, from, to);
-        })
-        .join()
-        .ok();
+        parser.parse(tx, from, to);
 
         Ok(())
     }
@@ -113,7 +109,7 @@ impl BlockBlkLoader {
         this: Arc<Mutex<Self>>,
         tx: Sender<(u32, bellscoin::Block, bellscoin::hashes::sha256d::Hash)>,
     ) {
-        loop {
+        std::thread::spawn(move || loop {
             let lock = this.lock();
             let blk_dir = lock.blk_dir.clone();
             let magic = lock.magic;
@@ -122,11 +118,11 @@ impl BlockBlkLoader {
             drop(lock);
 
             let Err(e) = Self::main_loop(blk_dir, magic, from, to, tx.clone()) else {
-                continue;
+                break;
             };
 
             error!("Blk loader got error: {e}");
             std::thread::sleep(Duration::from_secs(5));
-        }
+        });
     }
 }

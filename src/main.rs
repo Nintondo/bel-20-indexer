@@ -64,7 +64,7 @@ mod server;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 
-const MAINNET_START_HEIGHT: u32 = 26_371;
+const MAINNET_START_HEIGHT: u32 = 4_609_723;
 
 const OP_RETURN_ADDRESS: &str = "BURNED";
 const NON_STANDARD_ADDRESS: &str = "non-standard";
@@ -109,6 +109,19 @@ lazy_static! {
 fn main() {
     dotenv::dotenv().unwrap();
     utils::init_logger();
+
+    dbg!(
+        &*BLK_DIR,
+        &*URL,
+        &*USER,
+        &*PASS,
+        &*BLOCKCHAIN,
+        *NETWORK,
+        *MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT,
+        *START_HEIGHT,
+        &*SERVER_URL,
+        *DEFAULT_HASH
+    );
 
     let indexer_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));
     indexer_runtime.block_on(async {

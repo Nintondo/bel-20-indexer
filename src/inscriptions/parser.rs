@@ -312,6 +312,11 @@ impl InitialIndexer {
                 .map(|(k, v)| (k, TokenMetaDB::from(v))),
         );
 
+        server
+            .db
+            .address_token_to_balance
+            .extend(token_cache.token_accounts);
+
         server.db.address_location_to_transfer.extend(
             token_cache
                 .valid_transfers

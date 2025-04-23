@@ -64,7 +64,7 @@ mod server;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 
-const MAINNET_START_HEIGHT: u32 = 4_609_723;
+const MAINNET_START_HEIGHT: u32 = 0;
 
 const OP_RETURN_ADDRESS: &str = "BURNED";
 const NON_STANDARD_ADDRESS: &str = "non-standard";
@@ -129,13 +129,12 @@ fn main() {
 
         let server = Arc::new(server);
 
-        let signal_handler = {
+        {
             let token = server.token.clone();
             async move {
                 tokio::signal::ctrl_c().await.track().ok();
                 warn!("Ctrl-C received, shutting down...");
                 token.cancel();
-                anyhow::Result::Ok(())
             }
             .spawn()
         };
@@ -148,22 +147,20 @@ fn main() {
             rest_runtime.block_on(run_rest(rest_server.token.clone(), rest_server))
         });
 
-        let result = join_all([
-            signal_handler,
-            server1
-                .run_threads(server.token.clone(), raw_event_tx, event_tx)
-                .spawn(),
-            inscriptions::main_loop(server.token.clone(), server.clone()).spawn(),
-        ])
-        .await;
+        let threads_handle = server1
+            .run_threads(server.token.clone(), raw_event_tx, event_tx)
+            .spawn();
 
-        let _: Vec<_> = result
-            .into_iter()
-            .collect::<Result<anyhow::Result<Vec<()>>, _>>()
-            .track()
-            .unwrap()
-            .track()
+        let main_result = inscriptions::main_loop(server.token.clone(), server.clone())
+            .spawn()
+            .await
             .unwrap();
+        server.token.cancel();
+
+        let threads_result = threads_handle.await.unwrap();
+
+        main_result.track().ok();
+        threads_result.track().ok();
     })
 }
 

@@ -46,21 +46,19 @@ impl Handler for BlockRpcLoader {
 
             warn!("Blocks to sync: {}", tip_height - current_block_height);
 
-            while next_block_height < tip_height && !self.server.token.is_cancelled() {
+            while next_block_height <= tip_height && !self.server.token.is_cancelled() {
                 let hash = self.server.client.get_block_hash(next_block_height).await?;
                 let block = self.server.client.get_block(&hash).await?;
 
                 // try get prev block hash, if none db is empty
-                let Some(current_block_hash) = current_block_hash else {
+                // if hash the same skip reorg handle
+                if current_block_hash.is_none()
+                    || current_block_hash.unwrap() == block.header.prev_blockhash
+                {
                     self.tx
                         .send((next_block_height, block, *hash.as_raw_hash()))?;
                     self.set_last_sent_block(next_block_height);
                     next_block_height += 1;
-                    continue;
-                };
-
-                // if hash the same skip reorg handle
-                if current_block_hash == block.header.prev_blockhash {
                     continue;
                 }
 
@@ -136,12 +134,13 @@ impl BlockBlkLoader {
             let to = lock.to_block;
             drop(lock);
 
-            let Err(e) = Self::main_loop(blk_dir, magic, from, to, tx.clone()) else {
-                break;
-            };
-
-            error!("Blk loader got error: {e}");
-            std::thread::sleep(Duration::from_secs(5));
+            match Self::main_loop(blk_dir, magic, from, to, tx.clone()) {
+                Ok(_) => break,
+                Err(e) => {
+                    error!("Blk loader got error: {e}");
+                    std::thread::sleep(Duration::from_secs(5));
+                }
+            }
         });
     }
 }

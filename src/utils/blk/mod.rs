@@ -223,9 +223,11 @@ impl<T: InnerBlockHash, U: NodeClient> Parser<T, U> {
                             return ControlFlow::Break(());
                         }
 
-                        send_height_block_hash
-                            .send((current_height, decoded_block, hash))
-                            .unwrap();
+                        let Ok(_) =
+                            send_height_block_hash.send((current_height, decoded_block, hash))
+                        else {
+                            return ControlFlow::Break(());
+                        };
 
                         if end.is_some_and(|end| end == current_height) {
                             return ControlFlow::Break(());

@@ -107,7 +107,7 @@ lazy_static! {
 }
 
 fn main() {
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
     utils::init_logger();
 
     dbg!(

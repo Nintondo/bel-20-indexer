@@ -1,5 +1,6 @@
 use super::*;
 use crate::reorg;
+use crate::server::Server;
 use application::token_cache::TokenCache;
 use application::{DEFAULT_HASH, NETWORK};
 use bellscoin::hashes::{Hash, sha256};
@@ -164,8 +165,7 @@ impl InitialIndexer {
                 })
                 .collect();
 
-            let new_block_proof = server
-                .generate_history_hash(prev_proof, &block_history, &rest_addresses)
+            let new_block_proof = Server::generate_history_hash(prev_proof, &block_history, &rest_addresses)
                 .expect("Must generate history proof");
 
             block_height_to_history.insert(

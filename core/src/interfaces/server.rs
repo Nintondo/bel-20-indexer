@@ -52,7 +52,6 @@ pub trait AddressesLoader {
 
 pub trait HistoryHashGenerator {
     fn generate_history_hash(
-        &self,
         prev_history_hash: sha256::Hash,
         history: &[(AddressTokenId, HistoryValue)],
         addresses: &HashMap<FullHash, String>,

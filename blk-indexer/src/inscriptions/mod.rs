@@ -1,17 +1,17 @@
+use super::*;
+use application::{BLK_DIR, BLOCKCHAIN, NETWORK};
+use bellscoin::Network;
+use core_utils::types::server::ServerEvent;
+use core_utils::utils::Progress;
+use dutils::async_thread::{Thread, ThreadController};
+use dutils::error::ContextWrapper;
+use dutils::wait_token::WaitToken;
+use kanal::bounded;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use core_utils::types::server::ServerEvent;
-use dutils::wait_token::WaitToken;
-use bellscoin::Network;
-use dutils::async_thread::{Thread, ThreadController};
-use dutils::error::ContextWrapper;
-use super::*;
-use kanal::bounded;
 use tracing::{info, warn};
-use application::{BLK_DIR, BLOCKCHAIN, NETWORK};
-use core_utils::utils::Progress;
 
 pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 
@@ -25,14 +25,13 @@ mod utils;
 
 use envelope::{ParsedEnvelope, RawEnvelope};
 use parser::InitialIndexer;
-use searcher::InscriptionSearcher;
-use structs::{Inscription, ParsedInscription};
+use structs::Inscription;
 use tag::Tag;
 
-pub use structs::Location;
 use crate::address_encoder::{BellscoinDecoder, Decoder, DogecoinDecoder, Encoder};
-use crate::server::{Server};
+use crate::server::Server;
 use crate::server::threads::block_loader::{BlockBlkLoader, BlockRpcLoader};
+pub use structs::Location;
 
 pub fn load_decoder() -> Box<dyn Decoder> {
     let encoder_network = (*NETWORK).into();
@@ -163,7 +162,7 @@ async fn new_fetcher(
             if prev_block_hash != block.header.prev_blockhash {
                 panic!(
                     "Block loader prepared bad reorg: got height {} current height {}, but prev hash mismatch for height - 1. Got {} but expected {}",
-                    height, current_block_height,prev_block_hash,block.header.prev_blockhash
+                    height, current_block_height, prev_block_hash, block.header.prev_blockhash
                 )
             }
 

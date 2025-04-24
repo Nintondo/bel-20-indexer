@@ -15,7 +15,7 @@ use core_utils::types::protocol::TransferProtoDB;
 use core_utils::types::structs::{AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB, TokenMetaDB};
 use crate::inscriptions::searcher::InscriptionSearcher;
 use crate::inscriptions::structs::{Inscription, ParsedInscription};
-use crate::server::{Server};
+use crate::server::Server;
 
 pub struct ParseInscription<'a> {
     tx: &'a Transaction,

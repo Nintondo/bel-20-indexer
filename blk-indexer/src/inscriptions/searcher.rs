@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use bellscoin::{OutPoint, Transaction, TxOut};
-use super::*;
 
 pub struct InscriptionSearcher {}
 

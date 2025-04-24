@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use super::*;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Media {

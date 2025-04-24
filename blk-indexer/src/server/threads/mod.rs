@@ -1,20 +1,10 @@
 use {
-    super::{RawServerEvent, Server, ServerEvent},
-    bellscoin::{
-        hashes::{sha256, Hash},
-        opcodes, script,
-    },
-    dutils::{
-        async_thread::{Thread, ThreadController}, error::{ApiError, ContextWrapper}, wait_token::WaitToken
-    },
-    futures::future::join_all,
-    itertools::Itertools,
-    std::{
-        borrow::{Borrow, Cow},
-        fmt::{Display, Formatter},
-        sync::{atomic::AtomicU64, Arc},
-        time::{Duration, Instant},
-    },
+    super::{RawServerEvent, Server, ServerEvent}, dutils::{
+        async_thread::{Thread, ThreadController}, error::ContextWrapper, wait_token::WaitToken
+    }, futures::future::join_all, itertools::Itertools, std::{
+        sync::Arc,
+        time::Duration,
+    }
 };
 
 pub mod block_loader;

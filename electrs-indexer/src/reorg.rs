@@ -1,4 +1,3 @@
-use bellscoin::{OutPoint, TxOut};
 use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
 use core_utils::interfaces::server::{DBPort, HoldersPort};
 use core_utils::types::full_hash::FullHash;
@@ -25,7 +24,6 @@ enum TokenHistoryEntry {
     /// Key and value of removed valid transfer
     RestoreTransferred(AddressLocation, TransferProtoDB, FullHash),
     RemoveHistory(AddressTokenId),
-    RestorePrevout(OutPoint, TxOut),
 }
 
 struct ReorgHistoryBlock {
@@ -140,7 +138,6 @@ impl ReorgCache {
                 let mut to_remove_transfer = vec![];
                 let mut to_restore_transferred = vec![];
                 let mut to_remove_history = vec![];
-                let mut to_restore_prevout = vec![];
 
                 for entry in data.token_history.into_iter().rev() {
                     match entry {
@@ -162,9 +159,6 @@ impl ReorgCache {
                         TokenHistoryEntry::RemoveHistory(key) => {
                             to_remove_history.push(key);
                         }
-                        TokenHistoryEntry::RestorePrevout(key, value) => {
-                            to_restore_prevout.push((key, value));
-                        }
                     }
                 }
 
@@ -185,10 +179,6 @@ impl ReorgCache {
                     .get_db()
                     .address_token_to_history
                     .remove_batch(to_remove_history.into_iter());
-                server
-                    .get_db()
-                    .prevouts
-                    .extend(to_restore_prevout.into_iter());
 
                 {
                     let deploy_keys = to_update_deployed

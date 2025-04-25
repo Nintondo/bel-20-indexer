@@ -63,8 +63,6 @@ async fn indexer_main(
     server: Arc<Server>,
     rx: kanal::Receiver<Vec<(AddressTokenId, HistoryValue)>>,
     tx: tokio::sync::broadcast::Sender<ServerEvent>,
-    // blocks_storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
-    // client: Arc<electrs_client::Client<TokenHistoryData>>,
 ) {
     let signal_handler = {
         let token = server.token.clone();
@@ -91,19 +89,6 @@ async fn indexer_main(
             .unwrap(),
     );
 
-    let last_electrs_block = client.get_last_electrs_block_meta().await.unwrap();
-    let last_indexer_block_number = server.get_db().last_block.get(()).unwrap_or_default();
-    let last_indexer_block = client
-        .get_electrs_block_meta(last_indexer_block_number)
-        .await
-        .unwrap();
-
-    let blocks_storage = Arc::new(tokio::sync::Mutex::new(LoadedBlocks {
-        from_block_number: last_indexer_block.height,
-        to_block_number: last_electrs_block.height,
-        ..Default::default()
-    }));
-
     let thread_server = server.clone();
     let result = join_all([
         signal_handler,
@@ -112,12 +97,10 @@ async fn indexer_main(
                 server.token.clone(),
                 rx,
                 tx,
-                blocks_storage.clone(),
-                client.clone(),
             )
             .spawn(),
         async move {
-            let main_task = main_loop(server.token.clone(), server.clone(), blocks_storage, client)
+            let main_task = main_loop(server.token.clone(), server.clone(), client)
                 .spawn()
                 .await?;
 

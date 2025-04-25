@@ -1,3 +1,4 @@
+use dutils::async_thread::Thread;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,8 +16,8 @@ use core_utils::types::structs::BlockHeader;
 use core_utils::types::token_history::{
     InscriptionsTokenHistory, ParsedTokenHistoryData, TokenHistoryData,
 };
-use core_utils::utils::Progress;
 use core_utils::utils::retry_on_error::retry_on_error;
+use core_utils::utils::Progress;
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;
 use electrs_client::{BlockMeta, Update};
@@ -26,7 +27,6 @@ pub use utils::ScriptToAddr;
 pub async fn main_loop<T>(
     token: WaitToken,
     server: Arc<T>,
-    blocks_storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
 ) -> anyhow::Result<()>
 where
@@ -58,7 +58,6 @@ where
                 token.clone(),
                 server.clone(),
                 client.clone(),
-                blocks_storage,
                 end_block,
             )
             .await?;
@@ -102,7 +101,6 @@ async fn initial_indexer<T>(
     token: WaitToken,
     server: Arc<T>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
-    blocks_storage: Arc<tokio::sync::Mutex<LoadedBlocks>>,
     end: BlockMeta,
 ) -> anyhow::Result<()>
 where
@@ -124,6 +122,28 @@ where
         last_electrs_block.height as _,
         last_indexer_block_number as _,
     );
+
+    let last_indexer_block = client
+        .get_electrs_block_meta(last_indexer_block_number)
+        .await?;
+
+    let blocks_storage = Arc::new(tokio::sync::Mutex::new(LoadedBlocks {
+        from_block_number: last_indexer_block.height,
+        to_block_number: last_electrs_block.height,
+        ..Default::default()
+    }));
+
+    let blocks_loader = dutils::async_thread::ThreadController::new(
+        crate::server::threads::blocks_loader::BlocksLoader {
+            storage: blocks_storage.clone(),
+            client: client.clone(),
+        },
+    )
+    .with_name("BlocksLoader")
+    .with_restart(Duration::from_secs(5))
+    .with_invoke_frq(Duration::from_millis(100))
+    .with_cancellation(token.clone())
+    .run();
 
     let mut sleep = token.repeat_until_cancel(Duration::from_secs(1));
     let mut is_reach_end = false;
@@ -193,7 +213,7 @@ where
         progress.inc(blocks_counter as _);
     }
 
-    // blocks_loader.abort();
+    blocks_loader.abort();
 
     Ok(())
 }

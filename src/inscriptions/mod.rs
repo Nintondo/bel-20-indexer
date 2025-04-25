@@ -155,9 +155,10 @@ async fn new_fetcher(
         if height <= current_block_height {
             let prev_block_hash = server
                 .db
-                .block_hashes
+                .block_info
                 .get(height - 1)
-                .expect("Prev block hash must exist");
+                .expect("Prev block hash must exist")
+                .hash;
 
             if prev_block_hash != block.header.prev_blockhash {
                 panic!(

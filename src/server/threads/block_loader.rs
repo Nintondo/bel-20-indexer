@@ -25,7 +25,12 @@ impl Handler for BlockRpcLoader {
     async fn run(&mut self) -> anyhow::Result<()> {
         loop {
             let current_block_height = self.server.db.last_block.get(()).unwrap_or(0);
-            let current_block_hash = self.server.db.block_hashes.get(current_block_height);
+            let current_block_hash = self
+                .server
+                .db
+                .block_info
+                .get(current_block_height)
+                .map(|x| x.hash);
             let mut next_block_height = current_block_height + 1;
 
             // if loader send block/blocks but indexer didn't handle them
@@ -69,9 +74,10 @@ impl Handler for BlockRpcLoader {
                     let db_prev_hash = self
                         .server
                         .db
-                        .block_hashes
+                        .block_info
                         .get(prev_height - 1)
-                        .expect("Block must exist");
+                        .expect("Block must exist")
+                        .hash;
 
                     let prev_block_hash = self.server.client.get_block_hash(prev_height).await?;
 

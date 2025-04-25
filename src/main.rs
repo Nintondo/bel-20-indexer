@@ -28,7 +28,7 @@ use {
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{serde_as, DisplayFromStr},
-    server::{Server, ServerEvent},
+    server::{BlockInfo, Server, ServerEvent},
     std::{
         borrow::{Borrow, Cow},
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -64,8 +64,6 @@ mod server;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 
-const MAINNET_START_HEIGHT: u32 = 0;
-
 const OP_RETURN_ADDRESS: &str = "BURNED";
 const NON_STANDARD_ADDRESS: &str = "non-standard";
 
@@ -91,14 +89,16 @@ lazy_static! {
     static ref NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);
-    static ref MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT: usize = if let Network::Bellscoin = *NETWORK
-    {
-        133_000
-    } else {
-        0
-    };
-    static ref START_HEIGHT: u32 = match *NETWORK {
-        Network::Bellscoin => MAINNET_START_HEIGHT,
+    static ref MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT: usize =
+        match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
+            (Network::Bellscoin, "bells") => 133_000,
+            (_, "doge") => usize::MAX,
+            _ => 0,
+        };
+    static ref START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
+        (Network::Bellscoin, "bells") => 26_371,
+        (Network::Bellscoin, "doge") => 4_609_723,
+        (Network::Testnet, "doge") => 4_260_514,
         _ => 0,
     };
     static ref SERVER_URL: String =

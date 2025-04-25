@@ -109,7 +109,12 @@ impl InitialIndexer {
             cache.lock().new_block(block_height, last_history_id);
         }
 
-        server.db.block_hashes.set(block_height, current_hash);
+        let block_info = BlockInfo {
+            created: block.header.time,
+            hash: current_hash,
+        };
+
+        server.db.block_info.set(block_height, block_info);
 
         if reorg_cache.is_some() {
             debug!("Syncing block: {} ({})", current_hash, block_height);

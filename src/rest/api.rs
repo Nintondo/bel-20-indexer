@@ -115,6 +115,26 @@ impl History {
 }
 
 #[derive(Serialize)]
+pub struct AddressHistory {
+    #[serde(flatten)]
+    pub history: History,
+    pub created: u32,
+}
+
+impl AddressHistory {
+    pub async fn new(
+        height: u32,
+        action: TokenHistoryDB,
+        address_token: crate::tokens::AddressTokenId,
+        server: &Server,
+    ) -> anyhow::Result<Self> {
+        let history = History::new(height, action, address_token, server).await?;
+        let created = server.db.block_info.get(height).anyhow()?.created;
+        Ok(Self { history, created })
+    }
+}
+
+#[derive(Serialize)]
 #[serde(tag = "type")]
 pub enum TokenAction {
     Deploy {

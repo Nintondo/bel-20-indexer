@@ -5,7 +5,7 @@ generate_db_code! {
     address_location_to_transfer: AddressLocation => UsingSerde<TransferProtoDB>,
     address_token_to_balance: AddressToken => UsingSerde<TokenBalance>,
     address_token_to_history: AddressTokenId => UsingSerde<HistoryValue>,
-    block_hashes: u32 => UsingConsensus<BlockHash>,
+    block_info: u32 => BlockInfo,
     prevouts: UsingConsensus<OutPoint> => UsingConsensus<TxOut>,
     last_block: () => u32,
     last_history_id: () => u64,

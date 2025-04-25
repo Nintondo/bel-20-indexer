@@ -11,7 +11,6 @@ enum TokenHistoryEntry {
     /// Key and value of removed valid transfer
     RestoreTransferred(AddressLocation, TransferProtoDB, FullHash),
     RemoveHistory(AddressTokenId),
-    RestorePrevout(OutPoint, TxOut),
 }
 
 struct ReorgHistoryBlock {
@@ -121,7 +120,7 @@ impl ReorgCache {
 
             server.db.last_block.set((), height - 1);
             server.db.last_history_id.set((), data.last_history_id);
-            server.db.block_hashes.remove(height);
+            server.db.block_info.remove(height);
 
             {
                 let mut to_remove_deployed: Vec<LowerCaseTokenTick> = vec![];
@@ -130,7 +129,6 @@ impl ReorgCache {
                 let mut to_remove_transfer = vec![];
                 let mut to_restore_transferred = vec![];
                 let mut to_remove_history = vec![];
-                let mut to_restore_prevout = vec![];
 
                 for entry in data.token_history.into_iter().rev() {
                     match entry {
@@ -152,9 +150,6 @@ impl ReorgCache {
                         TokenHistoryEntry::RemoveHistory(key) => {
                             to_remove_history.push(key);
                         }
-                        TokenHistoryEntry::RestorePrevout(key, value) => {
-                            to_restore_prevout.push((key, value));
-                        }
                     }
                 }
 
@@ -172,7 +167,6 @@ impl ReorgCache {
                     .db
                     .address_token_to_history
                     .remove_batch(to_remove_history.into_iter());
-                server.db.prevouts.extend(to_restore_prevout.into_iter());
 
                 {
                     let deploy_keys = to_update_deployed

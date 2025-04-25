@@ -139,7 +139,6 @@ impl DeployProtoDB {
 
 impl DeployProto {
     pub const DEFAULT_DEC: u8 = 18;
-    pub const MAX_DEC: u8 = 18;
     pub fn default_dec() -> u8 {
         Self::DEFAULT_DEC
     }

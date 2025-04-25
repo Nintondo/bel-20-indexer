@@ -23,7 +23,7 @@ use {
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{DisplayFromStr, serde_as},
-    server::{Server, ServerEvent},
+    server::{BlockInfo, Server, ServerEvent},
     std::{
         borrow::{Borrow, Cow},
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},

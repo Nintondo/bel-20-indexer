@@ -60,7 +60,7 @@ pub fn get_router(server: Arc<Server>) -> Router {
             get(address::address_token_balance),
         )
         .route("/tokens", get(tokens::tokens))
-        //.route("/token/all", get(all_tokens))
+        .route("/token/all", get(all_tokens))
         .route("/token", get(tokens::token))
         .route(
             "/token/proof/{address}/{outpoint}",
@@ -145,9 +145,10 @@ async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRespons
 
     let last_block_hash = server
         .db
-        .block_hashes
+        .block_info
         .get(last_height)
-        .internal("Failed to get last block hash")?;
+        .internal("Failed to get last block hash")?
+        .hash;
 
     let data = api::Status {
         height: last_height,

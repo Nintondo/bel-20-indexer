@@ -120,7 +120,7 @@ impl ReorgCache {
 
             server.db.last_block.set((), height - 1);
             server.db.last_history_id.set((), data.last_history_id);
-            server.db.block_hashes.remove(height);
+            server.db.block_info.remove(height);
 
             {
                 let mut to_remove_deployed = vec![];

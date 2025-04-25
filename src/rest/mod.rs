@@ -129,9 +129,10 @@ async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRespons
         .internal("Failed to get last proof of history")?;
     let last_block_hash = server
         .db
-        .block_hashes
+        .block_info
         .get(last_height)
-        .internal("Failed to get last block hash")?;
+        .internal("Failed to get last block hash")?
+        .hash;
 
     let data = api::Status {
         height: last_height,

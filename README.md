@@ -62,7 +62,8 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
         "recipient": "<address>",
         "adddress": "<address>",
         "txid": "<txid>",
-        "vout": 0
+        "vout": 0,
+        "created": 198773477
     },
     ...
 ]
@@ -253,7 +254,7 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 ```
 
 #### GET /proof-of-history
- - __Description__: 
+ - __Description__:
  - Parameters:
    - __offset__ (query, optional): The offset for pagination. (key: `height`)
    - __limit__ (query, optional): The maximum number of records to return. (up to 100)

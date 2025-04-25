@@ -28,7 +28,7 @@ use {
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{serde_as, DisplayFromStr},
-    server::{Server, ServerEvent},
+    server::{BlockInfo, Server, ServerEvent},
     std::{
         borrow::{Borrow, Cow},
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},

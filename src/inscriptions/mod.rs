@@ -82,7 +82,7 @@ async fn new_fetcher(
             let mut reorg_counter = 0;
 
             loop {
-                let local_prev_hash = server.db.block_hashes.get(current_height - 1).unwrap();
+                let local_prev_hash = server.db.block_info.get(current_height - 1).unwrap().hash;
                 let prev_block_hash = server
                     .client
                     .get_block_info(&next_hash)

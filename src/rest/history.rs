@@ -134,7 +134,7 @@ pub async fn address_token_history(
         token,
     };
 
-    let mut res = Vec::<api::History>::new();
+    let mut res = Vec::<api::AddressHistory>::new();
 
     for (k, v) in server
         .db
@@ -144,7 +144,7 @@ pub async fn address_token_history(
         .collect_vec()
     {
         res.push(
-            api::History::new(v.height, v.action, k, &server)
+            api::AddressHistory::new(v.height, v.action, k, &server)
                 .await
                 .internal("Failed to load addresses")?,
         );

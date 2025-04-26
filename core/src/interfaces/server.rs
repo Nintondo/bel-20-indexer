@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use std::collections::HashMap;
-
+use std::pin::Pin;
 use crate::types::full_hash::FullHash;
 
 pub trait DBPort: Send + Sync + 'static {

@@ -3,7 +3,7 @@ use bellscoin::{Network, OutPoint, Transaction, TxOut};
 use dutils::error::ContextWrapper;
 use itertools::Itertools;
 use core_utils::db::tables::DB;
-use super::*;
+use crate::inscriptions::*;
 
 pub trait ScriptToAddr {
     fn to_address_str(&self, network: Network) -> Option<String>;

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::iter::Peekable;
-use super::*;
+use crate::inscriptions::structs::Inscription;
+use crate::inscriptions::*;
 
 pub type RawEnvelope = Envelope<Vec<Vec<u8>>>;
 pub type ParsedEnvelope = Envelope<Inscription>;

@@ -19,6 +19,7 @@ use std::time::Duration;
 
 pub mod threads;
 
+#[derive(Clone)]
 pub struct Server {
     pub db: Arc<DB>,
     pub event_sender: tokio::sync::broadcast::Sender<ServerEvent>,

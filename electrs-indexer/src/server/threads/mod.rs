@@ -9,11 +9,10 @@ use futures::future::join_all;
 use itertools::Itertools;
 use std::sync::Arc;
 use std::time::Duration;
-
+use application::common_threads::event_sender;
 use super::Server;
 
 pub mod blocks_loader;
-mod event_sender;
 
 impl Server {
     pub async fn run_threads(

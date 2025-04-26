@@ -5,6 +5,8 @@ use bellscoin::Network;
 use core_utils::{load_env, load_opt_env, MAINNET_START_HEIGHT};
 
 pub mod token_cache;
+pub mod inscriptions;
+pub mod common_threads;
 
 lazy_static! {
     pub static ref BLK_DIR: String = load_env!("BLK_DIR");

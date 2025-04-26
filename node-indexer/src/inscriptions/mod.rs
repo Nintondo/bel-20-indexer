@@ -6,21 +6,14 @@ use tracing::{info, warn};
 use crate::reorg;
 use core_utils::types::server::ServerEvent;
 
-pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 
-mod envelope;
-mod media;
 mod parser;
-mod searcher;
-mod structs;
-mod tag;
-mod utils;
 
-use envelope::{ParsedEnvelope, RawEnvelope};
-use tag::Tag;
-pub use utils::ScriptToAddr;
+use application::inscriptions::envelope::{ParsedEnvelope, RawEnvelope};
+use application::inscriptions::tag::Tag;
+pub use application::inscriptions::utils::ScriptToAddr;
 
-pub use structs::Location;
+pub use application::inscriptions::structs::Location;
 
 use crate::server::Server;
 

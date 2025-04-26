@@ -22,6 +22,7 @@ use threads::address_hash_saver::AddressesToLoad;
 
 pub mod threads;
 
+#[derive(Clone)]
 pub struct Server {
     pub db: Arc<DB>,
     pub event_sender: tokio::sync::broadcast::Sender<ServerEvent>,

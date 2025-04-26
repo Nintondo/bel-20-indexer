@@ -15,23 +15,13 @@ use tracing::{info, warn};
 
 pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 
-mod envelope;
-mod media;
 mod parser;
-mod searcher;
-mod structs;
-mod tag;
-mod utils;
 
-use envelope::{ParsedEnvelope, RawEnvelope};
 use parser::InitialIndexer;
-use structs::Inscription;
-use tag::Tag;
 
 use crate::address_encoder::{BellscoinDecoder, Decoder, DogecoinDecoder, Encoder};
 use crate::server::Server;
 use crate::server::threads::block_loader::{BlockBlkLoader, BlockRpcLoader};
-pub use structs::Location;
 
 pub fn load_decoder() -> Box<dyn Decoder> {
     let encoder_network = (*NETWORK).into();

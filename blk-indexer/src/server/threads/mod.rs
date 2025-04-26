@@ -6,9 +6,9 @@ use {
         time::Duration,
     }
 };
+use application::common_threads::event_sender;
 
 pub mod block_loader;
-mod event_sender;
 
 impl Server {
     pub async fn run_threads(

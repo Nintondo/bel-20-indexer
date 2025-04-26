@@ -4,7 +4,7 @@ use bellscoin::{script, OutPoint, Transaction, Txid};
 use bellscoin::hashes::Hash;
 use dutils::error::ContextWrapper;
 use serde::{Deserialize, Serialize};
-use super::*;
+use crate::inscriptions::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Inscription {

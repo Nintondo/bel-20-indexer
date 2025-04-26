@@ -6,11 +6,10 @@ use bellscoin::{OutPoint, Transaction, TxOut};
 use core_utils::{interfaces::reorg_cache::ReorgCacheInterface, types::{full_hash::{ComputeScriptHash, FullHash}, location::Location, protocol::TransferProtoDB, structs::{AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB}}, OP_RETURN_HASH};
 use itertools::Itertools;
 use tracing::debug;
+use application::inscriptions::searcher::InscriptionSearcher;
+use application::inscriptions::structs::{Inscription, ParsedInscription};
+use application::inscriptions::utils::load_prevouts_for_block;
 use application::token_cache::{InscriptionTemplate, TokenCache};
-use super::{searcher::InscriptionSearcher, structs::{Inscription, ParsedInscription}, utils::load_prevouts_for_block};
-
-
-
 pub struct ParseInscription<'a> {
     tx: &'a Transaction,
     input_idx: usize,

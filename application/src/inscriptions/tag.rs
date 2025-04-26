@@ -25,11 +25,11 @@ impl Tag {
         matches!(self, Self::Metadata)
     }
 
-    pub(crate) fn bytes(self) -> [u8; 1] {
+    pub fn bytes(self) -> [u8; 1] {
         [self as u8]
     }
 
-    pub(crate) fn take(self, fields: &mut BTreeMap<&[u8], Vec<&[u8]>>) -> Option<Vec<u8>> {
+    pub fn take(self, fields: &mut BTreeMap<&[u8], Vec<&[u8]>>) -> Option<Vec<u8>> {
         if self.chunked() {
             let value = fields.remove(self.bytes().as_slice())?;
 
@@ -55,7 +55,7 @@ impl Tag {
         }
     }
 
-    pub(crate) fn take_array(self, fields: &mut BTreeMap<&[u8], Vec<&[u8]>>) -> Vec<Vec<u8>> {
+    pub fn take_array(self, fields: &mut BTreeMap<&[u8], Vec<&[u8]>>) -> Vec<Vec<u8>> {
         fields
             .remove(self.bytes().as_slice())
             .unwrap_or_default()

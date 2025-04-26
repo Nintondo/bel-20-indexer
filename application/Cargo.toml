@@ -25,6 +25,7 @@ axum-streams = { version = "0.20.0", features = ["json"] }
 kanal = "0.1.0-pre8"
 nintypes = { version = "0.1.23", features = ["bellscoin"] }
 validator = { version = "0.20.0", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 
 bellscoin = "0.30.5"
 thread-priority = "1.2.0"

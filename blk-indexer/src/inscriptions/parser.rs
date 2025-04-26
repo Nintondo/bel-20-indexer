@@ -1,21 +1,24 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use bellscoin::{OutPoint, Transaction, TxOut};
-use core_utils::interfaces::server::HistoryHashGenerator;
-use core_utils::types::server::ServerEvent;
-use itertools::Itertools;
-use tracing::debug;
-use application::{DEFAULT_HASH, MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, START_HEIGHT};
+use crate::server::Server;
 use application::token_cache::{InscriptionTemplate, TokenCache};
-use core_utils::{NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS, OP_RETURN_HASH};
+use application::{DEFAULT_HASH, MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, START_HEIGHT};
+use bellscoin::{OutPoint, Transaction, TxOut};
 use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
+use core_utils::interfaces::server::HistoryHashGenerator;
 use core_utils::types::full_hash::{ComputeScriptHash, FullHash};
 use core_utils::types::location::Location;
 use core_utils::types::protocol::TransferProtoDB;
-use core_utils::types::structs::{AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB, TokenMetaDB};
-use crate::inscriptions::searcher::InscriptionSearcher;
-use crate::inscriptions::structs::{Inscription, ParsedInscription};
-use crate::server::Server;
+use core_utils::types::server::ServerEvent;
+use core_utils::types::structs::{
+    AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB, TokenMetaDB,
+};
+use core_utils::{NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS, OP_RETURN_HASH};
+use itertools::Itertools;
+use application::inscriptions::searcher::InscriptionSearcher;
+use application::inscriptions::structs::{Inscription, ParsedInscription};
+use application::inscriptions::utils::load_prevouts_for_block;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tracing::debug;
 
 pub struct ParseInscription<'a> {
     tx: &'a Transaction,
@@ -202,7 +205,7 @@ impl InitialIndexer {
         }
 
         let mut token_cache = TokenCache::default();
-        let prevouts = crate::inscriptions::utils::load_prevouts_for_block(server.db.clone(), &block.txdata)?;
+        let prevouts = load_prevouts_for_block(server.db.clone(), &block.txdata)?;
 
         if let Some(cache) = reorg_cache.as_ref() {
             prevouts.iter().for_each(|(key, value)| {

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 core_utils = { path = "../core" }
 application = { path = "../application" }
+node_indexer = { path = "../node-indexer" }
 
 derive_deref = "1.1.1"
 serde_json = "1.0.132"

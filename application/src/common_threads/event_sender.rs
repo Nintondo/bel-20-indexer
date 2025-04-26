@@ -6,17 +6,29 @@ use dutils::async_thread::Handler;
 use dutils::wait_token::WaitToken;
 use itertools::Itertools;
 use std::sync::Arc;
-use crate::server::Server;
 
-#[derive(Clone)]
-pub struct EventSender {
-    pub server: Arc<Server>,
+pub struct EventSender<T> {
+    pub server: Arc<T>,
     pub event_tx: tokio::sync::broadcast::Sender<ServerEvent>,
     pub raw_event_tx: kanal::Receiver<RawServerEvent>,
     pub token: WaitToken,
 }
 
-impl Handler for EventSender {
+impl<T> Clone for EventSender<T> {
+    fn clone(&self) -> Self {
+        Self {
+            server: Arc::clone(&self.server),
+            event_tx: self.event_tx.clone(),
+            raw_event_tx: self.raw_event_tx.clone(),
+            token: self.token.clone(),
+        }
+    }
+}
+
+impl<T> Handler for EventSender<T>
+where
+    T: AddressesLoader +  Send + Sync + 'static,
+{
     async fn run(&mut self) -> anyhow::Result<()> {
         'outer: loop {
             let mut events = vec![];

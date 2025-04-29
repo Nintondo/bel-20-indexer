@@ -100,7 +100,7 @@ impl History {
             .into_iter()
             .flatten();
 
-        let addresses = server.load_addresses(keys, height).await?;
+        let addresses = server.load_addresses(keys).await?;
 
         Ok(Self {
             height,

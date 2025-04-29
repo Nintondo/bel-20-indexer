@@ -72,10 +72,7 @@ async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl Into
             .collect::<HashSet<_>>();
 
         let addresses = server
-            .load_addresses(
-                addresses.iter().copied(),
-                *server.last_indexed_address_height.read().await,
-            )
+            .load_addresses(addresses.iter().copied())
             .await
             .unwrap();
 

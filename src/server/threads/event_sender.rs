@@ -43,10 +43,7 @@ impl Handler for EventSender {
                 .flatten()
                 .collect_vec();
 
-            let addresses = self
-                .server
-                .load_addresses(keys, events.last().unwrap().1.height)
-                .await?;
+            let addresses = self.server.load_addresses(keys).await?;
 
             for (k, v) in events {
                 self.event_tx

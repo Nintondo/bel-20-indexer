@@ -341,8 +341,6 @@ impl InitialIndexer {
         server.db.last_block.set((), block_height);
         server.db.last_history_id.set((), last_history_id);
 
-        *server.last_indexed_address_height.write().await = block_height;
-
         server
             .event_sender
             .send(ServerEvent::NewBlock(

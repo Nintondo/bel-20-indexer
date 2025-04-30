@@ -1,5 +1,5 @@
 use {
-    super::{RawServerEvent, Server, ServerEvent}, dutils::{
+    super::{RawServerEvent, Server, ServerEvent}, application::common_threads::event_sender, dutils::{
         async_thread::{Thread, ThreadController}, error::ContextWrapper, wait_token::WaitToken
     }, futures::future::join_all, itertools::Itertools, std::{
         sync::Arc,
@@ -8,7 +8,6 @@ use {
 };
 
 pub mod block_loader;
-pub mod event_sender;
 
 impl Server {
     pub async fn run_threads(

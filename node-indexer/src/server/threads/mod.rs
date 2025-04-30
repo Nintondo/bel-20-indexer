@@ -1,4 +1,5 @@
 use address_hash_saver::AddressesToLoad;
+use application::common_threads::event_sender;
 use core_utils::types::server::{RawServerEvent, ServerEvent};
 use dutils::async_thread::{Handler, Thread, ThreadController};
 use dutils::error::ContextWrapper;
@@ -10,7 +11,6 @@ use std::time::Duration;
 use super::Server;
 
 pub mod address_hash_saver;
-pub mod event_sender;
 
 impl Server {
     pub async fn run_threads(

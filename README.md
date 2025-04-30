@@ -18,33 +18,33 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 ### Routes
 
 #### GET /address/:address
- - __Description__: Retrieves token balances and transfers for a specific address.
- - __Parameters__:
+- __Description__: Retrieves token balances and transfers for a specific address.
+- __Parameters__:
    - address (path): The address to retrieve token balances and transfers for.
 
 ##### Response example:
 ```json
 [
-    {
-        "tick": "<tick>",
-        "balance": "1000",
-        "transferable_balance": "1000",
-        "transfers": [
-            {
-                "outpoint": "<txid:vout>",
-                "value": "1000"
-            }
-        ],
-        "transfers_count": 1
-    },
-    ...
+   {
+      "tick": "<tick>",
+      "balance": "1000",
+      "transferable_balance": "1000",
+      "transfers": [
+         {
+            "outpoint": "<txid:vout>",
+            "value": "1000"
+         }
+      ],
+      "transfers_count": 1
+   },
+   ...
 ]
 ```
 
 
 #### GET /address/:address/history
- - __Description__: Retrieves the history of token actions for a specific address.
- - __Parameters__:
+- __Description__: Retrieves the history of token actions for a specific address.
+- __Parameters__:
    - __address__ (path): The address to retrieve token history for.
    - __tick__ (query): The token tick to filter by.
    - __offset__ (query, optional): The offset for pagination. (key: `id`)
@@ -53,24 +53,25 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 ##### Response example:
 ```json
 [
-    {
-        "id": 1,
-        "tick": "<tick>",
-        "height": 100,
-        "type": "Send",
-        "amt": "1",
-        "recipient": "<address>",
-        "adddress": "<address>",
-        "txid": "<txid>",
-        "vout": 0
-    },
-    ...
+   {
+      "id": 1,
+      "tick": "<tick>",
+      "height": 100,
+      "type": "Send",
+      "amt": "1",
+      "recipient": "<address>",
+      "adddress": "<address>",
+      "txid": "<txid>",
+      "vout": 0,
+      "created": 198773477
+   },
+   ...
 ]
 ```
 
 #### GET /events/:height
- - __Description__: Retrieves the history of token actions for a specific height.
- - __Parameters__:
+- __Description__: Retrieves the history of token actions for a specific height.
+- __Parameters__:
    - __height__ (path): The block number to retrieve events history for.
 
 ##### Response example:
@@ -92,8 +93,8 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 ```
 
 #### GET /txid/:txid
- - __Description__: Retrieves events by TXID
- - __Parameters__:
+- __Description__: Retrieves events by TXID
+- __Parameters__:
    - __txid__ (path): Transaction Hash (ID)
 
 ##### Response example:
@@ -116,7 +117,7 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 
 
 #### GET /tokens
- - __Description__: Retrieves metadata for all tokens.
+- __Description__: Retrieves metadata for all tokens.
 
 ##### Response example:
 ```json
@@ -137,8 +138,8 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 ```
 
 #### POST /events
- - __Description__: Subscribes to events related to specific addresses and tokens.
- - Parameters:
+- __Description__: Subscribes to events related to specific addresses and tokens.
+- Parameters:
    - __addresses__ (body, optional): A set of addresses to subscribe to.
    - __tokens__ (body, optional): A set of tokens to subscribe to.
 
@@ -241,7 +242,7 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 
 
 #### GET /status
- - __Description__: Retrieves current status of the server
+- __Description__: Retrieves current status of the server
 
 ##### Response example:
 ```json
@@ -253,18 +254,18 @@ This API provides endpoints to interact with addresses, tokens, and events. Belo
 ```
 
 #### GET /proof-of-history
- - __Description__: 
- - Parameters:
+- __Description__:
+- Parameters:
    - __offset__ (query, optional): The offset for pagination. (key: `height`)
    - __limit__ (query, optional): The maximum number of records to return. (up to 100)
 
 ##### Response example:
 ```json
 [
-    {
-        "height": 0,
-        "hash": "<hash>"
-    },
-    ...
+   {
+      "height": 0,
+      "hash": "<hash>"
+   },
+   ...
 ]
 ```

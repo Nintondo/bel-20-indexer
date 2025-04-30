@@ -9,7 +9,7 @@ pub mod interfaces;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 
-pub const MAINNET_START_HEIGHT: u32 = 26_371;
+pub const MAINNET_START_HEIGHT: u32 = 0; //todo update
 
 pub const OP_RETURN_ADDRESS: &str = "BURNED";
 pub const NON_STANDARD_ADDRESS: &str = "non-standard";

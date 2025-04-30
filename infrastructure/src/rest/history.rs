@@ -11,6 +11,7 @@ use core_utils::types::{
 };
 use futures::future::join_all;
 use tracing::error;
+use core_utils::types::rest::rest_api::AddressHistory;
 
 pub async fn events_by_height<T: DBPort + AddressesLoader + Sized>(
     State(server): State<Arc<T>>,
@@ -200,7 +201,7 @@ where
         token,
     };
 
-    let mut res = Vec::<rest_api::History>::new();
+    let mut res = Vec::<AddressHistory>::new();
 
     for (k, v) in server
         .get_db()
@@ -210,7 +211,7 @@ where
         .collect_vec()
     {
         res.push(
-            rest_api::History::new(v.height, v.action, k, server.as_ref())
+            AddressHistory::new(v.height, v.action, k, server.as_ref())
                 .await
                 .internal("Failed to load addresses")?,
         );

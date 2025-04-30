@@ -20,8 +20,8 @@ mod parser;
 use parser::InitialIndexer;
 
 use crate::address_encoder::{BellscoinDecoder, Decoder, DogecoinDecoder, Encoder};
-use crate::server::Server;
 use crate::server::threads::block_loader::{BlockBlkLoader, BlockRpcLoader};
+use crate::server::Server;
 
 pub fn load_decoder() -> Box<dyn Decoder> {
     let encoder_network = (*NETWORK).into();
@@ -75,12 +75,21 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
         BlockBlkLoader::run(blk_loader.clone(), block_tx);
 
         let progress = Progress::begin("Indexing", tip_height as _, last_block as _);
+        let mut prev_height: Option<u32> = None;
         loop {
-            let Some(data) = token.run_fn(block_rx.as_async().recv()).await else {
+            let Some(Ok(data)) = token.run_fn(block_rx.as_async().recv()).await else {
                 break;
             };
 
-            let (height, block, _) = data?;
+            let (height, block, _) = data;
+
+            if let Some(prev) = prev_height {
+                if prev + 1 != height {
+                    panic!("Expected {} height but got {}", prev + 1, height);
+                }
+            }
+
+            prev_height = Some(height);
 
             if height > tip_height - reorg::REORG_CACHE_MAX_LEN as u32 {
                 break;
@@ -135,19 +144,20 @@ async fn new_fetcher(
         .run();
 
     loop {
-        let Some(data) = token.run_fn(block_rx.as_async().recv()).await else {
+        let Some(Ok(data)) = token.run_fn(block_rx.as_async().recv()).await else {
             break;
         };
-        let (height, block, _) = data?;
+        let (height, block, _) = data;
 
         let current_block_height = server.db.last_block.get(()).unwrap_or(0);
 
         if height <= current_block_height {
             let prev_block_hash = server
                 .db
-                .block_hashes
+                .block_info
                 .get(height - 1)
-                .expect("Prev block hash must exist");
+                .expect("Prev block hash must exist")
+                .hash;
 
             if prev_block_hash != block.header.prev_blockhash {
                 panic!(

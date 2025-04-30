@@ -11,12 +11,14 @@ use crate::types::structs::{
     AddressLocation, AddressToken, AddressTokenId, HistoryValue, LowerCaseTokenTick, TokenBalance,
     TokenMetaDB,
 };
+use crate::types::threads::block_info::BlockInfo;
 
 generate_db_code! {
     token_to_meta: LowerCaseTokenTick => UsingSerde<TokenMetaDB>,
     address_location_to_transfer: AddressLocation => UsingSerde<TransferProtoDB>,
     address_token_to_balance: AddressToken => UsingSerde<TokenBalance>,
     address_token_to_history: AddressTokenId => UsingSerde<HistoryValue>,
+    block_info: u32 => BlockInfo,
     block_hashes: u32 => UsingConsensus<BlockHash>,
     prevouts: UsingConsensus<OutPoint> => UsingConsensus<TxOut>,
     last_block: () => u32,

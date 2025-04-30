@@ -3,16 +3,15 @@ use axum::routing::post;
 use core_utils::interfaces::server::{
     AddressesLoader, DBPort, EventSenderPort, HoldersPort, LastIndexedAddressPort, TokenPort,
 };
-use electrs_indexer::server::Server;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use axum::http::Response;
 use axum::{
-    Json, Router,
-    extract::{Path, Query, State},
-    http::Uri,
-    response::{IntoResponse, Sse, sse::Event},
+    extract::{Path, Query, State}, http::Uri,
+    response::{sse::Event, IntoResponse, Sse},
+    Json,
+    Router,
 };
 use validator::Validate;
 
@@ -47,7 +46,6 @@ where
         + AddressesLoader
         + HoldersPort
         + EventSenderPort
-        + LastIndexedAddressPort
         + TokenPort
         + Send
         + Sync
@@ -74,7 +72,7 @@ where
             get(address::address_token_balance),
         )
         .route("/tokens", get(tokens::tokens))
-        //.route("/token/all", get(all_tokens))
+        .route("/token/all", get(all_tokens))
         .route("/token", get(tokens::token))
         .route(
             "/token/proof/{address}/{outpoint}",
@@ -92,7 +90,7 @@ where
 
 async fn all_addresses<T>(State(server): State<Arc<T>>) -> ApiResult<impl IntoResponse>
 where
-    T: DBPort + AddressesLoader + LastIndexedAddressPort + Send + Sync + 'static + ?Sized,
+    T: DBPort + AddressesLoader + Send + Sync + 'static + ?Sized,
 {
     let (tx, rx) = tokio::sync::mpsc::channel(1000);
     tokio::spawn(async move {
@@ -104,10 +102,7 @@ where
             .collect::<HashSet<_>>();
 
         let addresses = server
-            .load_addresses(
-                addresses.iter().copied(),
-                *server.get_last_indexed_address_height().read().await,
-            )
+            .load_addresses(addresses.iter().copied())
             .await
             .unwrap();
 
@@ -121,10 +116,13 @@ where
     Ok(axum_streams::StreamBodyAs::json_array(stream))
 }
 
-async fn all_tokens(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
+async fn all_tokens<T: DBPort + ?Sized>(
+    State(server): State<Arc<T>>,
+) -> ApiResult<impl IntoResponse> {
     let (tx, rx) = tokio::sync::mpsc::channel(1000);
     tokio::spawn(async move {
-        let iter = server.db.token_to_meta.iter().map(|(token, proto)| {
+        let db = server.get_db();
+        let iter = db.token_to_meta.iter().map(|(token, proto)| {
             let tick = String::from_utf8_lossy(token.as_ref()).to_lowercase();
             serde_json::json! ({
                 "genesis": proto.genesis.to_string(),

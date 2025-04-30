@@ -25,7 +25,6 @@ pub struct Server {
     pub event_sender: tokio::sync::broadcast::Sender<ServerEvent>,
     pub raw_event_sender: kanal::Sender<RawServerEvent>,
     pub token: WaitToken,
-    pub last_indexed_address_height: Arc<tokio::sync::RwLock<u32>>,
     pub client: Arc<AsyncClient>,
     pub holders: Arc<Holders>,
     pub address_decoder: Box<dyn Decoder>,
@@ -59,7 +58,6 @@ impl Server {
             db,
             raw_event_sender: raw_tx.clone(),
             token,
-            last_indexed_address_height: Arc::new(tokio::sync::RwLock::new(0)),
             event_sender: tx.clone(),
         };
 
@@ -102,12 +100,6 @@ impl HoldersPort for Server {
     }
 }
 
-impl LastIndexedAddressPort for Server {
-    fn get_last_indexed_address_height(&self) -> Arc<tokio::sync::RwLock<u32>> {
-        self.last_indexed_address_height.clone()
-    }
-}
-
 impl EventSenderPort for Server {
     fn get_event_sender(&self) -> tokio::sync::broadcast::Sender<ServerEvent> {
         self.event_sender.clone()
@@ -133,18 +125,7 @@ impl AddressesLoader for Server {
     async fn load_addresses(
         &self,
         keys: impl IntoIterator<Item = FullHash> + Send + Sync,
-        height: u32,
     ) -> anyhow::Result<HashMap<FullHash, String>> {
-        let mut counter = 0;
-        while *self.last_indexed_address_height.read().await < height {
-            if counter > 100 {
-                anyhow::bail!("Something went wrong with the addresses");
-            }
-
-            counter += 1;
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-
         let keys = keys.into_iter().collect::<HashSet<_>>();
 
         Ok(self

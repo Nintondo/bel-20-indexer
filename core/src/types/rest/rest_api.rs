@@ -1,4 +1,4 @@
-use crate::interfaces::server::AddressesLoader;
+use crate::interfaces::server::{AddressesLoader, DBPort};
 use crate::types::full_hash::FullHash;
 use crate::types::rest::rest_utils;
 use crate::types::server::{AddressTokenIdEvent, HistoryValueEvent, TokenHistoryEvent};
@@ -10,6 +10,7 @@ use bellscoin::{BlockHash, Txid};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
+use dutils::error::ContextWrapper;
 use validator::Validate;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -109,7 +110,7 @@ impl History {
             .into_iter()
             .flatten();
 
-        let addresses = addresses_loader.load_addresses(keys, height).await?;
+        let addresses = addresses_loader.load_addresses(keys).await?;
 
         Ok(Self {
             height,
@@ -120,6 +121,26 @@ impl History {
                 tick: address_token.token,
             },
         })
+    }
+}
+
+#[derive(Serialize)]
+pub struct AddressHistory {
+    #[serde(flatten)]
+    pub history: History,
+    pub created: u32,
+}
+
+impl AddressHistory {
+    pub async fn new(
+        height: u32,
+        action: TokenHistoryDB,
+        address_token: crate::types::structs::AddressTokenId,
+        server: &(impl DBPort + AddressesLoader),
+    ) -> anyhow::Result<Self> {
+        let history = History::new(height, action, address_token, server).await?;
+        let created = server.get_db().block_info.get(height).anyhow()?.created;
+        Ok(Self { history, created })
     }
 }
 

@@ -40,11 +40,10 @@ pub trait ClientPort<T> {
     fn get_client(&self) -> T;
 }
 
-pub trait AddressesLoader {
+pub trait AddressesLoader { //todo fix height
     fn load_addresses(
         &self,
         keys: impl IntoIterator<Item = FullHash> + Send + Sync,
-        height: u32,
     ) -> impl std::future::Future<Output = anyhow::Result<HashMap<FullHash, String>>>
     + Send
     + Sync;

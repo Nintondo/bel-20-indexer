@@ -10,7 +10,7 @@ use tracing::{info, warn};
 
 
 fn main() {
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
     utils::init_logger();
 
     dbg!(

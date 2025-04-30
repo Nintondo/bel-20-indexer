@@ -27,7 +27,7 @@ impl<T> Clone for EventSender<T> {
 
 impl<T> Handler for EventSender<T>
 where
-    T: AddressesLoader +  Send + Sync + 'static,
+    T: AddressesLoader + Send + Sync + 'static,
 {
     async fn run(&mut self) -> anyhow::Result<()> {
         'outer: loop {
@@ -63,11 +63,7 @@ where
                 .flatten()
                 .collect_vec();
 
-            let addresses = self
-                .server
-                .as_ref()
-                .load_addresses(keys)
-                .await?;
+            let addresses = self.server.load_addresses(keys).await?;
 
             for (k, v) in events {
                 self.event_tx

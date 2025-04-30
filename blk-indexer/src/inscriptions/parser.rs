@@ -1,4 +1,7 @@
 use crate::server::Server;
+use application::inscriptions::searcher::InscriptionSearcher;
+use application::inscriptions::structs::{Inscription, ParsedInscription};
+use application::inscriptions::utils::load_prevouts_for_block;
 use application::token_cache::{InscriptionTemplate, TokenCache};
 use application::{DEFAULT_HASH, MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, START_HEIGHT};
 use bellscoin::{OutPoint, Transaction, TxOut};
@@ -11,12 +14,10 @@ use core_utils::types::server::ServerEvent;
 use core_utils::types::structs::{
     AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB, TokenMetaDB,
 };
-use core_utils::{NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS, OP_RETURN_HASH};
+use core_utils::types::threads::block_info::BlockInfo;
+use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS, OP_RETURN_HASH};
 use itertools::Itertools;
-use application::inscriptions::searcher::InscriptionSearcher;
-use application::inscriptions::structs::{Inscription, ParsedInscription};
-use application::inscriptions::utils::load_prevouts_for_block;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -129,7 +130,12 @@ impl InitialIndexer {
             cache.lock().new_block(block_height, last_history_id);
         }
 
-        server.db.block_hashes.set(block_height, current_hash);
+        let block_info = BlockInfo {
+            created: block.header.time,
+            hash: current_hash,
+        };
+
+        server.db.block_info.set(block_height, block_info);
 
         if reorg_cache.is_some() {
             debug!("Syncing block: {} ({})", current_hash, block_height);
@@ -144,26 +150,16 @@ impl InitialIndexer {
             .get(prev_block_height)
             .unwrap_or(*DEFAULT_HASH);
 
-        // store only standard addresses
-        let mut fullhash_to_address = HashMap::<FullHash, String>::new();
-        let rest_addresses = block
-            .txdata
-            .iter()
-            .flat_map(|x| &x.output)
-            .map(|x| {
+        server.db.fullhash_to_address.extend(
+            block.txdata.iter().flat_map(|x| &x.output).filter_map(|x| {
                 let fullhash = x.script_pubkey.compute_script_hash();
-                let address = match bellscoin::address::Payload::from_script(&x.script_pubkey) {
-                    _ if x.script_pubkey.is_op_return() => OP_RETURN_ADDRESS.to_string(),
-                    Ok(payload) => {
-                        let address = server.address_decoder.encode(&payload);
-                        fullhash_to_address.insert(fullhash, address.clone());
-                        address
-                    }
-                    Err(_) => NON_STANDARD_ADDRESS.to_string(),
-                };
-                (fullhash, address)
-            })
-            .collect();
+                let payload = bellscoin::address::Payload::from_script(&x.script_pubkey);
+                if x.script_pubkey.is_op_return() || payload.is_err() {
+                    return None;
+                }
+                Some((fullhash, server.address_decoder.encode(&payload.unwrap())))
+            }),
+        );
 
         let prevouts = block
             .txdata
@@ -191,7 +187,7 @@ impl InitialIndexer {
 
         if block.txdata.len() == 1 {
             server.db.last_block.set((), block_height);
-            let new_proof = Server::generate_history_hash(prev_block_proof, &[], &rest_addresses)?;
+            let new_proof = Server::generate_history_hash(prev_block_proof, &[], &HashMap::new())?;
             server.db.proof_of_history.set(block_height, new_proof);
             server
                 .event_sender
@@ -238,6 +234,8 @@ impl InitialIndexer {
 
         token_cache.load_tokens_data(&server.db)?;
 
+        let mut fullhash_to_load = HashSet::new();
+
         let history = token_cache
             .process_token_actions(reorg_cache.clone(), &server.holders)
             .into_iter()
@@ -246,6 +244,7 @@ impl InitialIndexer {
                 let mut results: Vec<(AddressTokenId, HistoryValue)> = vec![];
                 let token = action.tick();
                 let recipient = action.recipient();
+                fullhash_to_load.insert(recipient);
                 let key = AddressTokenId {
                     address: recipient,
                     token,
@@ -259,6 +258,7 @@ impl InitialIndexer {
                     let sender = action
                         .sender()
                         .expect("Should be in here with the Send action");
+                    fullhash_to_load.insert(sender);
                     last_history_id += 1;
                     results.extend([
                         (
@@ -299,10 +299,25 @@ impl InitialIndexer {
             })
             .collect_vec();
 
+        let rest_addresses = server
+            .db
+            .fullhash_to_address
+            .multi_get(fullhash_to_load.iter())
+            .into_iter()
+            .zip(fullhash_to_load)
+            .map(|(v, k)| {
+                if k.is_op_return_hash() {
+                    return (k, OP_RETURN_ADDRESS.to_string());
+                }
+                if v.is_none() {
+                    return (k, NON_STANDARD_ADDRESS.to_string());
+                }
+                (k, v.unwrap())
+            })
+            .collect::<HashMap<_, _>>();
+
         let new_proof = Server::generate_history_hash(prev_block_proof, &history, &rest_addresses)?;
         server.db.proof_of_history.set(block_height, new_proof);
-
-        server.db.fullhash_to_address.extend(fullhash_to_address);
 
         if let Some(reorg_cache) = reorg_cache.as_ref() {
             let mut cache = reorg_cache.lock();
@@ -332,6 +347,11 @@ impl InitialIndexer {
                 .map(|(k, v)| (k, TokenMetaDB::from(v))),
         );
 
+        server
+            .db
+            .address_token_to_balance
+            .extend(token_cache.token_accounts);
+
         server.db.address_location_to_transfer.extend(
             token_cache
                 .valid_transfers
@@ -341,8 +361,6 @@ impl InitialIndexer {
 
         server.db.last_block.set((), block_height);
         server.db.last_history_id.set((), last_history_id);
-
-        *server.last_indexed_address_height.write().await = block_height;
 
         server
             .event_sender

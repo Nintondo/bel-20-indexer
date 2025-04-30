@@ -10,6 +10,8 @@ use application::inscriptions::searcher::InscriptionSearcher;
 use application::inscriptions::structs::{Inscription, ParsedInscription};
 use application::inscriptions::utils::load_prevouts_for_block;
 use application::token_cache::{InscriptionTemplate, TokenCache};
+use core_utils::types::threads::block_info::BlockInfo;
+
 pub struct ParseInscription<'a> {
     tx: &'a Transaction,
     input_idx: usize,
@@ -118,14 +120,19 @@ impl InitialIndexer {
             cache.lock().new_block(block_height, last_history_id);
         }
 
-        server.db.block_hashes.set(block_height, current_hash);
-
         if reorg_cache.is_some() {
             debug!("Syncing block: {} ({})", current_hash, block_height);
         }
 
         let block = server.client.get_block(&current_hash).await?;
         let created = block.header.time;
+
+        let block_info = BlockInfo {
+            created,
+            hash: current_hash,
+        };
+
+        server.db.block_info.set(block_height, block_info);
 
         match server.addr_tx.send(AddressesToLoad {
             height: block_height,

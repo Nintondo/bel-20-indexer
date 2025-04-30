@@ -1,11 +1,10 @@
-use std::sync::Arc;
-use std::time::Duration;
-use dutils::error::ContextWrapper;
-use dutils::wait_token::WaitToken;
-use tracing::{info, warn};
 use crate::reorg;
 use core_utils::types::server::ServerEvent;
-
+use dutils::error::ContextWrapper;
+use dutils::wait_token::WaitToken;
+use std::sync::Arc;
+use std::time::Duration;
+use tracing::{info, warn};
 
 mod parser;
 
@@ -29,7 +28,8 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
     warn!("Blocks to sync: {}", tip_height - last_block);
 
     {
-        let progress = core_utils::utils::Progress::begin("Indexing", tip_height as _, last_block as _);
+        let progress =
+            core_utils::utils::Progress::begin("Indexing", tip_height as _, last_block as _);
 
         while last_block < tip_height - reorg::REORG_CACHE_MAX_LEN as u32 && !token.is_cancelled() {
             parser::InitialIndexer::handle(last_block, server.clone(), None)
@@ -81,7 +81,7 @@ async fn new_fetcher(
             let mut reorg_counter = 0;
 
             loop {
-                let local_prev_hash = server.db.block_hashes.get(current_height - 1).unwrap();
+                let local_prev_hash = server.db.block_info.get(current_height - 1).unwrap().hash;
                 let prev_block_hash = server
                     .client
                     .get_block_info(&next_hash)
@@ -104,7 +104,9 @@ async fn new_fetcher(
                     .event_sender
                     .send(ServerEvent::Reorg(reorg_counter, current_height))
                     .ok();
-                reorg_cache.lock().restore(server.as_ref(), current_height)?;
+                reorg_cache
+                    .lock()
+                    .restore(server.as_ref(), current_height)?;
             }
 
             parser::InitialIndexer::handle(

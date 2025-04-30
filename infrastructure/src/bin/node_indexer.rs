@@ -12,7 +12,7 @@ use infrastructure::rest;
 use node_indexer::inscriptions;
 
 fn main() {
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
     utils::init_logger();
 
     let indexer_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));

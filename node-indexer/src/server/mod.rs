@@ -1,5 +1,5 @@
 use crate::DEFAULT_HASH;
-use crate::client::AsyncClient;
+use core_utils::utils::client::AsyncClient;
 use application::{PASS, URL, USER};
 use bellscoin::BlockHash;
 use bellscoin::hashes::{Hash, sha256};

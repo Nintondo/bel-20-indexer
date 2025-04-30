@@ -41,3 +41,6 @@ nintypes = { version = "0.1.23", features = ["bellscoin"] }
 electrs_client = { version = "0.1.0" }
 # nintondo-dogecoin = { version = "0.30.6", features = ["serde"] }
 bellscoin = { version = "0.30.5", features = ["serde"] }
+jsonrpc-async = "2.0.2"
+serde_json = "1.0.132"
+bellscoincore-rpc = "0.17.3"

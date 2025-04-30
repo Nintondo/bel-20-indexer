@@ -4,6 +4,7 @@ pub use progress::Progress;
 pub mod logging;
 pub mod progress;
 pub mod retry_on_error;
+pub mod client;
 
 #[macro_export]
 macro_rules! load_env {

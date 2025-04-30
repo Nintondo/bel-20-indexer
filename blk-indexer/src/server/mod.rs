@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 pub mod threads;
 use crate::address_encoder::Decoder;
-use crate::client::AsyncClient;
+use core_utils::utils::client::AsyncClient;
 use application::DEFAULT_HASH;
 use application::{PASS, URL, USER};
 use bellscoin::hashes::{Hash, sha256};

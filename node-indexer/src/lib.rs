@@ -6,7 +6,6 @@ use bellscoin::{
 use core_utils::load_opt_env;
 use lazy_static::lazy_static;
 
-mod client;
 pub mod inscriptions;
 pub mod reorg;
 pub mod server;

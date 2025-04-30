@@ -22,7 +22,6 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct InscriptionTemplate {
-    // todo maybe move
     pub genesis: InscriptionId,
     pub location: Location,
     pub content_type: Option<String>,

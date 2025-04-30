@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{reorg, server::{threads::address_hash_saver::AddressesToLoad, Server}};
-use application::{MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, START_HEIGHT};
+use crate::{MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, START_HEIGHT};
 use bellscoin::{OutPoint, Transaction, TxOut};
 use core_utils::{interfaces::reorg_cache::ReorgCacheInterface, types::{full_hash::{ComputeScriptHash, FullHash}, location::Location, protocol::TransferProtoDB, structs::{AddressLocation, AddressTokenId, HistoryValue, InscriptionId, TokenHistoryDB}}, OP_RETURN_HASH};
 use itertools::Itertools;

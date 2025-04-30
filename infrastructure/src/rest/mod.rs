@@ -1,7 +1,7 @@
 use axum::routing::get;
 use axum::routing::post;
 use core_utils::interfaces::server::{
-    AddressesLoader, DBPort, EventSenderPort, HoldersPort, LastIndexedAddressPort, TokenPort,
+    AddressesLoader, DBPort, EventSenderPort, HoldersPort, TokenPort,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

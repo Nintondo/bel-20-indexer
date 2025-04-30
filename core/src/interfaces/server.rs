@@ -12,7 +12,6 @@ use crate::{
     },
 };
 use std::collections::HashMap;
-use std::pin::Pin;
 use crate::types::full_hash::FullHash;
 
 pub trait DBPort: Send + Sync + 'static {
@@ -40,7 +39,7 @@ pub trait ClientPort<T> {
     fn get_client(&self) -> T;
 }
 
-pub trait AddressesLoader { //todo fix height
+pub trait AddressesLoader {
     fn load_addresses(
         &self,
         keys: impl IntoIterator<Item = FullHash> + Send + Sync,

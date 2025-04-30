@@ -2,7 +2,7 @@ use super::*;
 use crate::reorg;
 use crate::server::Server;
 use application::token_cache::TokenCache;
-use application::{DEFAULT_HASH, NETWORK};
+use crate::{DEFAULT_HASH, NETWORK};
 use bellscoin::hashes::{Hash, sha256};
 use bellscoin::{BlockHash, Txid};
 use core_utils::interfaces::reorg_cache::ReorgCacheInterface;

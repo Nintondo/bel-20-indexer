@@ -8,8 +8,6 @@ use tracing::{info, warn};
 
 mod parser;
 
-use application::inscriptions::envelope::{ParsedEnvelope, RawEnvelope};
-use application::inscriptions::tag::Tag;
 pub use application::inscriptions::utils::ScriptToAddr;
 
 pub use application::inscriptions::structs::Location;

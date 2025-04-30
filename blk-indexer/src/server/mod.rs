@@ -2,16 +2,16 @@ use crate::inscriptions::load_decoder;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 pub mod threads;
 use crate::address_encoder::Decoder;
 use crate::client::AsyncClient;
-use application::{DEFAULT_HASH, PASS, URL, USER};
+use application::DEFAULT_HASH;
+use application::{PASS, URL, USER};
 use bellscoin::hashes::{Hash, sha256};
 use bellscoin::{PublicKey, ScriptBuf};
 use core_utils::db::tables::DB;
 use core_utils::interfaces::server::{
-    AddressesLoader, ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort, TokenPort
+    AddressesLoader, ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, TokenPort
 };
 use core_utils::types::full_hash::{ComputeScriptHash, FullHash};
 use core_utils::types::holders::Holders;

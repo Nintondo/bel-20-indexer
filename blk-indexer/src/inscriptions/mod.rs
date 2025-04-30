@@ -1,5 +1,6 @@
 use super::*;
-use application::{BLK_DIR, BLOCKCHAIN, NETWORK};
+use crate::{BLK_DIR, BLOCKCHAIN};
+use application::NETWORK;
 use bellscoin::Network;
 use core_utils::types::server::ServerEvent;
 use core_utils::utils::Progress;

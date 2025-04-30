@@ -1,4 +1,5 @@
-use application::{DEFAULT_HASH, PASS, URL, USER};
+use crate::DEFAULT_HASH;
+use application::{PASS, URL, USER};
 use bellscoin::hashes::{Hash, sha256};
 use core_utils::db::tables::DB;
 use core_utils::interfaces::server::AddressesLoader;
@@ -15,7 +16,6 @@ use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use dutils::wait_token::WaitToken;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
 
 pub mod threads;
 

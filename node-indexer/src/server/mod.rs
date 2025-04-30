@@ -1,7 +1,8 @@
+use crate::DEFAULT_HASH;
 use crate::client::AsyncClient;
-use application::{DEFAULT_HASH, PASS, URL, USER};
-use bellscoin::hashes::{sha256, Hash};
+use application::{PASS, URL, USER};
 use bellscoin::BlockHash;
+use bellscoin::hashes::{Hash, sha256};
 use core_utils::db::tables::DB;
 use core_utils::interfaces::server::AddressesLoader;
 use core_utils::interfaces::server::{
@@ -17,7 +18,6 @@ use core_utils::{IsOpReturnHash, NON_STANDARD_ADDRESS, OP_RETURN_ADDRESS};
 use dutils::wait_token::WaitToken;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
 use threads::address_hash_saver::AddressesToLoad;
 
 pub mod threads;

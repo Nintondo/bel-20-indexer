@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use application::NETWORK;
+use crate::NETWORK;
 use bellscoin::ScriptBuf;
 use core_utils::types::full_hash::ComputeScriptHash;
 

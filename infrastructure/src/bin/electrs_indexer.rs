@@ -2,9 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 use application::SERVER_URL;
 use core_utils::{
-    interfaces::server::{ClientPort, DBPort},
+    interfaces::server::ClientPort,
     types::{
-        loaded_blocks::LoadedBlocks,
         server::ServerEvent,
         structs::{AddressTokenId, HistoryValue},
         token_history::TokenHistoryData,
@@ -14,9 +13,9 @@ use core_utils::{
 use dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken};
 use electrs_indexer::{inscriptions::main_loop, server::Server};
 use futures::future::join_all;
+use infrastructure::rest;
 use tokio::select;
 use tracing::{info, warn};
-use infrastructure::rest;
 
 fn main() {
     let version = env!("CARGO_PKG_VERSION");
@@ -77,7 +76,7 @@ async fn indexer_main(
 
             anyhow::Result::Ok(())
         }
-            .spawn()
+        .spawn()
     };
 
     let client = Arc::new(
@@ -93,11 +92,7 @@ async fn indexer_main(
     let result = join_all([
         signal_handler,
         thread_server
-            .run_threads(
-                server.token.clone(),
-                rx,
-                tx,
-            )
+            .run_threads(server.token.clone(), rx, tx)
             .spawn(),
         async move {
             let main_task = main_loop(server.token.clone(), server.clone(), client)
@@ -110,9 +105,9 @@ async fn indexer_main(
 
             main_task
         }
-            .spawn(),
+        .spawn(),
     ])
-        .await;
+    .await;
 
     let _: Vec<_> = result
         .into_iter()

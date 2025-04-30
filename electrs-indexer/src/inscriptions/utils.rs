@@ -1,4 +1,4 @@
-use application::NETWORK;
+use crate::NETWORK;
 use bellscoin::{Address, Network, ScriptBuf};
 use std::str::FromStr;
 

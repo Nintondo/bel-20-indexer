@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
-use application::{BLK_DIR, BLOCKCHAIN, DEFAULT_HASH, MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT, NETWORK, PASS, SERVER_URL, START_HEIGHT, URL, USER};
+use application::{ DEFAULT_HASH,  NETWORK, PASS, SERVER_URL,  URL, USER};
+use blk_indexer::{BLK_DIR, BLOCKCHAIN,MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT,START_HEIGHT};
 use blk_indexer::{inscriptions, server::Server};
 use core_utils::utils;
 use dutils::{async_thread::Spawn, error::ContextWrapper, wait_token::WaitToken};

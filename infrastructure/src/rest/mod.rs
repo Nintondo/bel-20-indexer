@@ -160,9 +160,10 @@ async fn status<T: DBPort + ?Sized>(State(server): State<Arc<T>>) -> ApiResult<i
 
     let last_block_hash = server
         .get_db()
-        .block_hashes
+        .block_info
         .get(last_height)
-        .internal("Failed to get last block hash")?;
+        .internal("Failed to get last block hash")?
+        .hash;
 
     let data = rest_api::Status {
         height: last_height,

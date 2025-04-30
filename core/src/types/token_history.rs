@@ -209,8 +209,8 @@ impl From<electrs_client::BlockMeta> for BlockHeader {
     fn from(v: electrs_client::BlockMeta) -> Self {
         Self {
             number: v.height,
-            hash: v.block_hash.into(),
-            prev_hash: v.prev_block_hash.into(),
+            hash: v.block_hash,
+            prev_hash: v.prev_block_hash,
         }
     }
 }
@@ -219,8 +219,8 @@ impl From<&BlockHeader> for electrs_client::BlockMeta {
     fn from(v: &BlockHeader) -> Self {
         Self {
             height: v.number,
-            block_hash: v.hash.into(),
-            prev_block_hash: v.prev_hash.into(),
+            block_hash: v.hash,
+            prev_block_hash: v.prev_hash,
         }
     }
 }

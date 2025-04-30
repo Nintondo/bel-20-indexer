@@ -129,7 +129,7 @@ impl ReorgCache {
                 .get_db()
                 .last_history_id
                 .set((), data.last_history_id);
-            server.get_db().block_hashes.remove(height);
+            server.get_db().block_info.remove(height);
 
             {
                 let mut to_remove_deployed: Vec<LowerCaseTokenTick> = vec![];

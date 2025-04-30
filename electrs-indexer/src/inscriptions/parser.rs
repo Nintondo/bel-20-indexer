@@ -29,6 +29,7 @@ use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use tracing::debug;
+use core_utils::types::threads::block_info::BlockInfo;
 
 pub struct InitialIndexer;
 
@@ -172,6 +173,7 @@ impl InitialIndexer {
                 block.block_info.height,
                 BlockHistory {
                     block_hash: block.block_info.block_hash,
+                    created: block.block_info.created,
                     proof: new_block_proof,
                     history: block_history,
                 },
@@ -250,12 +252,14 @@ impl InitialIndexer {
                 .get_db()
                 .proof_of_history
                 .set(height, block_history.proof);
+            
+            let block_info = BlockInfo {
+                created: block_history.created,
+                hash: block_history.block_hash,
+            };
 
             // write block hash
-            server
-                .get_db()
-                .block_hashes
-                .set(height, block_history.block_hash);
+            server.get_db().block_info.set(height, block_info);
         }
 
         server.get_db().last_history_id.set((), last_history_id);
@@ -613,6 +617,7 @@ impl BatchCache {
 
 struct BlockHistory {
     pub block_hash: BlockHash,
+    pub created: u32,
     pub proof: sha256::Hash,
     pub history: Vec<(AddressTokenId, HistoryValue)>,
 }

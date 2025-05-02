@@ -19,6 +19,5 @@ lazy_static = "1.5.0"
 kanal = "0.1.0-pre8"
 
 electrs_client = { version = "0.1.0" }
-#nintondo-dogecoin = { version = "0.30.6", features = ["serde"] }
 dutils = "0.1.7"
 bellscoin = "0.30.5"

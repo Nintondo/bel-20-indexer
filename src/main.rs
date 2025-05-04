@@ -89,12 +89,13 @@ lazy_static! {
     static ref NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);
-    static ref MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT: usize =
-        match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
-            (Network::Bellscoin, "bells") => 133_000,
-            (_, "doge") => usize::MAX,
-            _ => 0,
-        };
+    // multiple input inscription scan activation
+    static ref JUBILEE_HEIGHT: usize = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
+        (Network::Bellscoin, "bells") => 133_000,
+        (_, "doge") => usize::MAX,
+        _ => 0,
+    };
+    // first token block height
     static ref START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
         (Network::Bellscoin, "bells") => 26_371,
         (Network::Bellscoin, "doge") => 4_609_723,
@@ -117,7 +118,7 @@ fn main() {
         &*PASS,
         &*BLOCKCHAIN,
         *NETWORK,
-        *MULTIPLE_INPUT_BEL_20_ACTIVATION_HEIGHT,
+        *JUBILEE_HEIGHT,
         *START_HEIGHT,
         &*SERVER_URL,
         *DEFAULT_HASH

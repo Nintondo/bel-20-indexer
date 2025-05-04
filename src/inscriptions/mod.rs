@@ -12,7 +12,7 @@ mod envelope;
 mod media;
 mod parser;
 mod searcher;
-mod structs;
+pub mod structs;
 mod tag;
 mod utils;
 

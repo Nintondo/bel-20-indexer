@@ -1,3 +1,5 @@
+use bellscoin::Script;
+
 use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,29 +22,33 @@ pub struct Inscription {
 pub enum ParsedInscription {
     None,
     Partial,
-    Complete(Box<Inscription>),
+    Single(Box<Inscription>),
+    Many(Vec<Box<Inscription>>),
 }
 
 impl Inscription {
-    pub fn from_transaction(tx: &Transaction, input_idx: usize) -> Vec<ParsedInscription> {
-        if tx.input.is_empty() {
-            return vec![ParsedInscription::None];
-        }
+    pub fn from_parts(partials: &[Part], vout: u32) -> ParsedInscription {
+        let mut sig_scripts = Vec::with_capacity(partials.len());
 
-        if let Some(v) = tx.input[input_idx].witness.tapscript() {
-            if let Result::Ok(v) = RawEnvelope::from_tapscript(v, input_idx) {
-                return v
+        if partials.len() == 1 {
+            let part = partials.first().expect("Part must exist, checked above");
+            let script = Script::from_bytes(&part.script_buffer);
+            if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vout) {
+                let data = v
                     .into_iter()
-                    .map(ParsedEnvelope::from)
-                    .map(|x| ParsedInscription::Complete(Box::new(x.payload)))
+                    .map(|x| ParsedEnvelope::from(x))
+                    .map(|x| Box::new(x.payload))
                     .collect();
+                return ParsedInscription::Many(data);
             }
-            return vec![ParsedInscription::None];
+            return ParsedInscription::None;
         }
 
-        vec![InscriptionParser::parse(vec![tx.input[input_idx]
-            .script_sig
-            .as_script()])]
+        for partial in partials {
+            sig_scripts.push(Script::from_bytes(&partial.script_buffer));
+        }
+
+        InscriptionParser::parse(sig_scripts)
     }
 
     pub fn into_body(self) -> Option<Vec<u8>> {
@@ -143,7 +149,7 @@ impl InscriptionParser {
                         unrecognized_even_field: false,
                     };
 
-                    return ParsedInscription::Complete(Box::new(inscription));
+                    return ParsedInscription::Single(Box::new(inscription));
                 }
 
                 if push_datas.len() < 2 {
@@ -346,6 +352,63 @@ impl FromStr for Location {
         Ok(Self {
             offset,
             outpoint: OutPoint { txid, vout },
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct Part {
+    pub is_tapscript: bool,
+    pub script_buffer: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct Partials {
+    pub inscription_index: u32,
+    pub genesis_txid: Txid,
+    pub parts: Vec<Part>,
+}
+
+impl db::Pebble for Partials {
+    type Inner = Self;
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        let mut buffer = vec![];
+        buffer.extend(v.inscription_index.to_be_bytes().to_vec());
+        buffer.extend_from_slice(&bellscoin::consensus::serialize(&v.genesis_txid));
+
+        for part in &v.parts {
+            buffer.extend([part.is_tapscript as u8]);
+            let script_len = part.script_buffer.len() as u32;
+            buffer.extend(script_len.to_be_bytes().to_vec());
+            buffer.extend(part.script_buffer.clone());
+        }
+
+        Cow::Owned(buffer)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let inscription_index = u32::from_be_bytes(v[..4].try_into()?);
+        let genesis_txid: Txid = bellscoin::consensus::deserialize(&v[4..36])?;
+        let mut parts = vec![];
+        let mut offset = 4 + 32;
+        while offset != v.len() {
+            let is_tapscript = v[offset] == 1;
+            offset += 1;
+            let script_len = u32::from_be_bytes(v[offset..offset + 4].try_into()?) as usize;
+            offset += 4;
+            let script_buffer = v[offset..offset + script_len].to_vec();
+
+            parts.push(Part {
+                is_tapscript,
+                script_buffer,
+            });
+        }
+
+        Ok(Self {
+            genesis_txid,
+            inscription_index,
+            parts,
         })
     }
 }

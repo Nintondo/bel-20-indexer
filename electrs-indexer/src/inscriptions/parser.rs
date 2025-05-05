@@ -1,8 +1,8 @@
 use super::*;
 use crate::reorg;
 use crate::server::Server;
-use application::token_cache::TokenCache;
 use crate::{DEFAULT_HASH, NETWORK};
+use application::token_cache::TokenCache;
 use bellscoin::hashes::{Hash, sha256};
 use bellscoin::{BlockHash, Txid};
 use core_utils::interfaces::reorg_cache::ReorgCacheInterface;
@@ -21,6 +21,7 @@ use core_utils::types::structs::{
     AddressLocation, AddressToken, AddressTokenId, HistoryValue, InscriptionId, LowerCaseTokenTick,
     TokenAction, TokenBalance, TokenHistoryDB, TokenMeta, TokenMetaDB,
 };
+use core_utils::types::threads::block_info::BlockInfo;
 use core_utils::types::token_history::{
     ParsedTokenActionRest, ParsedTokenAddress, ParsedTokenHistoryData,
 };
@@ -29,24 +30,15 @@ use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use tracing::debug;
-use core_utils::types::threads::block_info::BlockInfo;
 
 pub struct InitialIndexer;
 
 impl InitialIndexer {
-    pub async fn handle_batch<T>(
+    pub async fn handle_batch(
         token_history_data: Vec<ParsedTokenHistoryData>,
-        server: &T,
+        server: &Server,
         reorg_cache: Option<Arc<parking_lot::Mutex<reorg::ReorgCache>>>,
-    ) where
-        T: DBPort
-            + HoldersPort
-            + LastIndexedAddressPort
-            + EventSenderPort
-            + TokenPort
-            + HistoryHashGenerator
-            + ?Sized,
-    {
+    ) {
         // used to get all data from db and generate keys
         let batch_cache = BatchCache::load_cache(server, &token_history_data);
 
@@ -166,8 +158,9 @@ impl InitialIndexer {
                 })
                 .collect();
 
-            let new_block_proof = Server::generate_history_hash(prev_proof, &block_history, &rest_addresses)
-                .expect("Must generate history proof");
+            let new_block_proof =
+                Server::generate_history_hash(prev_proof, &block_history, &rest_addresses)
+                    .expect("Must generate history proof");
 
             block_height_to_history.insert(
                 block.block_info.height,
@@ -252,7 +245,7 @@ impl InitialIndexer {
                 .get_db()
                 .proof_of_history
                 .set(height, block_history.proof);
-            
+
             let block_info = BlockInfo {
                 created: block_history.created,
                 hash: block_history.block_hash,

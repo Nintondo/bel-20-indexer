@@ -6,8 +6,9 @@ pub mod parser;
 mod utils;
 
 use crate::reorg;
+use crate::server::Server;
 use core_utils::interfaces::server::{
-    ClientPort, DBPort, EventSenderPort, HistoryHashGenerator, HoldersPort, LastIndexedAddressPort,
+    DBPort, EventSenderPort,
     TokenPort,
 };
 use core_utils::types::loaded_blocks::LoadedBlocks;
@@ -16,29 +17,19 @@ use core_utils::types::structs::BlockHeader;
 use core_utils::types::token_history::{
     InscriptionsTokenHistory, ParsedTokenHistoryData, TokenHistoryData,
 };
-use core_utils::utils::retry_on_error::retry_on_error;
 use core_utils::utils::Progress;
+use core_utils::utils::retry_on_error::retry_on_error;
 use dutils::error::ContextWrapper;
 use dutils::wait_token::WaitToken;
 use electrs_client::{BlockMeta, Update};
 use tracing::{info, warn};
 pub use utils::ScriptToAddr;
 
-pub async fn main_loop<T>(
+pub async fn main_loop(
     token: WaitToken,
-    server: Arc<T>,
+    server: Arc<Server>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
-) -> anyhow::Result<()>
-where
-    T: DBPort
-        + HoldersPort
-        + LastIndexedAddressPort
-        + EventSenderPort
-        + ClientPort<electrs_client::Config>
-        + TokenPort
-        + HistoryHashGenerator
-        + ?Sized,
-{
+) -> anyhow::Result<()> {
     let last_electrs_block =
         retry_on_error(30, 20, &token, || client.get_last_electrs_block_meta()).await?;
 
@@ -54,13 +45,7 @@ where
             })
             .await?;
 
-            initial_indexer(
-                token.clone(),
-                server.clone(),
-                client.clone(),
-                end_block,
-            )
-            .await?;
+            initial_indexer(token.clone(), server.clone(), client.clone(), end_block).await?;
         }
     }
 
@@ -97,21 +82,12 @@ where
     indexer_result
 }
 
-async fn initial_indexer<T>(
+async fn initial_indexer(
     token: WaitToken,
-    server: Arc<T>,
+    server: Arc<Server>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
     end: BlockMeta,
-) -> anyhow::Result<()>
-where
-    T: DBPort
-        + HoldersPort
-        + LastIndexedAddressPort
-        + EventSenderPort
-        + TokenPort
-        + HistoryHashGenerator
-        + ?Sized,
-{
+) -> anyhow::Result<()> {
     info!("Start Initial Indexer");
 
     let last_electrs_block = client.get_last_electrs_block_meta().await?;
@@ -218,21 +194,12 @@ where
     Ok(())
 }
 
-async fn indexer<T>(
+async fn indexer(
     token: WaitToken,
-    server: Arc<T>,
+    server: Arc<Server>,
     client: Arc<electrs_client::Client<TokenHistoryData>>,
     reorg_cache: Arc<parking_lot::Mutex<reorg::ReorgCache>>,
-) -> anyhow::Result<()>
-where
-    T: DBPort
-        + HoldersPort
-        + LastIndexedAddressPort
-        + EventSenderPort
-        + TokenPort
-        + HistoryHashGenerator
-        + ?Sized,
-{
+) -> anyhow::Result<()> {
     info!("Start Indexer");
 
     let mut repeater = token.repeat_until_cancel(Duration::from_secs(3));

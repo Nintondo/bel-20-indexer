@@ -14,7 +14,7 @@ use blk_recap::BlkRecap;
 use kanal::Sender;
 
 mod blk_index_to_blk_path;
-mod blk_index_to_blk_recap; 
+mod blk_index_to_blk_recap;
 mod blk_metadata;
 mod blk_recap;
 mod block_state;
@@ -46,8 +46,8 @@ impl InnerBlockHash for bellscoin::Block {
     }
 }
 
-pub(crate) type Height = u32;
-pub(crate) type Confirmations = i32;
+pub type Height = u32;
+pub type Confirmations = i32;
 
 pub trait NodeClient: Send + Sync {
     type Error: std::fmt::Debug;

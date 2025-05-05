@@ -1,6 +1,6 @@
 use super::*;
-use crate::blk::Parser;
 use application::{PASS, URL, USER};
+use blk_loader::Parser;
 use dutils::async_thread::Handler;
 use kanal::Sender;
 use parking_lot::Mutex;

@@ -1,0 +1,47 @@
+name: Build and copy brc-20-indexer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**/*'
+      
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create Image Tarball for brc-20-indexer
+      run: |
+        mkdir -p artifacts/
+        docker build --tag brc-20-indexer --file Dockerfile ./
+        docker save --output artifacts/brc-20-indexer.tar brc-20-indexer
+
+    - name: Set up SSH
+      run: |
+        mkdir -p ~/.ssh/
+        touch ~/.ssh/known_hosts
+        ssh-keyscan ${{ secrets.BELLS_TESTNET_HOST_1 }} >> ~/.ssh/known_hosts
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        eval $(ssh-agent)
+
+    - name: Copy Files to Servers
+      run: |
+        scp artifacts/brc-20-indexer.tar ${{ secrets.BELLS_TESTNET_HOST_1_USERNAME }}@${{ secrets.BELLS_TESTNET_HOST_1 }}:/opt/bells-testnet/artifacts/brc-20-indexer.tar
+
+    - name: Deploy on Bells Testnet
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.BELLS_TESTNET_HOST_1 }}
+        username: ${{ secrets.BELLS_TESTNET_HOST_1_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /opt/bells-testnet/artifacts/
+          docker load --input brc-20-indexer.tar
+          cd ../
+          docker compose up -d --force-recreate bells-testnet-indexer

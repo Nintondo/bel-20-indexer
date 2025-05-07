@@ -1,4 +1,4 @@
-name: Build and copy Doge-indexer
+name: Build and copy drc-20-indexer for Doge Testnet
 
 on:
   workflow_dispatch:

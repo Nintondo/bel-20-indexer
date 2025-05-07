@@ -1,4 +1,4 @@
-name: Build and copy brc-20-indexer
+name: Build and copy brc-20-indexer for Bells Testnet
 
 on:
   workflow_dispatch:

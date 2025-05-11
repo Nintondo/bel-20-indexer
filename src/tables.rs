@@ -10,6 +10,7 @@ generate_db_code! {
     block_info: u32 => BlockInfo,
     prevouts: UsingConsensus<OutPoint> => UsingConsensus<TxOut>,
     outpoint_to_partials: UsingConsensus<OutPoint> => Partials,
+    outpoint_to_inscription_offsets: UsingConsensus<OutPoint> => UsingSerde<HashSet<u64>>,
     last_block: () => u32,
     last_history_id: () => u64,
     proof_of_history: u32 => UsingConsensus<sha256::Hash>,
@@ -42,8 +43,8 @@ impl DB {
                 keys.contains(&AddressLocation {
                     address: k.address,
                     location: Location {
-                        offset: 0,
                         outpoint: k.location.outpoint,
+                        offset: 0,
                     },
                 })
                 .then_some((k.location, (k.address, v)))

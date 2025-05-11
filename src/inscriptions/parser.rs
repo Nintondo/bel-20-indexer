@@ -52,8 +52,6 @@ impl InitialIndexer {
             1
         };
 
-        let mut transfers = vec![];
-
         let coinbase_value = txs
             .first()
             .map(|coinbase| {
@@ -87,38 +85,64 @@ impl InitialIndexer {
                 .expect("failed to find all txos to calculate offsets");
 
             for (input_index, txin) in tx.input.iter().enumerate() {
-                transfers.extend(
-                    token_cache
-                        .valid_transfers
-                        .range(
-                            Location {
-                                outpoint: txin.previous_output,
-                                offset: 0,
-                            }..=Location {
-                                outpoint: txin.previous_output,
-                                offset: u64::MAX,
-                            },
-                        )
-                        .map(|(k, (address, proto))| (*k, (*address, proto.clone()))),
-                );
-
                 // handle inscription moves
                 if let Some(inscription_offsets) =
                     inscription_outpoint_to_offsets.remove(&txin.previous_output)
                 {
                     for inscription_offset in inscription_offsets {
+                        let old_location = Location {
+                            outpoint: txin.previous_output,
+                            offset: inscription_offset,
+                        };
+
+                        let is_token_transfer_move =
+                            token_cache.all_transfers.contains_key(&old_location);
+
                         let offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
                         match InscriptionSearcher::get_output_index_by_input(offset, &tx.output) {
                             Ok((new_vout, new_offset)) => {
+                                let new_outpoint = OutPoint {
+                                    txid,
+                                    vout: new_vout,
+                                };
+
                                 inscription_outpoint_to_offsets
-                                    .entry(OutPoint {
-                                        txid,
-                                        vout: new_vout,
-                                    })
+                                    .entry(new_outpoint)
                                     .or_default()
                                     .insert(new_offset);
+
+                                // handle move of token transfer
+                                if is_token_transfer_move {
+                                    if tx.output[new_vout as usize].script_pubkey.is_op_return() {
+                                        token_cache.burned_transfer(old_location, txid, new_vout);
+                                    } else {
+                                        let owner = tx.output[new_vout as usize]
+                                            .script_pubkey
+                                            .compute_script_hash();
+                                        token_cache.transferred(
+                                            old_location,
+                                            owner,
+                                            txid,
+                                            new_vout,
+                                        );
+                                    };
+                                }
                             }
-                            _ => todo!(), // TODO handle leak
+                            _ => {
+                                // handle leaked move of token transfer
+                                if is_token_transfer_move {
+                                    // because of token protocol leaked token amount
+                                    // comeback to owner
+                                    let recipient = prevouts
+                                        .get(&txin.previous_output)
+                                        .expect("Owner of token transfer must exist")
+                                        .script_pubkey
+                                        .compute_script_hash();
+                                    token_cache.transferred(old_location, recipient, tx.txid(), 0);
+                                }
+
+                                todo!() // TODO handle leak
+                            }
                         }
                     }
                 }
@@ -198,17 +222,7 @@ impl InitialIndexer {
                         }
 
                         // handle token deploy|mint|transfer creation
-                        if let Some(proto) =
-                            token_cache.parse_token_action(&inscription_template, height, created)
-                        {
-                            transfers.push((
-                                inscription_template.location,
-                                (
-                                    inscription_template.owner,
-                                    TransferProtoDB::from_proto(proto, height),
-                                ),
-                            ));
-                        }
+                        token_cache.parse_token_action(&inscription_template, height, created);
                     }
                 }
             }
@@ -307,21 +321,29 @@ impl InitialIndexer {
             });
         }
 
-        token_cache.valid_transfers.extend(
-            server.db.load_transfers(
-                prevouts
-                    .iter()
-                    .map(|(k, v)| AddressLocation {
-                        address: v.script_pubkey.compute_script_hash(),
-                        location: Location {
-                            outpoint: *k,
-                            offset: 0,
-                        },
-                    })
-                    .collect(),
-            ),
-        );
+        // init token cache
+        {
+            token_cache.valid_transfers.extend(
+                server.db.load_transfers(
+                    prevouts
+                        .iter()
+                        .map(|(k, v)| AddressLocation {
+                            address: v.script_pubkey.compute_script_hash(),
+                            location: Location {
+                                outpoint: *k,
+                                offset: 0,
+                            },
+                        })
+                        .collect(),
+                ),
+            );
 
+            token_cache.all_transfers = token_cache
+                .valid_transfers
+                .iter()
+                .map(|(location, (_, proto))| (*location, proto.clone()))
+                .collect();
+        }
         Self::parse_block(
             &server,
             block_height,

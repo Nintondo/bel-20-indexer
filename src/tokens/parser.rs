@@ -139,25 +139,21 @@ impl TokenCache {
         }
     }
 
-    /// Parses token action from the InscriptionTemplate and returns bool if it is minted or not.
+    /// Parses token action from the InscriptionTemplate.
     pub fn parse_token_action(
         &mut self,
         inc: &InscriptionTemplate,
         height: u32,
         created: u32,
     ) -> Option<TransferProto> {
-        if inc.owner.is_op_return_hash() {
+        // skip to not add invalid token creation in token_cache
+        if inc.owner.is_op_return_hash() || inc.leaked {
             return None;
         }
 
         let Ok(brc4) = Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?) else {
             return None;
         };
-
-        // skip to not add invalid token creation in token_cache
-        if inc.leaked {
-            return None;
-        }
 
         match brc4 {
             Brc4::Deploy { proto } => {

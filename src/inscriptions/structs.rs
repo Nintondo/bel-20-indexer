@@ -22,8 +22,8 @@ pub struct Inscription {
 pub enum ParsedInscription {
     None,
     Partial,
-    Single(Box<Inscription>),
-    Many(Vec<Box<Inscription>>),
+    Single(Inscription),
+    Many(Vec<Inscription>),
 }
 
 impl Inscription {
@@ -36,11 +36,13 @@ impl Inscription {
             if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vout) {
                 let data = v
                     .into_iter()
-                    .map(|x| ParsedEnvelope::from(x))
-                    .map(|x| Box::new(x.payload))
+                    .map(ParsedEnvelope::from)
+                    .map(|x| x.payload)
                     .collect();
+
                 return ParsedInscription::Many(data);
             }
+
             return ParsedInscription::None;
         }
 
@@ -149,7 +151,7 @@ impl InscriptionParser {
                         unrecognized_even_field: false,
                     };
 
-                    return ParsedInscription::Single(Box::new(inscription));
+                    return ParsedInscription::Single(inscription);
                 }
 
                 if push_datas.len() < 2 {

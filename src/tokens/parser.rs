@@ -1,9 +1,6 @@
 use crate::Fixed128;
 
-use super::*;
-
-use super::proto::*;
-use super::structs::*;
+use super::{proto::*, structs::*, *};
 
 type Tickers = HashSet<OriginalTokenTick>;
 type Users = HashSet<(FullHash, OriginalTokenTick)>;

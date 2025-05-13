@@ -3,7 +3,7 @@ name: Deploy service for Doge Testnet
 on:
   workflow_dispatch:
   repository_dispatch:
-    types: [Deploy_Bells]
+    types: [Deploy-Bells]
 
 jobs:
   deployment:

@@ -31,6 +31,7 @@ jobs:
         context: ./
         file: ./Dockerfile
         push: true
+        no-cache: true
         tags: |
           ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/bel-20-indexer-bells:${{ github.sha }}
           ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/bel-20-indexer-bells:latest

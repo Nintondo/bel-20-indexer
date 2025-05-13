@@ -40,4 +40,4 @@ jobs:
       with:
         token: ${{ secrets.GIT_ACCESS_TOKEN }}
         repository: ${{ github.repository }}
-        event-type: Deploy
+        event-type: Deploy_Doge

@@ -33,6 +33,6 @@ RUN apt update -y && \
 
 COPY --from=builder /usr/src/app/target/release/bel_20_node .
 
-EXPOSE 3001
+EXPOSE 8000
 
 ENTRYPOINT ["./bel_20_node"]

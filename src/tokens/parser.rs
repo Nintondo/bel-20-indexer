@@ -242,7 +242,7 @@ impl TokenCache {
             .filter_map(|(v, k)| v.map(|x| (k, TokenMeta::from(x))))
             .collect::<HashMap<_, _>>();
 
-        let keys = users
+        let keys: Vec<_> = users
             .into_iter()
             .filter_map(|(address, tick)| {
                 Some(AddressToken {
@@ -250,7 +250,7 @@ impl TokenCache {
                     token: self.tokens.get(&tick.into())?.proto.tick,
                 })
             })
-            .collect_vec();
+            .collect();
 
         self.token_accounts = db.load_token_accounts(keys);
 

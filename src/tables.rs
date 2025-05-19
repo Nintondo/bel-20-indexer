@@ -34,7 +34,7 @@ impl DB {
 
     pub fn load_transfers(
         &self,
-        keys: BTreeSet<AddressLocation>,
+        keys: HashSet<AddressLocation>,
     ) -> Vec<(Location, (FullHash, TransferProtoDB))> {
         let result = self
             .address_location_to_transfer
@@ -50,16 +50,6 @@ impl DB {
                 .then_some((k.location, (k.address, v)))
             })
             .collect_vec();
-
-        self.address_location_to_transfer
-            .remove_batch(
-                result
-                    .iter()
-                    .map(|(location, (address, _))| AddressLocation {
-                        address: *address,
-                        location: *location,
-                    }),
-            );
 
         result
     }

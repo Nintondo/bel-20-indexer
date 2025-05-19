@@ -371,8 +371,8 @@ impl BatchCache {
 
             for inscription in &block.inscriptions {
                 // got txid:vout where token action was happened
-                let txid = Txid::from_slice(&inscription.from_location.outpoint.txid).unwrap();
-                let vout = inscription.from_location.outpoint.vout;
+                let txid = Txid::from_slice(&inscription.to_location.outpoint.txid).unwrap();
+                let vout = inscription.to_location.outpoint.vout;
 
                 match inscription.token {
                     types::ParsedTokenActionRest::Mint { tick, amt } if !inscription.leaked => {

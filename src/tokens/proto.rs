@@ -85,7 +85,7 @@ pub enum Brc4 {
 #[serde(tag = "p")]
 #[serde_as]
 pub enum MintProto {
-    #[serde(rename = "bel-20")]
+    #[serde(rename = "bel-20", alias = "drc-20")]
     Bel20 {
         #[serde(deserialize_with = "bel_20_tick")]
         tick: OriginalTokenTick,
@@ -97,7 +97,7 @@ pub enum MintProto {
 #[serde(tag = "p")]
 #[serde_as]
 pub enum DeployProto {
-    #[serde(rename = "bel-20")]
+    #[serde(rename = "bel-20", alias = "drc-20")]
     Bel20 {
         #[serde(deserialize_with = "bel_20_tick")]
         tick: OriginalTokenTick,
@@ -149,7 +149,7 @@ impl DeployProto {
 #[serde(tag = "p")]
 #[serde_as]
 pub enum TransferProto {
-    #[serde(rename = "bel-20")]
+    #[serde(rename = "bel-20", alias = "drc-20")]
     Bel20 {
         #[serde(deserialize_with = "bel_20_tick")]
         tick: OriginalTokenTick,

@@ -107,13 +107,14 @@ impl TokenCache {
                         }
                         "value cannot contain spaces" => return Err(Brc4ParseErr::DecimalSpaces),
                         "invalid digit found in string" => return Err(Brc4ParseErr::InvalidDigit),
-                        _msg => {
+                        msg => {
                             // eprintln!("ERR: {msg:?}");
-                            return Err(Brc4ParseErr::Unknown);
+                            return Err(Brc4ParseErr::Unknown(msg.to_string()));
                         }
                     },
                 };
 
+                //todo check match network and token
                 match &brc4 {
                     Brc4::Mint {
                         proto: MintProto::Bel20 { amt, .. },
@@ -148,8 +149,12 @@ impl TokenCache {
             return None;
         }
 
-        let Ok(brc4) = Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?) else {
-            return None;
+        let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?) {
+            Ok(ok) => ok,
+            Err(err) => {
+                warn!("Error occurred while parse token {:?}", err);
+                return None;
+            }
         };
 
         match brc4 {

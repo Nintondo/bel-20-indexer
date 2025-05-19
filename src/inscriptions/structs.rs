@@ -28,9 +28,7 @@ pub enum ParsedInscription {
 
 impl Inscription {
     pub fn from_parts(partials: &[Part], vout: u32) -> ParsedInscription {
-        let mut sig_scripts = Vec::with_capacity(partials.len());
-
-        if partials.len() == 1 {
+        if partials.len() > 1 {
             let part = partials.first().expect("Part must exist, checked above");
             let script = Script::from_bytes(&part.script_buffer);
             if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vout) {
@@ -46,6 +44,7 @@ impl Inscription {
             return ParsedInscription::None;
         }
 
+        let mut sig_scripts = Vec::with_capacity(partials.len());
         for partial in partials {
             sig_scripts.push(Script::from_bytes(&partial.script_buffer));
         }
@@ -358,13 +357,13 @@ impl FromStr for Location {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Part {
     pub is_tapscript: bool,
     pub script_buffer: Vec<u8>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Partials {
     pub inscription_index: u32,
     pub genesis_txid: Txid,

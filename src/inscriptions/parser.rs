@@ -46,11 +46,7 @@ impl InitialIndexer {
         prevouts: &HashMap<OutPoint, TxOut>,
         token_cache: &mut TokenCache,
     ) {
-        let take_multiple_input = if height as usize >= *JUBILEE_HEIGHT {
-            usize::MAX
-        } else {
-            1
-        };
+        let is_jubilee_height = height as usize >= *JUBILEE_HEIGHT;
 
         let coinbase_value = txs
             .first()
@@ -138,17 +134,19 @@ impl InitialIndexer {
                                         .expect("Owner of token transfer must exist")
                                         .script_pubkey
                                         .compute_script_hash();
-                                    token_cache.transferred(old_location, recipient, tx.txid(), 0);
+                                    token_cache.transferred(old_location, recipient, txid, 0);
                                 }
-
-                                todo!() // TODO handle leak
+                                warn!(
+                                    "Leaked inscription from {:?} in tx {} could not be moved properly",
+                                    old_location, txid
+                                );
                             }
                         }
                     }
                 }
 
                 // handle inscription creation
-                if input_index < take_multiple_input {
+                if is_jubilee_height || input_index < 1 {
                     let mut partials = outpoint_to_partials
                         .remove(&txin.previous_output)
                         .unwrap_or(Partials {
@@ -170,7 +168,6 @@ impl InitialIndexer {
                     };
 
                     partials.parts.push(part);
-
                     let parsed_result = Self::parse_inscription(ParseInscription {
                         tx,
                         input_index: input_index as u32,
@@ -217,7 +214,7 @@ impl InitialIndexer {
                             .insert(inscription_template.location.offset); // return false if item already exist
 
                         // skip inscription which was created into occupied offset
-                        if !inscription_template.leaked && offset_occupied {
+                        if !inscription_template.leaked && offset_occupied && !is_jubilee_height {
                             continue;
                         }
 
@@ -225,6 +222,16 @@ impl InitialIndexer {
                         token_cache.parse_token_action(&inscription_template, height, created);
                     }
                 }
+            }
+        }
+
+        {
+            for (k, v) in inscription_outpoint_to_offsets.into_iter() {
+                server.db.outpoint_to_inscription_offsets.set(k, v);
+            }
+
+            for (k, v) in outpoint_to_partials.into_iter() {
+                server.db.outpoint_to_partials.set(k, v);
             }
         }
     }
@@ -344,6 +351,10 @@ impl InitialIndexer {
                 .map(|(location, (_, proto))| (*location, proto.clone()))
                 .collect();
         }
+        if block_height > 5178200 && block_height < 5178206 {
+            dbg!(&block);
+        }
+
         Self::parse_block(
             &server,
             block_height,
@@ -596,6 +607,7 @@ impl InitialIndexer {
     }
 }
 
+#[derive(Debug)]
 pub enum ParsedInscriptionResult {
     None,
     Partials,

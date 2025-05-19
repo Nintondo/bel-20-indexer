@@ -343,7 +343,7 @@ pub enum Brc4ParseErr {
     DecimalSpaces,
     InvalidDigit,
     InvalidUtf8,
-    Unknown,
+    Unknown(String),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -525,7 +525,7 @@ impl From<TokenMetaDB> for TokenMeta {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InscriptionTemplate {
     pub genesis: InscriptionId,
     pub location: Location,

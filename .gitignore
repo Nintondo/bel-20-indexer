@@ -1,3 +1,4 @@
-/target
-/rocksdb
+target/
+rocksdb/
 .env
+.idea/

@@ -120,6 +120,7 @@ impl HistoryValueEvent {
     }
 }
 
+#[derive(Clone)]
 pub struct BlockInfo {
     pub hash: BlockHash,
     pub created: u32,

@@ -10,14 +10,16 @@ pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 
 mod envelope;
 mod media;
+mod indexer;
 mod parser;
 mod searcher;
 pub mod structs;
 mod tag;
 mod utils;
+mod processe_data;
 
 use envelope::{ParsedEnvelope, RawEnvelope};
-use parser::InitialIndexer;
+use indexer::Indexer;
 use searcher::InscriptionSearcher;
 use structs::{Inscription, ParsedInscription};
 use tag::Tag;
@@ -97,7 +99,7 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
             }
 
             blk_loader.lock().from_block = Some(height);
-            InitialIndexer::handle(height, block, server.clone(), None)
+            Indexer::handle(height, block, server.clone(), None)
                 .await
                 .track()?;
 
@@ -176,7 +178,7 @@ async fn new_fetcher(
                 .ok();
         }
 
-        InitialIndexer::handle(height, block, server.clone(), Some(reorg_cache.clone()))
+        Indexer::handle(height, block, server.clone(), Some(reorg_cache.clone()))
             .await
             .track()?;
     }

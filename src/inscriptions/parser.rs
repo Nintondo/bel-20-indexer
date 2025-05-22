@@ -1,7 +1,15 @@
-use super::{
-    structs::{Part, Partials},
-    *,
+use crate::inscriptions::indexer::ParsedInscriptionResult;
+use crate::inscriptions::processe_data::{
+    BlockInscriptionOffsetWriter, BlockInscriptionPartialsWriter, ProcessedData,
 };
+use crate::inscriptions::searcher::InscriptionSearcher;
+use crate::inscriptions::structs::{Inscription, ParsedInscription, Part, Partials};
+use crate::inscriptions::Location;
+use crate::server::Server;
+use crate::tokens::{ComputeScriptHash, FullHash, InscriptionId, InscriptionTemplate, TokenCache};
+use crate::{JUBILEE_HEIGHT, OP_RETURN_HASH};
+use bellscoin::{OutPoint, Transaction, TxOut};
+use std::collections::{HashMap, HashSet};
 
 pub struct ParseInscription<'a> {
     tx: &'a Transaction,
@@ -10,35 +18,10 @@ pub struct ParseInscription<'a> {
     partials: &'a Partials,
 }
 
-pub struct InitialIndexer;
+pub struct Parser;
 
-impl InitialIndexer {
-    fn load_partials(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, Partials> {
-        server
-            .db
-            .outpoint_to_partials
-            .multi_get(outpoints.iter())
-            .into_iter()
-            .zip(outpoints)
-            .filter_map(|(partials, outpoint)| partials.map(|partials| (outpoint, partials)))
-            .collect()
-    }
-
-    fn load_inscription_outpoint_to_offsets(
-        server: &Server,
-        outpoints: Vec<OutPoint>,
-    ) -> HashMap<OutPoint, HashSet<u64>> {
-        server
-            .db
-            .outpoint_to_inscription_offsets
-            .multi_get(outpoints.iter())
-            .into_iter()
-            .zip(outpoints)
-            .filter_map(|(offsets, outpoint)| offsets.map(|offsets| (outpoint, offsets)))
-            .collect()
-    }
-
-    fn parse_block(
+impl Parser {
+    pub fn parse_block(
         server: &Server,
         data_to_write: &mut Vec<Box<dyn ProcessedData>>,
         height: u32,
@@ -247,324 +230,47 @@ impl InitialIndexer {
         }));
     }
 
-    fn handle_block(
-        data_to_write: &mut Vec<Box<dyn ProcessedData>>,
-        block_events: &mut Vec<ServerEvent>,
-        history: &mut Vec<(AddressTokenId, HistoryValue)>,
-        block_height: u32,
-        block: &bellscoin::Block,
-        server: &Server,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
-    ) -> anyhow::Result<()> {
-        let current_hash = block.block_hash();
-
-        if reorg_cache.is_some() {
-            debug!("Syncing block: {} ({})", current_hash, block_height);
-        }
-
-        let mut last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
-
-        if let Some(cache) = reorg_cache.as_ref() {
-            cache.lock().new_block(block_height, last_history_id);
-        }
-
-        let block_info = BlockInfo {
-            created: block.header.time,
-            hash: current_hash,
-        };
-
-        let created = block.header.time;
-        let prev_block_height = block_height.checked_sub(1).unwrap_or_default();
-        let prev_block_proof = server
+    fn load_partials(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, Partials> {
+        server
             .db
-            .proof_of_history
-            .get(prev_block_height)
-            .unwrap_or(*DEFAULT_HASH);
-
-        let outpoint_fullhash_to_address: HashMap<_, _> = block
-            .txdata
-            .iter()
-            .flat_map(|x| &x.output)
-            .filter_map(|x| {
-                let fullhash = x.script_pubkey.compute_script_hash();
-                let payload = bellscoin::address::Payload::from_script(&x.script_pubkey);
-                if x.script_pubkey.is_op_return() || payload.is_err() {
-                    return None;
-                }
-                Some((fullhash, server.address_decoder.encode(&payload.unwrap())))
-            })
-            .collect();
-
-        data_to_write.push(Box::new(BlockInfoWriter {
-            block_number: block_height,
-            block_info,
-        }));
-
-        let prevouts = block
-            .txdata
-            .iter()
-            .flat_map(|tx| {
-                let txid = tx.txid();
-                tx.output
-                    .iter()
-                    .enumerate()
-                    .map(move |(input_index, txout)| {
-                        (
-                            OutPoint {
-                                txid,
-                                vout: input_index as u32,
-                            },
-                            txout.clone(),
-                        )
-                    })
-            })
-            .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable());
-
-        data_to_write.push(Box::new(BlockPrevoutsWriter {
-            to_write: prevouts.clone().collect(),
-            to_remove: vec![],
-        }));
-
-        data_to_write.push(Box::new(BlockFullHashWriter {
-            addresses: outpoint_fullhash_to_address
-                .iter()
-                .map(|(fullhash, address)| (*fullhash, address.clone()))
-                .collect(),
-        }));
-
-        // todo: currently broke proof-of-hash
-        // if block_height < *START_HEIGHT {
-        //     return Ok(());
-        // }
-
-        if block.txdata.len() == 1 {
-            let new_proof = Server::generate_history_hash(prev_block_proof, &[], &HashMap::new())?;
-
-            data_to_write.push(Box::new(BlockProofWriter {
-                block_number: block_height,
-                block_proof: new_proof,
-            }));
-
-            block_events.push(ServerEvent::NewBlock(
-                block_height,
-                new_proof,
-                block.block_hash(),
-            ));
-
-            return Ok(());
-        }
-
-        let prevouts =
-            utils::load_prevouts_for_block(server.db.clone(), prevouts.collect(), &block.txdata)?;
-
-        if let Some(cache) = reorg_cache.as_ref() {
-            prevouts.iter().for_each(|(key, value)| {
-                cache.lock().removed_prevout(*key, value.clone());
-            });
-        }
-
-        // init token cache
-        let (mut token_cache, transfers_to_remove) = {
-            let mut token_cache = TokenCache::default();
-            let transfers_to_remove: HashSet<_> = prevouts
-                .iter()
-                .map(|(k, v)| AddressLocation {
-                    address: v.script_pubkey.compute_script_hash(),
-                    location: Location {
-                        outpoint: *k,
-                        offset: 0,
-                    },
-                })
-                .collect();
-
-            token_cache
-                .valid_transfers
-                .extend(server.db.load_transfers(transfers_to_remove.clone()));
-
-            token_cache.all_transfers = token_cache
-                .valid_transfers
-                .iter()
-                .map(|(location, (_, proto))| (*location, proto.clone()))
-                .collect();
-
-            (token_cache, transfers_to_remove)
-        };
-
-        Self::parse_block(
-            server,
-            data_to_write,
-            block_height,
-            created,
-            &block.txdata,
-            &prevouts,
-            &mut token_cache,
-        );
-
-        token_cache.load_tokens_data(&server.db)?;
-
-        let mut fullhash_to_load = HashSet::new();
-
-        *history = token_cache
-            .process_token_actions(reorg_cache.clone(), &server.holders)
+            .outpoint_to_partials
+            .multi_get(outpoints.iter())
             .into_iter()
-            .flat_map(|action| {
-                last_history_id += 1;
-                let mut results: Vec<(AddressTokenId, HistoryValue)> = vec![];
-                let token = action.tick();
-                let recipient = action.recipient();
-                fullhash_to_load.insert(recipient);
-                let key = AddressTokenId {
-                    address: recipient,
-                    token,
-                    id: last_history_id,
-                };
-                let db_action = TokenHistoryDB::from_token_history(action.clone());
-                if let TokenHistoryDB::Send {
-                    amt, txid, vout, ..
-                } = db_action
-                {
-                    let sender = action
-                        .sender()
-                        .expect("Should be in here with the Send action");
-                    fullhash_to_load.insert(sender);
-                    last_history_id += 1;
-                    results.extend([
-                        (
-                            AddressTokenId {
-                                address: sender,
-                                token,
-                                id: last_history_id,
-                            },
-                            HistoryValue {
-                                height: block_height,
-                                action: db_action,
-                            },
-                        ),
-                        (
-                            key,
-                            HistoryValue {
-                                height: block_height,
-                                action: TokenHistoryDB::Receive {
-                                    amt,
-                                    sender,
-                                    txid,
-                                    vout,
-                                },
-                            },
-                        ),
-                    ])
-                } else {
-                    results.push((
-                        key,
-                        HistoryValue {
-                            action: db_action,
-                            height: block_height,
-                        },
-                    ));
-                }
-
-                results
-            })
-            .collect();
-
-        let mut rest_addresses = server
-            .db
-            .fullhash_to_address
-            .multi_get(fullhash_to_load.iter())
-            .into_iter()
-            .zip(fullhash_to_load)
-            .map(|(v, k)| {
-                if k.is_op_return_hash() {
-                    return (k, OP_RETURN_ADDRESS.to_string());
-                }
-                if v.is_none() {
-                    return (k, NON_STANDARD_ADDRESS.to_string());
-                }
-                (k, v.unwrap())
-            })
-            .collect::<HashMap<_, _>>();
-        rest_addresses.extend(outpoint_fullhash_to_address);
-
-        let new_proof = Server::generate_history_hash(prev_block_proof, history, &rest_addresses)?;
-
-        data_to_write.push(Box::new(BlockProofWriter {
-            block_number: block_height,
-            block_proof: new_proof,
-        }));
-
-        data_to_write.push(Box::new(BlockHistoryWriter {
-            block_number: block_height,
-            last_history_id,
-            history: history.clone(),
-        }));
-
-        if let Some(reorg_cache) = reorg_cache.as_ref() {
-            let mut cache = reorg_cache.lock();
-            history
-                .iter()
-                .for_each(|(k, _)| cache.added_history(k.clone()));
-        };
-
-        data_to_write.push(Box::new(BlockTokensWriter {
-            metas: token_cache
-                .tokens
-                .into_iter()
-                .map(|(k, v)| (k, TokenMetaDB::from(v)))
-                .collect(),
-            balances: token_cache.token_accounts.into_iter().collect(),
-            transfers_to_write: token_cache
-                .valid_transfers
-                .into_iter()
-                .map(|(location, (address, proto))| (AddressLocation { address, location }, proto))
-                .collect(),
-            transfers_to_remove: transfers_to_remove.into_iter().collect(),
-        }));
-
-        block_events.push(ServerEvent::NewBlock(
-            block_height,
-            new_proof,
-            block.block_hash(),
-        ));
-
-        Ok(())
+            .zip(outpoints)
+            .filter_map(|(partials, outpoint)| partials.map(|partials| (outpoint, partials)))
+            .collect()
     }
 
-    pub async fn handle(
-        block_height: u32,
-        block: bellscoin::Block,
-        server: Arc<Server>,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
-    ) -> anyhow::Result<()> {
-        let mut data_to_write: Vec<Box<dyn ProcessedData>> = vec![];
-        let mut block_events: Vec<ServerEvent> = vec![];
-        let mut history = vec![];
+    fn load_inscription_outpoint_to_offsets(
+        server: &Server,
+        outpoints: Vec<OutPoint>,
+    ) -> HashMap<OutPoint, HashSet<u64>> {
+        server
+            .db
+            .outpoint_to_inscription_offsets
+            .multi_get(outpoints.iter())
+            .into_iter()
+            .zip(outpoints)
+            .filter_map(|(offsets, outpoint)| offsets.map(|offsets| (outpoint, offsets)))
+            .collect()
+    }
 
-        Self::handle_block(
-            &mut data_to_write,
-            &mut block_events,
-            &mut history,
-            block_height,
-            &block,
-            &server,
-            reorg_cache,
-        )?;
+    fn parse_inscription(payload: ParseInscription) -> ParsedInscriptionResult {
+        let parsed = Inscription::from_parts(&payload.partials.parts, payload.input_index);
 
-        // write/remove data from block
-        for data in data_to_write {
-            data.write(&server.db);
+        match parsed {
+            ParsedInscription::None => ParsedInscriptionResult::None,
+            ParsedInscription::Partial => ParsedInscriptionResult::Partials,
+            ParsedInscription::Single(inscription) => {
+                ParsedInscriptionResult::Single(Self::convert_to_template(&payload, inscription))
+            }
+            ParsedInscription::Many(inscriptions) => ParsedInscriptionResult::Many(
+                inscriptions
+                    .into_iter()
+                    .map(|inscription| Self::convert_to_template(&payload, inscription))
+                    .collect(),
+            ),
         }
-
-        *server.last_indexed_address_height.write().await = block_height;
-
-        for event in block_events {
-            server.event_sender.send(event).ok();
-        }
-
-        if server.raw_event_sender.send(history).is_err() && !server.token.is_cancelled() {
-            panic!("Failed to send raw event");
-        }
-
-        Ok(())
     }
 
     fn convert_to_template(
@@ -636,155 +342,5 @@ impl InitialIndexer {
         inscription_template.value = tx_out.value;
 
         inscription_template
-    }
-
-    fn parse_inscription(payload: ParseInscription) -> ParsedInscriptionResult {
-        let parsed = Inscription::from_parts(&payload.partials.parts, payload.input_index);
-
-        match parsed {
-            ParsedInscription::None => ParsedInscriptionResult::None,
-            ParsedInscription::Partial => ParsedInscriptionResult::Partials,
-            ParsedInscription::Single(inscription) => {
-                ParsedInscriptionResult::Single(Self::convert_to_template(&payload, inscription))
-            }
-            ParsedInscription::Many(inscriptions) => ParsedInscriptionResult::Many(
-                inscriptions
-                    .into_iter()
-                    .map(|inscription| Self::convert_to_template(&payload, inscription))
-                    .collect(),
-            ),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum ParsedInscriptionResult {
-    None,
-    Partials,
-    Single(InscriptionTemplate),
-    Many(Vec<InscriptionTemplate>),
-}
-
-pub trait ProcessedData: Send + Sync {
-    fn write(&self, db: &DB);
-}
-
-struct BlockInfoWriter {
-    pub block_number: u32,
-    pub block_info: BlockInfo,
-}
-
-impl ProcessedData for BlockInfoWriter {
-    fn write(&self, db: &DB) {
-        db.last_block.set((), self.block_number);
-        db.block_info
-            .set(self.block_number, self.block_info.clone());
-    }
-}
-
-struct BlockPrevoutsWriter {
-    pub to_remove: Vec<OutPoint>,
-    pub to_write: Vec<(OutPoint, TxOut)>,
-}
-
-impl ProcessedData for BlockPrevoutsWriter {
-    fn write(&self, db: &DB) {
-        db.prevouts.remove_batch(self.to_remove.clone().into_iter());
-        db.prevouts.extend(self.to_write.clone());
-    }
-}
-
-struct BlockFullHashWriter {
-    pub addresses: Vec<(FullHash, String)>,
-}
-
-impl ProcessedData for BlockFullHashWriter {
-    fn write(&self, db: &DB) {
-        db.fullhash_to_address.extend(self.addresses.clone());
-    }
-}
-
-struct BlockProofWriter {
-    pub block_number: u32,
-    pub block_proof: sha256::Hash,
-}
-
-impl ProcessedData for BlockProofWriter {
-    fn write(&self, db: &DB) {
-        db.proof_of_history.set(self.block_number, self.block_proof);
-    }
-}
-
-struct BlockHistoryWriter {
-    pub block_number: u32,
-    pub last_history_id: u64,
-    pub history: Vec<(AddressTokenId, HistoryValue)>,
-}
-
-impl ProcessedData for BlockHistoryWriter {
-    fn write(&self, db: &DB) {
-        let block_events: Vec<_> = self
-            .history
-            .iter()
-            .map(|(address_token_id, _)| address_token_id.clone())
-            .sorted_unstable_by_key(|address_token_id| address_token_id.id)
-            .collect();
-
-        let outpoint_to_event = self
-            .history
-            .iter()
-            .map(|(address_token_id, history_value)| {
-                (history_value.action.outpoint(), address_token_id.clone())
-            });
-
-        db.block_events.set(self.block_number, block_events);
-        db.outpoint_to_event.extend(outpoint_to_event);
-        db.address_token_to_history.extend(self.history.clone());
-        db.last_history_id.set((), self.last_history_id);
-    }
-}
-
-struct BlockTokensWriter {
-    pub metas: Vec<(LowerCaseTokenTick, TokenMetaDB)>,
-    pub balances: Vec<(AddressToken, TokenBalance)>,
-    pub transfers_to_write: Vec<(AddressLocation, TransferProtoDB)>,
-    pub transfers_to_remove: Vec<AddressLocation>,
-}
-
-impl ProcessedData for BlockTokensWriter {
-    fn write(&self, db: &DB) {
-        db.token_to_meta.extend(self.metas.clone());
-        db.address_token_to_balance.extend(self.balances.clone());
-        db.address_location_to_transfer
-            .remove_batch(self.transfers_to_remove.clone().into_iter());
-        db.address_location_to_transfer
-            .extend(self.transfers_to_write.clone());
-    }
-}
-
-struct BlockInscriptionPartialsWriter {
-    pub to_remove: Vec<OutPoint>,
-    pub to_write: Vec<(OutPoint, Partials)>,
-}
-
-impl ProcessedData for BlockInscriptionPartialsWriter {
-    fn write(&self, db: &DB) {
-        db.outpoint_to_partials
-            .remove_batch(self.to_remove.clone().into_iter());
-        db.outpoint_to_partials.extend(self.to_write.clone());
-    }
-}
-
-struct BlockInscriptionOffsetWriter {
-    pub to_remove: Vec<OutPoint>,
-    pub to_write: Vec<(OutPoint, HashSet<u64>)>,
-}
-
-impl ProcessedData for BlockInscriptionOffsetWriter {
-    fn write(&self, db: &DB) {
-        db.outpoint_to_inscription_offsets
-            .remove_batch(self.to_remove.clone().into_iter());
-        db.outpoint_to_inscription_offsets
-            .extend(self.to_write.clone());
     }
 }

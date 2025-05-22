@@ -130,7 +130,7 @@ impl<T: InnerBlockHash, U: NodeClient> Parser<T, U> {
         let mut current_height = start.unwrap_or_default();
         let mut future_blocks = BTreeMap::default();
 
-        blk_index_to_blk_path
+        let _ = blk_index_to_blk_path
             .range(blk_index..)
             .try_for_each(move |(blk_index, blk_path)| {
                 let blk_index = *blk_index;

@@ -141,7 +141,8 @@ impl InitialIndexer {
                                     "Leaked inscription from {:?} in tx {} could not be moved properly",
                                     old_location, txid
                                 );
-                                todo!() // TODO handle leak
+                                // TODO handle leak
+                                // todo!()
                             }
                         }
                     }
@@ -299,27 +300,28 @@ impl InitialIndexer {
             block_info,
         }));
 
+        let prevouts = block
+            .txdata
+            .iter()
+            .flat_map(|tx| {
+                let txid = tx.txid();
+                tx.output
+                    .iter()
+                    .enumerate()
+                    .map(move |(input_index, txout)| {
+                        (
+                            OutPoint {
+                                txid,
+                                vout: input_index as u32,
+                            },
+                            txout.clone(),
+                        )
+                    })
+            })
+            .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable());
+
         data_to_write.push(Box::new(BlockPrevoutsWriter {
-            to_write: block
-                .txdata
-                .iter()
-                .flat_map(|tx| {
-                    let txid = tx.txid();
-                    tx.output
-                        .iter()
-                        .enumerate()
-                        .map(move |(input_index, txout)| {
-                            (
-                                OutPoint {
-                                    txid,
-                                    vout: input_index as u32,
-                                },
-                                txout.clone(),
-                            )
-                        })
-                })
-                .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
-                .collect(),
+            to_write: prevouts.clone().collect(),
             to_remove: vec![],
         }));
 
@@ -330,9 +332,10 @@ impl InitialIndexer {
                 .collect(),
         }));
 
-        if block_height < *START_HEIGHT {
-            return Ok(());
-        }
+        // todo: currently broke proof-of-hash
+        // if block_height < *START_HEIGHT {
+        //     return Ok(());
+        // }
 
         if block.txdata.len() == 1 {
             let new_proof = Server::generate_history_hash(prev_block_proof, &[], &HashMap::new())?;
@@ -351,7 +354,8 @@ impl InitialIndexer {
             return Ok(());
         }
 
-        let prevouts = utils::load_prevouts_for_block(server.db.clone(), &block.txdata)?;
+        let prevouts =
+            utils::load_prevouts_for_block(server.db.clone(), prevouts.collect(), &block.txdata)?;
 
         if let Some(cache) = reorg_cache.as_ref() {
             prevouts.iter().for_each(|(key, value)| {
@@ -661,7 +665,7 @@ pub enum ParsedInscriptionResult {
     Many(Vec<InscriptionTemplate>),
 }
 
-trait ProcessedData: Send + Sync {
+pub trait ProcessedData: Send + Sync {
     fn write(&self, db: &DB);
 }
 

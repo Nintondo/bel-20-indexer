@@ -1,6 +1,6 @@
+extern crate serde;
 #[macro_use]
 extern crate tracing;
-extern crate serde;
 
 use {
     axum::{
@@ -96,13 +96,12 @@ lazy_static! {
         _ => 0,
     };
     // first token block height
-    // todo: broke proof-of-hash
-    // static ref START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
-    //     (Network::Bellscoin, "bells") => 26_371,
-    //     (Network::Bellscoin, "doge") => 4_609_723,
-    //     (Network::Testnet, "doge") => 4_260_514,
-    //     _ => 0,
-    // };
+    static ref START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
+        (Network::Bellscoin, "bells") => 26_371,
+        (Network::Bellscoin, "doge") => 4_609_723,
+        (Network::Testnet, "doge") => 4_260_514,
+        _ => 0,
+    };
     static ref SERVER_URL: String =
         load_opt_env!("SERVER_BIND_URL").unwrap_or("0.0.0.0:8000".to_string());
     static ref DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());

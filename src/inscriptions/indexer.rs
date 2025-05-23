@@ -61,13 +61,10 @@ impl Indexer {
     ) -> anyhow::Result<()> {
         let current_hash = block.block_hash();
 
-        if reorg_cache.is_some() {
-            debug!("Syncing block: {} ({})", current_hash, block_height);
-        }
-
         let mut last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
 
         if let Some(cache) = reorg_cache.as_ref() {
+            debug!("Syncing block: {} ({})", current_hash, block_height);
             cache.lock().new_block(block_height, last_history_id);
         }
 
@@ -135,10 +132,9 @@ impl Indexer {
                 .collect(),
         }));
 
-        // todo: currently broke proof-of-hash
-        // if block_height < *START_HEIGHT {
-        //     return Ok(());
-        // }
+        if block_height < *START_HEIGHT {
+            return Ok(());
+        }
 
         if block.txdata.len() == 1 {
             let new_proof = Server::generate_history_hash(prev_block_proof, &[], &HashMap::new())?;

@@ -17,8 +17,6 @@ use itertools::Itertools;
 
 use nintypes::common::inscriptions::Outpoint;
 
-use rust_decimal::Decimal;
-
 use futures::Stream;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

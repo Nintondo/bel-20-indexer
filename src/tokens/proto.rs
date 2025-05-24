@@ -131,9 +131,7 @@ impl DeployProtoDB {
         self.supply == Fixed128::from(self.max)
     }
     pub fn mint_percent(&self) -> Fixed128 {
-        (rust_decimal::Decimal::from_u64(100).unwrap() * self.supply.into_decimal()
-            / self.max.into_decimal())
-        .into()
+        Fixed128::from_int(100) * self.supply / self.max
     }
 }
 

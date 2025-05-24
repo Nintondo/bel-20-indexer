@@ -298,7 +298,7 @@ pub struct Holder {
 pub struct Holders {
     pub pages: usize,
     pub count: usize,
-    pub max_percent: Decimal,
+    pub max_percent: String,
     pub holders: Vec<Holder>,
 }
 

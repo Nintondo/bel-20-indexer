@@ -20,7 +20,7 @@ pub async fn holders(
         let mut holders = Vec::with_capacity(query.page_size);
         let max_percent = data
             .last()
-            .map(|x| (x.0 * Fixed128::from(100)).into_decimal() / proto.supply.into_decimal())
+            .map(|x| (x.0 * Fixed128::from(100)) / proto.supply)
             .unwrap_or_default();
 
         let keys = data
@@ -33,8 +33,7 @@ pub async fn holders(
 
         for (rank, balance, hash) in keys {
             let address = server.db.fullhash_to_address.get(hash).internal(INTERNAL)?;
-            let percent =
-                balance.into_decimal() * Decimal::new(100, 0) / proto.supply.into_decimal();
+            let percent = balance * Fixed128::from_int(100) / proto.supply;
 
             holders.push(api::Holder {
                 rank,
@@ -47,7 +46,7 @@ pub async fn holders(
         api::Holders {
             pages,
             count,
-            max_percent,
+            max_percent: max_percent.to_string(),
             holders,
         }
     } else {

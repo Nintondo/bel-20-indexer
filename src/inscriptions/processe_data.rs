@@ -1,6 +1,6 @@
 use bellscoin::{OutPoint, TxOut};
 use bellscoin::hashes::sha256;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 use crate::inscriptions::structs::Partials;
 use crate::server::BlockInfo;
@@ -25,8 +25,8 @@ impl ProcessedData for BlockInfoWriter {
 }
 
 pub struct BlockPrevoutsWriter {
+    pub to_write: HashMap<OutPoint, TxOut>,
     pub to_remove: Vec<OutPoint>,
-    pub to_write: Vec<(OutPoint, TxOut)>,
 }
 
 impl ProcessedData for BlockPrevoutsWriter {

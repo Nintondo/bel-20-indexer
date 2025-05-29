@@ -9,19 +9,18 @@ use kanal::bounded;
 pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 
 mod envelope;
-mod media;
 mod indexer;
+mod media;
 mod parser;
+mod processe_data;
 mod searcher;
 pub mod structs;
 mod tag;
 mod utils;
-mod processe_data;
 
 use envelope::{ParsedEnvelope, RawEnvelope};
 use indexer::Indexer;
-use searcher::InscriptionSearcher;
-use structs::{Inscription, ParsedInscription};
+use structs::Inscription;
 use tag::Tag;
 
 pub use structs::Location;

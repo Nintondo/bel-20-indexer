@@ -1,10 +1,33 @@
-use super::*;
+use super::{
+    processe_data::{BlockPrevoutsWriter, ProcessedData},
+    *,
+};
 
 pub fn load_prevouts_for_block(
     db: Arc<DB>,
-    prevouts: HashMap<OutPoint, TxOut>,
     txs: &[Transaction],
+    data_to_write: &mut Vec<Box<dyn ProcessedData>>,
 ) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
+    let prevouts = txs
+        .iter()
+        .flat_map(|tx| {
+            let txid = tx.txid();
+            tx.output
+                .iter()
+                .enumerate()
+                .map(move |(input_index, txout)| {
+                    (
+                        OutPoint {
+                            txid,
+                            vout: input_index as u32,
+                        },
+                        txout.clone(),
+                    )
+                })
+        })
+        .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
+        .collect::<HashMap<_, _>>();
+
     let txids_keys = txs
         .iter()
         .skip(1)
@@ -12,40 +35,31 @@ pub fn load_prevouts_for_block(
         .unique()
         .collect_vec();
 
-    if txids_keys.is_empty() {
-        return Ok(HashMap::new());
-    }
-
     let mut result = HashMap::new();
-    let mut missing_keys = Vec::new();
 
-    for key in &txids_keys {
-        if let Some(value) = prevouts.get(key) {
-            result.insert(*key, value.clone());
-        } else {
-            missing_keys.push(*key);
-        }
-    }
+    if !txids_keys.is_empty() {
+        let from_db = db.prevouts.multi_get(txids_keys.iter());
 
-    if !missing_keys.is_empty() {
-        let from_db = db.prevouts.multi_get(missing_keys.iter());
-        for (key, maybe_val) in missing_keys.iter().zip(from_db) {
+        for (key, maybe_val) in txids_keys.iter().zip(from_db) {
             match maybe_val {
                 Some(val) => {
                     result.insert(*key, val);
                 }
                 None => {
-                    return Err(anyhow::anyhow!("Missing prevout for key: {:?}", key));
+                    if let Some(value) = prevouts.get(key) {
+                        result.insert(*key, value.clone());
+                    } else {
+                        return Err(anyhow::anyhow!("Missing prevout for key: {:?}", key));
+                    }
                 }
             }
         }
     }
 
-    let db_clone = db.clone();
-    let all_keys = txids_keys.clone();
-    std::thread::spawn(move || {
-        db_clone.prevouts.remove_batch(all_keys.iter());
-    });
+    data_to_write.push(Box::new(BlockPrevoutsWriter {
+        to_write: prevouts,
+        to_remove: txids_keys,
+    }));
 
     Ok(result)
 }

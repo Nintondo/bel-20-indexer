@@ -1,11 +1,7 @@
-use super::{
-    structs::{Part, Partials},
-    *,
-};
+use super::*;
 use crate::inscriptions::parser::Parser;
 use crate::inscriptions::processe_data::{
-    BlockFullHashWriter, BlockHistoryWriter, BlockInfoWriter, BlockInscriptionOffsetWriter,
-    BlockInscriptionPartialsWriter, BlockPrevoutsWriter, BlockProofWriter, BlockTokensWriter,
+    BlockFullHashWriter, BlockHistoryWriter, BlockInfoWriter, BlockProofWriter, BlockTokensWriter,
     ProcessedData,
 };
 
@@ -81,7 +77,7 @@ impl Indexer {
             .get(prev_block_height)
             .unwrap_or(*DEFAULT_HASH);
 
-        let outpoint_fullhash_to_address: HashMap<_, _> = block
+        let outpoint_fullhash_to_address = block
             .txdata
             .iter()
             .flat_map(|x| &x.output)
@@ -93,37 +89,18 @@ impl Indexer {
                 }
                 Some((fullhash, server.address_decoder.encode(&payload.unwrap())))
             })
-            .collect();
+            .collect::<HashMap<_, _>>();
 
         data_to_write.push(Box::new(BlockInfoWriter {
             block_number: block_height,
             block_info,
         }));
 
-        let prevouts = block
-            .txdata
-            .iter()
-            .flat_map(|tx| {
-                let txid = tx.txid();
-                tx.output
-                    .iter()
-                    .enumerate()
-                    .map(move |(input_index, txout)| {
-                        (
-                            OutPoint {
-                                txid,
-                                vout: input_index as u32,
-                            },
-                            txout.clone(),
-                        )
-                    })
-            })
-            .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable());
-
-        data_to_write.push(Box::new(BlockPrevoutsWriter {
-            to_write: prevouts.clone().collect(),
-            to_remove: vec![],
-        }));
+        let prevouts = utils::load_prevouts_for_block(
+            server.db.clone(),
+            &block.txdata,
+            data_to_write,
+        )?;
 
         data_to_write.push(Box::new(BlockFullHashWriter {
             addresses: outpoint_fullhash_to_address
@@ -152,9 +129,6 @@ impl Indexer {
 
             return Ok(());
         }
-
-        let prevouts =
-            utils::load_prevouts_for_block(server.db.clone(), prevouts.collect(), &block.txdata)?;
 
         if let Some(cache) = reorg_cache.as_ref() {
             prevouts.iter().for_each(|(key, value)| {

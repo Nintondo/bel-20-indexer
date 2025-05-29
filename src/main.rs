@@ -99,7 +99,7 @@ lazy_static! {
     static ref START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
         (Network::Bellscoin, "bells") => 26_371,
         (Network::Bellscoin, "doge") => 4_609_723,
-        (Network::Testnet, "doge") => 4_260_514,
+        (Network::Testnet, "doge") => 0,
         _ => 0,
     };
     static ref SERVER_URL: String =

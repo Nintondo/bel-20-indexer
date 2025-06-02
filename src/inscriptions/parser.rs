@@ -120,12 +120,7 @@ impl Parser {
                                         .compute_script_hash();
                                     token_cache.transferred(old_location, recipient, txid, 0);
                                 }
-                                warn!(
-                                    "Leaked inscription from {:?} in tx {} could not be moved properly",
-                                    old_location, txid
-                                );
-                                // TODO handle leak
-                                // todo!()
+                                /* handled above */
                             }
                         }
                     }

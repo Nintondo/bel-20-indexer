@@ -36,8 +36,17 @@ impl InscriptionSearcher {
         tx_outs: &[TxOut],
     ) -> anyhow::Result<(u32, u64)> {
         let Some(mut offset) = offset else {
-            anyhow::bail!("leaked");
+            return Err(anyhow::anyhow!("leaked: offset is None"));
         };
+
+        let total_output: u64 = tx_outs.iter().map(|x| x.value).sum();
+        if offset >= total_output {
+            return Err(anyhow::anyhow!(
+                "leaked: offset={} is too large for total_output={}",
+                offset,
+                total_output
+            ));
+        }
 
         for (idx, out) in tx_outs.iter().enumerate() {
             if offset < out.value {
@@ -46,6 +55,6 @@ impl InscriptionSearcher {
             offset -= out.value;
         }
 
-        anyhow::bail!("leaked");
+        Err(anyhow::anyhow!("leaked: offset exhausted"))
     }
 }

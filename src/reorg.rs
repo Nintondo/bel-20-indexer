@@ -12,6 +12,10 @@ enum TokenHistoryEntry {
     RestoreTransferred(AddressLocation, TransferProtoDB, FullHash),
     RemoveHistory(AddressTokenId),
     RestorePrevout(OutPoint, TxOut),
+    RestoreInscriptionOffsets {
+        to_restore_offsets: Vec<(OutPoint, HashSet<u64>)>,
+        to_remove_outpoints: Vec<OutPoint>,
+    },
 }
 
 #[derive(Default)]
@@ -114,6 +118,22 @@ impl ReorgCache {
             .push(TokenHistoryEntry::RestoreTransferred(key, value, recipient));
     }
 
+    pub fn add_inscription_offsets(
+        &mut self,
+        to_restore_offsets: Vec<(OutPoint, HashSet<u64>)>,
+        to_remove_outpoints: Vec<OutPoint>,
+    ) {
+        self.blocks
+            .last_entry()
+            .unwrap()
+            .get_mut()
+            .token_history
+            .push(TokenHistoryEntry::RestoreInscriptionOffsets {
+                to_restore_offsets,
+                to_remove_outpoints,
+            });
+    }
+
     pub fn restore(&mut self, server: &Server, block_height: u32) -> anyhow::Result<()> {
         while !self.blocks.is_empty() && block_height <= *self.blocks.last_key_value().unwrap().0 {
             let (height, data) = self.blocks.pop_last().anyhow()?;
@@ -130,6 +150,8 @@ impl ReorgCache {
                 let mut to_restore_transferred = vec![];
                 let mut to_remove_history = vec![];
                 let mut to_restore_prevout = vec![];
+                let mut to_remove_outpoints = vec![];
+                let mut to_restore_offsets = vec![];
 
                 for entry in data.token_history.into_iter().rev() {
                     match entry {
@@ -153,6 +175,13 @@ impl ReorgCache {
                         }
                         TokenHistoryEntry::RestorePrevout(key, value) => {
                             to_restore_prevout.push((key, value));
+                        }
+                        TokenHistoryEntry::RestoreInscriptionOffsets {
+                            to_restore_offsets: to_restore,
+                            to_remove_outpoints: to_remove,
+                        } => {
+                            to_restore_offsets.extend(to_restore);
+                            to_remove_outpoints.extend(to_remove);
                         }
                     }
                 }
@@ -332,6 +361,17 @@ impl ReorgCache {
                         .db
                         .address_location_to_transfer
                         .remove_batch(transfer_locations_to_remove.into_iter());
+                }
+
+                {
+                    server
+                        .db
+                        .outpoint_to_inscription_offsets
+                        .remove_batch(to_remove_outpoints.into_iter());
+                    server
+                        .db
+                        .outpoint_to_inscription_offsets
+                        .extend(to_restore_offsets);
                 }
             }
         }

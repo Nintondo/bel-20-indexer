@@ -171,6 +171,7 @@ impl Indexer {
             &block.txdata,
             &prevouts,
             &mut token_cache,
+            reorg_cache.clone()
         );
 
         token_cache.load_tokens_data(&server.db)?;

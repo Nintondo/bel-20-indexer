@@ -10,6 +10,7 @@ use crate::tokens::{ComputeScriptHash, FullHash, InscriptionId, InscriptionTempl
 use crate::{JUBILEE_HEIGHT, OP_RETURN_HASH};
 use bellscoin::{OutPoint, Transaction, TxOut};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 pub struct ParseInscription<'a> {
     tx: &'a Transaction,
@@ -29,19 +30,9 @@ impl Parser {
         txs: &[Transaction],
         prevouts: &HashMap<OutPoint, TxOut>,
         token_cache: &mut TokenCache,
+        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
     ) {
         let is_jubilee_height = height as usize >= *JUBILEE_HEIGHT;
-
-        let coinbase_value = txs
-            .first()
-            .map(|coinbase| {
-                coinbase
-                    .output
-                    .iter()
-                    .map(|outpoint| outpoint.value)
-                    .sum::<u64>()
-            })
-            .unwrap_or_default();
 
         // Hold inscription's partials from db and new in the block
         let mut outpoint_to_partials =
@@ -108,7 +99,7 @@ impl Parser {
                                     };
                                 }
                             }
-                            _ => {
+                            Err(e) => {
                                 // handle leaked move of token transfer
                                 if is_token_transfer_move {
                                     // because of token protocol leaked token amount
@@ -120,7 +111,12 @@ impl Parser {
                                         .compute_script_hash();
                                     token_cache.transferred(old_location, recipient, txid, 0);
                                 }
+                                warn!(
+                                    "Warn: {}, Leaked inscription from {:?} in tx {} could not be moved properly",
+                                    e, old_location, txid
+                                );
                                 /* handled above */
+                                /* this input was likely consumed to pay fee, so the inscription or token couldn't be moved */
                             }
                         }
                     }
@@ -212,17 +208,33 @@ impl Parser {
             to_write: outpoint_to_partials.into_iter().collect(),
         }));
 
-        data_to_write.push(Box::new(BlockInscriptionOffsetWriter {
-            to_remove: inscription_outpoint_to_offsets
-                .iter()
-                .filter(|(_, offsets)| offsets.is_empty())
-                .map(|(outpoint, _)| *outpoint)
-                .collect(),
-            to_write: inscription_outpoint_to_offsets
-                .into_iter()
-                .filter(|(_, offsets)| !offsets.is_empty())
-                .collect(),
-        }));
+        {
+            // Write inscriptions offsets
+            let mut to_write = Vec::new();
+            let mut to_restore_offsets = Vec::new();
+            let mut to_remove = Vec::new();
+            let mut to_remove_outpoints = Vec::new();
+
+            for (outpoint, offsets) in inscription_outpoint_to_offsets {
+                if offsets.is_empty() {
+                    to_remove.push(outpoint);
+                    to_restore_offsets.push((outpoint, offsets));
+                } else {
+                    to_write.push((outpoint, offsets));
+                    to_remove_outpoints.push(outpoint);
+                }
+            }
+
+            if let Some(reorg_cache) = reorg_cache.as_ref() {
+                let mut cache = reorg_cache.lock();
+                cache.add_inscription_offsets(to_restore_offsets, to_remove_outpoints);
+            };
+
+            data_to_write.push(Box::new(BlockInscriptionOffsetWriter {
+                to_remove,
+                to_write,
+            }));
+        }
     }
 
     fn load_partials(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, Partials> {

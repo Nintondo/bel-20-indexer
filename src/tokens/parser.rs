@@ -116,21 +116,33 @@ impl TokenCache {
 
                 //todo check match network and token
                 match &brc4 {
-                    Brc4::Mint {
-                        proto: MintProto::Bel20 { amt, .. },
-                    } if !amt.is_zero() => Ok(brc4),
-                    Brc4::Deploy {
-                        proto: DeployProto::Bel20 { dec, lim, max, .. },
-                    } if *dec <= DeployProto::MAX_DEC
-                        && !lim.unwrap_or(*max).is_zero()
-                        && !max.is_zero() =>
-                    {
-                        Ok(brc4)
+                    Brc4::Mint { proto } => {
+                        let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
+                        if !v.amt.is_zero() {
+                            Ok(brc4)
+                        } else {
+                            Err(Brc4ParseErr::WrongProtocol)
+                        }
                     }
-                    Brc4::Transfer {
-                        proto: TransferProto::Bel20 { amt, .. },
-                    } if !amt.is_zero() => Ok(brc4),
-                    _ => Err(Brc4ParseErr::WrongProtocol),
+                    Brc4::Transfer { proto } => {
+                        let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
+                        if !v.amt.is_zero() {
+                            Ok(brc4)
+                        } else {
+                            Err(Brc4ParseErr::WrongProtocol)
+                        }
+                    }
+                    Brc4::Deploy { proto } => {
+                        let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
+                        if v.dec <= DeployProto::MAX_DEC
+                            && !v.lim.unwrap_or(v.max).is_zero()
+                            && !v.max.is_zero()
+                        {
+                            Ok(brc4)
+                        } else {
+                            Err(Brc4ParseErr::WrongContentType)
+                        }
+                    }
                 }
             }
             _ => Err(Brc4ParseErr::WrongContentType),
@@ -151,43 +163,37 @@ impl TokenCache {
 
         let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?) {
             Ok(ok) => ok,
-            Err(err) => {
-                warn!("Error occurred while parse token {:?}", err);
+            Err(_) => {
                 return None;
             }
         };
 
         match brc4 {
             Brc4::Deploy { proto } => {
-                match proto {
-                    DeployProto::Bel20 {
-                        tick,
-                        max,
-                        lim,
-                        dec,
-                    } => self.token_actions.push(TokenAction::Deploy {
-                        genesis: inc.genesis,
-                        proto: DeployProtoDB {
-                            tick,
-                            max,
-                            lim: lim.unwrap_or(max),
-                            dec,
-                            supply: Fixed128::ZERO,
-                            transfer_count: 0,
-                            mint_count: 0,
-                            height,
-                            created,
-                            deployer: inc.owner,
-                            transactions: 1,
-                        },
-                        owner: inc.owner,
-                    }),
-                };
+                let v = proto.value().ok()?;
+
+                self.token_actions.push(TokenAction::Deploy {
+                    genesis: inc.genesis,
+                    proto: DeployProtoDB {
+                        tick: v.tick,
+                        max: v.max,
+                        lim: v.lim.unwrap_or(v.max),
+                        dec: v.dec,
+                        supply: Fixed128::ZERO,
+                        transfer_count: 0,
+                        mint_count: 0,
+                        height,
+                        created,
+                        deployer: inc.owner,
+                        transactions: 1,
+                    },
+                    owner: inc.owner,
+                })
             }
             Brc4::Mint { proto } => {
                 self.token_actions.push(TokenAction::Mint {
                     owner: inc.owner,
-                    proto,
+                    proto: proto.value().ok()?,
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
                 });
@@ -196,13 +202,13 @@ impl TokenCache {
                 self.token_actions.push(TokenAction::Transfer {
                     location: inc.location,
                     owner: inc.owner,
-                    proto: proto.clone(),
+                    proto: proto.value().ok()?,
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
                 });
                 self.all_transfers.insert(
                     inc.location,
-                    TransferProtoDB::from_proto(proto.clone(), height),
+                    TransferProtoDB::from_proto(proto.clone(), height).ok()?,
                 );
                 return Some(proto);
             }
@@ -277,7 +283,7 @@ impl TokenCache {
                 }
                 TokenAction::Mint {
                     owner,
-                    proto: MintProto::Bel20 { tick, .. },
+                    proto: MintProtoWrapper { tick, .. },
                     ..
                 } => {
                     tickers.insert(*tick);
@@ -285,7 +291,7 @@ impl TokenCache {
                 }
                 TokenAction::Transfer {
                     owner,
-                    proto: TransferProto::Bel20 { tick, .. },
+                    proto: MintProtoWrapper { tick, .. },
                     ..
                 } => {
                     tickers.insert(*tick);
@@ -367,7 +373,7 @@ impl TokenCache {
                     txid,
                     vout,
                 } => {
-                    let MintProto::Bel20 { tick, amt } = proto;
+                    let MintProtoWrapper { tick, amt } = proto;
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;
                     };
@@ -436,7 +442,7 @@ impl TokenCache {
                         continue;
                     };
 
-                    let TransferProto::Bel20 { tick, amt } = proto;
+                    let MintProtoWrapper { tick, amt } = proto;
 
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;

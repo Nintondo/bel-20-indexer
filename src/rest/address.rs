@@ -114,7 +114,7 @@ pub async fn address_tokens(
         })
         .collect_vec();
 
-    let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProto)>>::new();
+    let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProtoDB)>>::new();
 
     for (key, value) in server
         .db
@@ -130,8 +130,8 @@ pub async fn address_tokens(
     {
         transfers
             .entry(value.tick)
-            .and_modify(|x| x.push((key.location, value.clone().into())))
-            .or_insert(vec![(key.location, value.into())]);
+            .and_modify(|x| x.push((key.location, value.clone())))
+            .or_insert(vec![(key.location, value)]);
     }
 
     for token in data.iter_mut() {
@@ -140,7 +140,7 @@ pub async fn address_tokens(
             .unwrap_or_default()
             .into_iter()
             .map(|x| {
-                let TransferProto::Bel20 { amt, .. } = x.1;
+                let TransferProtoDB { amt, .. } = x.1;
                 TokenTransfer {
                     outpoint: x.0.outpoint,
                     amount: amt,

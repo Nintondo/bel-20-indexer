@@ -1,4 +1,5 @@
 use crate::inscriptions::indexer::ParsedInscriptionResult;
+use crate::inscriptions::leaked::{LeakedInscription, LeakedInscriptions};
 use crate::inscriptions::processe_data::{
     BlockInscriptionOffsetWriter, BlockInscriptionPartialsWriter, ProcessedData,
 };
@@ -17,6 +18,7 @@ pub struct ParseInscription<'a> {
     input_index: u32,
     inputs_cum: &'a [u64],
     partials: &'a Partials,
+    prevouts: &'a HashMap<OutPoint, TxOut>,
 }
 
 pub struct Parser;
@@ -44,10 +46,16 @@ impl Parser {
         let mut inscription_outpoint_to_offsets =
             Self::load_inscription_outpoint_to_offsets(server, prevouts.keys().cloned().collect());
 
+        let mut leaked: Option<LeakedInscriptions> = None;
+
         for tx in txs {
             if tx.is_coin_base() {
+                leaked = Some(LeakedInscriptions::new(tx.clone()));
+
                 continue;
             }
+
+            leaked.as_mut().unwrap().add_tx_fee(tx, prevouts);
 
             let mut inscription_index_in_tx = 0;
             let txid = tx.txid();
@@ -99,7 +107,7 @@ impl Parser {
                                     };
                                 }
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 // handle leaked move of token transfer
                                 if is_token_transfer_move {
                                     // because of token protocol leaked token amount
@@ -111,19 +119,20 @@ impl Parser {
                                         .compute_script_hash();
                                     token_cache.transferred(old_location, recipient, txid, 0);
                                 }
-                                warn!(
-                                    "Warn: {}, Leaked inscription from {:?} in tx {} could not be moved properly",
-                                    e, old_location, txid
+                                leaked.as_mut().unwrap().add(
+                                    input_index,
+                                    tx,
+                                    offset.unwrap_or_default(),
+                                    prevouts,
+                                    LeakedInscription::Move,
                                 );
-                                /* handled above */
-                                /* this input was likely consumed to pay fee, so the inscription or token couldn't be moved */
                             }
                         }
                     }
                 }
 
                 // handle inscription creation
-                if is_jubilee_height || input_index < 1 {
+                if is_jubilee_height || input_index == 0 {
                     let mut partials = outpoint_to_partials
                         .remove(&txin.previous_output)
                         .unwrap_or(Partials {
@@ -146,12 +155,16 @@ impl Parser {
 
                     partials.parts.push(part);
 
-                    let parsed_result = Self::parse_inscription(ParseInscription {
-                        tx,
-                        input_index: input_index as u32,
-                        inputs_cum: &inputs_cum,
-                        partials: &partials,
-                    });
+                    let parsed_result = Self::parse_inscription(
+                        ParseInscription {
+                            tx,
+                            input_index: input_index as u32,
+                            inputs_cum: &inputs_cum,
+                            partials: &partials,
+                            prevouts,
+                        },
+                        leaked.as_mut().unwrap(),
+                    );
 
                     let inscription_templates = match parsed_result {
                         ParsedInscriptionResult::None => continue,
@@ -202,6 +215,16 @@ impl Parser {
                 }
             }
         }
+
+        leaked
+            .unwrap()
+            .get_leaked_inscriptions()
+            .for_each(|location| {
+                inscription_outpoint_to_offsets
+                    .entry(location.outpoint)
+                    .or_default()
+                    .insert(location.offset);
+            });
 
         data_to_write.push(Box::new(BlockInscriptionPartialsWriter {
             to_remove: partials_to_remove,
@@ -262,19 +285,26 @@ impl Parser {
             .collect()
     }
 
-    fn parse_inscription(payload: ParseInscription) -> ParsedInscriptionResult {
+    fn parse_inscription(
+        payload: ParseInscription,
+        leaked: &mut LeakedInscriptions,
+    ) -> ParsedInscriptionResult {
         let parsed = Inscription::from_parts(&payload.partials.parts, payload.input_index);
 
         match parsed {
             ParsedInscription::None => ParsedInscriptionResult::None,
             ParsedInscription::Partial => ParsedInscriptionResult::Partials,
             ParsedInscription::Single(inscription) => {
-                ParsedInscriptionResult::Single(Self::convert_to_template(&payload, inscription))
+                Self::convert_to_template(&payload, inscription, leaked)
+                    .map(ParsedInscriptionResult::Single)
+                    .unwrap_or(ParsedInscriptionResult::None)
             }
             ParsedInscription::Many(inscriptions) => ParsedInscriptionResult::Many(
                 inscriptions
                     .into_iter()
-                    .map(|inscription| Self::convert_to_template(&payload, inscription))
+                    .filter_map(|inscription| {
+                        Self::convert_to_template(&payload, inscription, leaked)
+                    })
                     .collect(),
             ),
         }
@@ -283,7 +313,8 @@ impl Parser {
     fn convert_to_template(
         payload: &ParseInscription,
         inscription: Inscription,
-    ) -> InscriptionTemplate {
+        leaked: &mut LeakedInscriptions,
+    ) -> Option<InscriptionTemplate> {
         let genesis = {
             InscriptionId {
                 txid: payload.partials.genesis_txid,
@@ -318,8 +349,14 @@ impl Parser {
                 .copied(),
             &payload.tx.output,
         ) else {
-            inscription_template.leaked = true;
-            return inscription_template;
+            leaked.add(
+                payload.input_index as usize,
+                payload.tx,
+                0,
+                payload.prevouts,
+                LeakedInscription::Creation,
+            );
+            return None;
         };
 
         if let Ok((new_vout, new_offset)) =
@@ -348,6 +385,6 @@ impl Parser {
         inscription_template.location = location;
         inscription_template.value = tx_out.value;
 
-        inscription_template
+        Some(inscription_template)
     }
 }

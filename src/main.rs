@@ -121,7 +121,6 @@ fn main() {
         *JUBILEE_HEIGHT,
         // *START_HEIGHT,
         &*SERVER_URL,
-        *DEFAULT_HASH
     );
 
     let indexer_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));

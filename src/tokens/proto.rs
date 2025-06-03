@@ -81,34 +81,65 @@ pub enum Brc4 {
     },
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct MintProtoWrapper {
+    #[serde(deserialize_with = "bel_20_tick")]
+    pub tick: OriginalTokenTick,
+    #[serde(deserialize_with = "bel_20_decimal")]
+    pub amt: Fixed128,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "p")]
 #[serde_as]
 pub enum MintProto {
-    #[serde(rename = "bel-20", alias = "drc-20")]
-    Bel20 {
-        #[serde(deserialize_with = "bel_20_tick")]
-        tick: OriginalTokenTick,
-        #[serde(deserialize_with = "bel_20_decimal")]
-        amt: Fixed128,
-    },
+    #[serde(rename = "bel-20")]
+    Bel20(MintProtoWrapper),
+    #[serde(rename = "drc-20")]
+    Drc20(MintProtoWrapper),
 }
+
+impl MintProto {
+    pub fn value(&self) -> anyhow::Result<MintProtoWrapper> {
+        match self {
+            MintProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
+            MintProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
+            _ => anyhow::bail!("Unsupported type"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct DeployProtoWrapper {
+    #[serde(deserialize_with = "bel_20_tick")]
+    pub tick: OriginalTokenTick,
+    #[serde(deserialize_with = "bel_20_decimal")]
+    pub max: Fixed128,
+    #[serde(default, deserialize_with = "bel_20_option_decimal")]
+    pub lim: Option<Fixed128>,
+    #[serde(with = ":: serde_with :: As :: < DisplayFromStr >")]
+    #[serde(default = "DeployProto::default_dec")]
+    pub dec: u8,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "p")]
 #[serde_as]
 pub enum DeployProto {
-    #[serde(rename = "bel-20", alias = "drc-20")]
-    Bel20 {
-        #[serde(deserialize_with = "bel_20_tick")]
-        tick: OriginalTokenTick,
-        #[serde(deserialize_with = "bel_20_decimal")]
-        max: Fixed128,
-        #[serde(default, deserialize_with = "bel_20_option_decimal")]
-        lim: Option<Fixed128>,
-        #[serde(with = ":: serde_with :: As :: < DisplayFromStr >")]
-        #[serde(default = "DeployProto::default_dec")]
-        dec: u8,
-    },
+    #[serde(rename = "bel-20")]
+    Bel20(DeployProtoWrapper),
+    #[serde(rename = "drc-20")]
+    Drc20(DeployProtoWrapper),
+}
+
+impl DeployProto {
+    pub fn value(&self) -> anyhow::Result<DeployProtoWrapper> {
+        match self {
+            DeployProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
+            DeployProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
+            _ => anyhow::bail!("Unsupported type"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -149,13 +180,20 @@ impl DeployProto {
 #[serde(tag = "p")]
 #[serde_as]
 pub enum TransferProto {
-    #[serde(rename = "bel-20", alias = "drc-20")]
-    Bel20 {
-        #[serde(deserialize_with = "bel_20_tick")]
-        tick: OriginalTokenTick,
-        #[serde(deserialize_with = "bel_20_decimal")]
-        amt: Fixed128,
-    },
+    #[serde(rename = "bel-20")]
+    Bel20(MintProtoWrapper),
+    #[serde(rename = "drc-20")]
+    Drc20(MintProtoWrapper),
+}
+
+impl TransferProto {
+    pub fn value(&self) -> anyhow::Result<MintProtoWrapper> {
+        match self {
+            TransferProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
+            TransferProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
+            _ => anyhow::bail!("Unsupported type"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -166,18 +204,28 @@ pub struct TransferProtoDB {
 }
 
 impl TransferProtoDB {
-    pub fn from_proto(value: TransferProto, height: u32) -> Self {
-        match value {
-            TransferProto::Bel20 { tick, amt } => TransferProtoDB { tick, amt, height },
-        }
+    pub fn from_proto(value: TransferProto, height: u32) -> anyhow::Result<Self> {
+        let v = value.value()?;
+        Ok(Self {
+            amt: v.amt,
+            height,
+            tick: v.tick,
+        })
     }
 }
 
 impl From<TransferProtoDB> for TransferProto {
     fn from(v: TransferProtoDB) -> Self {
-        TransferProto::Bel20 {
-            tick: v.tick,
-            amt: v.amt,
+        if *BLOCKCHAIN == "bells" {
+            TransferProto::Bel20(MintProtoWrapper {
+                tick: v.tick,
+                amt: v.amt,
+            })
+        } else {
+            TransferProto::Drc20(MintProtoWrapper {
+                tick: v.tick,
+                amt: v.amt,
+            })
         }
     }
 }
@@ -200,43 +248,40 @@ pub enum Brc4Value {
     },
 }
 
-impl From<&DeployProto> for Brc4Value {
-    fn from(v: &DeployProto) -> Self {
-        match v {
-            DeployProto::Bel20 {
-                tick,
-                max,
-                lim,
-                dec,
-                ..
-            } => Brc4Value::Deploy {
-                tick: *tick,
-                max: *max,
-                lim: (*lim).unwrap_or(*max),
-                dec: *dec,
-            },
-        }
+impl TryFrom<&DeployProto> for Brc4Value {
+    type Error = anyhow::Error;
+
+    fn try_from(v: &DeployProto) -> Result<Self, Self::Error> {
+        let v = v.value()?;
+        Ok(Brc4Value::Deploy {
+            tick: v.tick,
+            max: v.max,
+            lim: v.lim.unwrap_or(v.max),
+            dec: v.dec,
+        })
     }
 }
 
-impl From<&MintProto> for Brc4Value {
-    fn from(v: &MintProto) -> Self {
-        match v {
-            MintProto::Bel20 { tick, amt } => Brc4Value::Mint {
-                tick: *tick,
-                amt: *amt,
-            },
-        }
+impl TryFrom<&MintProto> for Brc4Value {
+    type Error = anyhow::Error;
+
+    fn try_from(v: &MintProto) -> Result<Self, Self::Error> {
+        let v = v.value()?;
+        Ok(Brc4Value::Mint {
+            tick: v.tick,
+            amt: v.amt,
+        })
     }
 }
 
-impl From<&TransferProto> for Brc4Value {
-    fn from(v: &TransferProto) -> Self {
-        match v {
-            TransferProto::Bel20 { tick, amt } => Brc4Value::Transfer {
-                tick: *tick,
-                amt: *amt,
-            },
-        }
+impl TryFrom<&TransferProto> for Brc4Value {
+    type Error = anyhow::Error;
+
+    fn try_from(v: &TransferProto) -> Result<Self, Self::Error> {
+        let v = v.value()?;
+        Ok(Brc4Value::Transfer {
+            tick: v.tick,
+            amt: v.amt,
+        })
     }
 }

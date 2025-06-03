@@ -2,6 +2,8 @@ use std::ops::RangeInclusive;
 
 use bellscoin::consensus;
 
+use crate::tokens::proto::MintProtoWrapper;
+
 use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
@@ -459,7 +461,7 @@ pub enum TokenAction {
     /// Mint new token action.
     Mint {
         owner: FullHash,
-        proto: MintProto,
+        proto: MintProtoWrapper,
         txid: Txid,
         vout: u32,
     },
@@ -467,7 +469,7 @@ pub enum TokenAction {
     Transfer {
         location: Location,
         owner: FullHash,
-        proto: TransferProto,
+        proto: MintProtoWrapper,
         txid: Txid,
         vout: u32,
     },

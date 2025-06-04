@@ -1,12 +1,9 @@
-use super::{
-    processe_data::{BlockPrevoutsWriter, ProcessedData},
-    *,
-};
+use super::{processe_data::ProcessedData, *};
 
 pub fn load_prevouts_for_block(
     db: Arc<DB>,
     txs: &[Transaction],
-    data_to_write: &mut Vec<Box<dyn ProcessedData>>,
+    data_to_write: &mut Vec<ProcessedData>,
 ) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
     let prevouts = txs
         .iter()
@@ -56,10 +53,10 @@ pub fn load_prevouts_for_block(
         }
     }
 
-    data_to_write.push(Box::new(BlockPrevoutsWriter {
+    data_to_write.push(ProcessedData::Prevouts {
         to_write: prevouts,
         to_remove: txids_keys,
-    }));
+    });
 
     Ok(result)
 }

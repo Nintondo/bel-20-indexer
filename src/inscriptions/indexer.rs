@@ -1,9 +1,6 @@
 use super::*;
 use crate::inscriptions::parser::Parser;
-use crate::inscriptions::processe_data::{
-    BlockFullHashWriter, BlockHistoryWriter, BlockInfoWriter, BlockProofWriter, BlockTokensWriter,
-    ProcessedData,
-};
+use crate::inscriptions::processe_data::ProcessedData;
 
 pub struct Indexer;
 
@@ -14,7 +11,7 @@ impl Indexer {
         server: Arc<Server>,
         reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
     ) -> anyhow::Result<()> {
-        let mut data_to_write: Vec<Box<dyn ProcessedData>> = vec![];
+        let mut data_to_write: Vec<ProcessedData> = vec![];
         let mut block_events: Vec<ServerEvent> = vec![];
         let mut history = vec![];
 
@@ -47,7 +44,7 @@ impl Indexer {
     }
 
     fn handle_block(
-        data_to_write: &mut Vec<Box<dyn ProcessedData>>,
+        data_to_write: &mut Vec<ProcessedData>,
         block_events: &mut Vec<ServerEvent>,
         history: &mut Vec<(AddressTokenId, HistoryValue)>,
         block_height: u32,
@@ -91,23 +88,20 @@ impl Indexer {
             })
             .collect::<HashMap<_, _>>();
 
-        data_to_write.push(Box::new(BlockInfoWriter {
+        data_to_write.push(ProcessedData::Info {
             block_number: block_height,
             block_info,
-        }));
+        });
 
-        let prevouts = utils::load_prevouts_for_block(
-            server.db.clone(),
-            &block.txdata,
-            data_to_write,
-        )?;
+        let prevouts =
+            utils::load_prevouts_for_block(server.db.clone(), &block.txdata, data_to_write)?;
 
-        data_to_write.push(Box::new(BlockFullHashWriter {
+        data_to_write.push(ProcessedData::FullHash {
             addresses: outpoint_fullhash_to_address
                 .iter()
                 .map(|(fullhash, address)| (*fullhash, address.clone()))
                 .collect(),
-        }));
+        });
 
         if block_height < *START_HEIGHT {
             return Ok(());
@@ -116,10 +110,10 @@ impl Indexer {
         if block.txdata.len() == 1 {
             let new_proof = Server::generate_history_hash(prev_block_proof, &[], &HashMap::new())?;
 
-            data_to_write.push(Box::new(BlockProofWriter {
+            data_to_write.push(ProcessedData::Proof {
                 block_number: block_height,
                 block_proof: new_proof,
-            }));
+            });
 
             block_events.push(ServerEvent::NewBlock(
                 block_height,
@@ -171,7 +165,7 @@ impl Indexer {
             &block.txdata,
             &prevouts,
             &mut token_cache,
-            reorg_cache.clone()
+            reorg_cache.clone(),
         );
 
         token_cache.load_tokens_data(&server.db)?;
@@ -261,16 +255,16 @@ impl Indexer {
 
         let new_proof = Server::generate_history_hash(prev_block_proof, history, &rest_addresses)?;
 
-        data_to_write.push(Box::new(BlockProofWriter {
+        data_to_write.push(ProcessedData::Proof {
             block_number: block_height,
             block_proof: new_proof,
-        }));
+        });
 
-        data_to_write.push(Box::new(BlockHistoryWriter {
+        data_to_write.push(ProcessedData::History {
             block_number: block_height,
             last_history_id,
             history: history.clone(),
-        }));
+        });
 
         if let Some(reorg_cache) = reorg_cache.as_ref() {
             let mut cache = reorg_cache.lock();
@@ -279,7 +273,7 @@ impl Indexer {
                 .for_each(|(k, _)| cache.added_history(k.clone()));
         };
 
-        data_to_write.push(Box::new(BlockTokensWriter {
+        data_to_write.push(ProcessedData::Tokens {
             metas: token_cache
                 .tokens
                 .into_iter()
@@ -292,7 +286,7 @@ impl Indexer {
                 .map(|(location, (address, proto))| (AddressLocation { address, location }, proto))
                 .collect(),
             transfers_to_remove: transfers_to_remove.into_iter().collect(),
-        }));
+        });
 
         block_events.push(ServerEvent::NewBlock(
             block_height,

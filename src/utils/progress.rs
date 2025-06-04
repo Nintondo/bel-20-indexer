@@ -20,14 +20,18 @@ impl Progress {
         span.pb_set_length(len);
         span.pb_inc(c);
         let start = Instant::now();
-        Self {
+        let this = Self {
             span,
             msg: msg.to_string(),
             start,
             len,
             c: c.into(),
-        }
+        };
+        this.update_msg();
+
+        this
     }
+
     pub fn inc(&self, c: u64) {
         self.span.pb_inc(c);
         self.c.fetch_add(c, std::sync::atomic::Ordering::AcqRel);

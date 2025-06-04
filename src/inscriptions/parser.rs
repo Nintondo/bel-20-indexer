@@ -1,8 +1,6 @@
 use crate::inscriptions::indexer::ParsedInscriptionResult;
 use crate::inscriptions::leaked::{LeakedInscription, LeakedInscriptions};
-use crate::inscriptions::processe_data::{
-    BlockInscriptionOffsetWriter, BlockInscriptionPartialsWriter, ProcessedData,
-};
+use crate::inscriptions::processe_data::ProcessedData;
 use crate::inscriptions::searcher::InscriptionSearcher;
 use crate::inscriptions::structs::{Inscription, ParsedInscription, Part, Partials};
 use crate::inscriptions::Location;
@@ -26,7 +24,7 @@ pub struct Parser;
 impl Parser {
     pub fn parse_block(
         server: &Server,
-        data_to_write: &mut Vec<Box<dyn ProcessedData>>,
+        data_to_write: &mut Vec<ProcessedData>,
         height: u32,
         created: u32,
         txs: &[Transaction],
@@ -226,10 +224,10 @@ impl Parser {
                     .insert(location.offset);
             });
 
-        data_to_write.push(Box::new(BlockInscriptionPartialsWriter {
+        data_to_write.push(ProcessedData::InscriptionPartials {
             to_remove: partials_to_remove,
             to_write: outpoint_to_partials.into_iter().collect(),
-        }));
+        });
 
         {
             // Write inscriptions offsets
@@ -253,10 +251,10 @@ impl Parser {
                 cache.add_inscription_offsets(to_restore_offsets, to_remove_outpoints);
             };
 
-            data_to_write.push(Box::new(BlockInscriptionOffsetWriter {
+            data_to_write.push(ProcessedData::InscriptionOffset {
                 to_remove,
                 to_write,
-            }));
+            });
         }
     }
 

@@ -2,7 +2,7 @@ use crate::Fixed128;
 
 use super::{proto::*, structs::*, *};
 
-type Tickers = HashSet<OriginalTokenTick>;
+type Tickers = HashSet<LowerCaseTokenTick>;
 type Users = HashSet<(FullHash, OriginalTokenTick)>;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -85,6 +85,33 @@ pub struct TokenCache {
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
 }
 impl TokenCache {
+    pub fn new(prevouts: &HashMap<OutPoint, TxOut>, db: &DB) -> (Self, HashSet<AddressLocation>) {
+        let mut token_cache = Self::default();
+
+        let transfers_to_remove: HashSet<_> = prevouts
+            .iter()
+            .map(|(k, v)| AddressLocation {
+                address: v.script_pubkey.compute_script_hash(),
+                location: Location {
+                    outpoint: *k,
+                    offset: 0,
+                },
+            })
+            .collect();
+
+        token_cache
+            .valid_transfers
+            .extend(db.load_transfers(&transfers_to_remove));
+
+        token_cache.all_transfers = token_cache
+            .valid_transfers
+            .iter()
+            .map(|(location, (_, proto))| (*location, proto.clone()))
+            .collect();
+
+        (token_cache, transfers_to_remove)
+    }
+
     fn try_parse(content_type: &str, content: &[u8]) -> Result<Brc4, Brc4ParseErr> {
         match content_type.split(';').nth(0) {
             Some("text/plain" | "application/json") => {
@@ -244,12 +271,11 @@ impl TokenCache {
     pub fn load_tokens_data(&mut self, db: &DB) -> anyhow::Result<()> {
         let (tickers, users) = self.fill_tickers_and_users();
 
-        let lower_case_ticks: Vec<_> = tickers.iter().map(LowerCaseTokenTick::from).collect();
         self.tokens = db
             .token_to_meta
-            .multi_get(lower_case_ticks.iter())
+            .multi_get(tickers.iter())
             .into_iter()
-            .zip(lower_case_ticks)
+            .zip(tickers)
             .filter_map(|(v, k)| v.map(|x| (k, TokenMeta::from(x))))
             .collect::<HashMap<_, _>>();
 
@@ -279,14 +305,14 @@ impl TokenCache {
                     ..
                 } => {
                     // Load ticks because we need to check if tick is deployed
-                    tickers.insert(*tick);
+                    tickers.insert((*tick).into());
                 }
                 TokenAction::Mint {
                     owner,
                     proto: MintProtoWrapper { tick, .. },
                     ..
                 } => {
-                    tickers.insert(*tick);
+                    tickers.insert((*tick).into());
                     users.insert((*owner, *tick));
                 }
                 TokenAction::Transfer {
@@ -294,7 +320,7 @@ impl TokenCache {
                     proto: MintProtoWrapper { tick, .. },
                     ..
                 } => {
-                    tickers.insert(*tick);
+                    tickers.insert((*tick).into());
                     users.insert((*owner, *tick));
                 }
                 TokenAction::Transferred {
@@ -318,7 +344,7 @@ impl TokenCache {
                         if let Some(transfer) = valid_transfer {
                             users.insert((transfer.0, tick));
                         }
-                        tickers.insert(tick);
+                        tickers.insert(tick.into());
                     }
                 }
             }

@@ -93,8 +93,7 @@ impl Indexer {
             block_info,
         });
 
-        let prevouts =
-            utils::load_prevouts_for_block(server.db.clone(), &block.txdata, data_to_write)?;
+        let prevouts = utils::process_prevouts(server.db.clone(), &block.txdata, data_to_write)?;
 
         data_to_write.push(ProcessedData::FullHash {
             addresses: outpoint_fullhash_to_address
@@ -130,32 +129,7 @@ impl Indexer {
             });
         }
 
-        // init token cache
-        let (mut token_cache, transfers_to_remove) = {
-            let mut token_cache = TokenCache::default();
-            let transfers_to_remove: HashSet<_> = prevouts
-                .iter()
-                .map(|(k, v)| AddressLocation {
-                    address: v.script_pubkey.compute_script_hash(),
-                    location: Location {
-                        outpoint: *k,
-                        offset: 0,
-                    },
-                })
-                .collect();
-
-            token_cache
-                .valid_transfers
-                .extend(server.db.load_transfers(transfers_to_remove.clone()));
-
-            token_cache.all_transfers = token_cache
-                .valid_transfers
-                .iter()
-                .map(|(location, (_, proto))| (*location, proto.clone()))
-                .collect();
-
-            (token_cache, transfers_to_remove)
-        };
+        let (mut token_cache, transfers_to_remove) = TokenCache::new(&prevouts, &server.db);
 
         Parser::parse_block(
             server,

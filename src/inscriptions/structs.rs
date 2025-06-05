@@ -27,10 +27,10 @@ pub enum ParsedInscription {
 }
 
 impl Inscription {
-    pub fn from_parts(partials: &[Part], vout: u32) -> ParsedInscription {
+    pub fn from_parts(partials: &[Part], vin: u32) -> ParsedInscription {
         if partials.len() == 1 && partials[0].is_tapscript {
             let script = Script::from_bytes(&partials[0].script_buffer);
-            if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vout) {
+            if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vin as usize) {
                 let data = v
                     .into_iter()
                     .map(ParsedEnvelope::from)

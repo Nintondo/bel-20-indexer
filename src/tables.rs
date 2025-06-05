@@ -25,7 +25,7 @@ impl DB {
         keys: Vec<AddressToken>,
     ) -> HashMap<AddressToken, TokenBalance> {
         self.address_token_to_balance
-            .multi_get(keys.iter().collect_vec())
+            .multi_get(keys.iter())
             .into_iter()
             .zip(keys)
             .flat_map(|(v, k)| v.map(|v| (k, v)))
@@ -34,23 +34,17 @@ impl DB {
 
     pub fn load_transfers(
         &self,
-        keys: HashSet<AddressLocation>,
+        keys: &HashSet<AddressLocation>,
     ) -> Vec<(Location, (FullHash, TransferProtoDB))> {
-        let result = self
-            .address_location_to_transfer
-            .iter()
-            .filter_map(|(k, v)| {
-                keys.contains(&AddressLocation {
-                    address: k.address,
-                    location: Location {
-                        outpoint: k.location.outpoint,
-                        offset: 0,
-                    },
-                })
-                .then_some((k.location, (k.address, v)))
+        keys.iter()
+            .flat_map(|x| {
+                let (from, to) =
+                    AddressLocation::search(x.address, Some(x.location.outpoint)).into_inner();
+                self.address_location_to_transfer
+                    .range(&from..=&to, false)
+                    .collect_vec()
             })
-            .collect_vec();
-
-        result
+            .map(|(key, value)| (key.location, (key.address, value)))
+            .collect()
     }
 }

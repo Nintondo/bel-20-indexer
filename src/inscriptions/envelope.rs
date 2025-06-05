@@ -79,7 +79,7 @@ impl From<RawEnvelope> for ParsedEnvelope {
 }
 
 impl RawEnvelope {
-    pub fn from_tapscript(tapscript: &script::Script, input: u32) -> Result<Vec<Self>> {
+    pub fn from_tapscript(tapscript: &script::Script, input: usize) -> Result<Vec<Self>> {
         let mut envelopes = Vec::new();
 
         let mut instructions = tapscript.instructions().peekable();
@@ -87,12 +87,8 @@ impl RawEnvelope {
         let mut stuttered = false;
         while let Some(instruction) = instructions.next().transpose()? {
             if instruction == PushBytes((&[]).into()) {
-                let (stutter, envelope) = Self::from_instructions(
-                    &mut instructions,
-                    input,
-                    envelopes.len() as u32,
-                    stuttered,
-                )?;
+                let (stutter, envelope) =
+                    Self::from_instructions(&mut instructions, input, envelopes.len(), stuttered)?;
                 if let Some(envelope) = envelope {
                     envelopes.push(envelope);
                 } else {
@@ -118,13 +114,11 @@ impl RawEnvelope {
 
     fn from_instructions(
         instructions: &mut Peekable<script::Instructions>,
-        input: u32,
-        offset: u32,
+        input: usize,
+        offset: usize,
         stutter: bool,
     ) -> Result<(bool, Option<Self>)> {
-        use opcodes::all::*;
-
-        if !Self::accept(instructions, Op(OP_IF))? {
+        if !Self::accept(instructions, Op(opcodes::all::OP_IF))? {
             let stutter = instructions.peek() == Some(&Ok(PushBytes((&[]).into())));
             return Ok((stutter, None));
         }
@@ -138,43 +132,94 @@ impl RawEnvelope {
 
         let mut payload = Vec::new();
 
-        while let Some(instruction) = instructions.next().transpose()? {
-            let opcode = match instruction {
-                Op(opcode) => opcode,
-                PushBytes(push) => {
-                    payload.push(push.as_bytes().to_vec());
-                    continue;
-                }
-            };
-
-            let opcode_payload = vec![opcode.to_u8()];
-
-            match opcode {
-                OP_ENDIF => {
+        loop {
+            match instructions.next().transpose()? {
+                None => return Ok((false, None)),
+                Some(Op(opcodes::all::OP_ENDIF)) => {
                     return Ok((
                         false,
                         Some(Envelope {
-                            input,
-                            offset,
+                            input: input.try_into().unwrap(),
+                            offset: offset.try_into().unwrap(),
                             payload,
                             pushnum,
                             stutter,
                         }),
                     ));
                 }
-                OP_PUSHNUM_NEG1 | OP_PUSHNUM_1 | OP_PUSHNUM_2 | OP_PUSHNUM_3 | OP_PUSHNUM_4
-                | OP_PUSHNUM_5 | OP_PUSHNUM_6 | OP_PUSHNUM_7 | OP_PUSHNUM_8 | OP_PUSHNUM_9
-                | OP_PUSHNUM_10 | OP_PUSHNUM_11 | OP_PUSHNUM_12 | OP_PUSHNUM_13 | OP_PUSHNUM_14
-                | OP_PUSHNUM_15 | OP_PUSHNUM_16 => {
-                    payload.push(opcode_payload);
+                Some(Op(opcodes::all::OP_PUSHNUM_NEG1)) => {
+                    pushnum = true;
+                    payload.push(vec![0x81]);
                 }
-
-                _ => return Ok((false, None)),
+                Some(Op(opcodes::all::OP_PUSHNUM_1)) => {
+                    pushnum = true;
+                    payload.push(vec![1]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_2)) => {
+                    pushnum = true;
+                    payload.push(vec![2]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_3)) => {
+                    pushnum = true;
+                    payload.push(vec![3]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_4)) => {
+                    pushnum = true;
+                    payload.push(vec![4]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_5)) => {
+                    pushnum = true;
+                    payload.push(vec![5]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_6)) => {
+                    pushnum = true;
+                    payload.push(vec![6]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_7)) => {
+                    pushnum = true;
+                    payload.push(vec![7]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_8)) => {
+                    pushnum = true;
+                    payload.push(vec![8]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_9)) => {
+                    pushnum = true;
+                    payload.push(vec![9]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_10)) => {
+                    pushnum = true;
+                    payload.push(vec![10]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_11)) => {
+                    pushnum = true;
+                    payload.push(vec![11]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_12)) => {
+                    pushnum = true;
+                    payload.push(vec![12]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_13)) => {
+                    pushnum = true;
+                    payload.push(vec![13]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_14)) => {
+                    pushnum = true;
+                    payload.push(vec![14]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_15)) => {
+                    pushnum = true;
+                    payload.push(vec![15]);
+                }
+                Some(Op(opcodes::all::OP_PUSHNUM_16)) => {
+                    pushnum = true;
+                    payload.push(vec![16]);
+                }
+                Some(PushBytes(push)) => {
+                    payload.push(push.as_bytes().to_vec());
+                }
+                Some(_) => return Ok((false, None)),
             }
-
-            pushnum = true;
         }
-
-        Ok((false, None))
     }
 }

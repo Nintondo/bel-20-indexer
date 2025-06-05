@@ -1,6 +1,6 @@
 use super::{processe_data::ProcessedData, *};
 
-pub fn load_prevouts_for_block(
+pub fn process_prevouts(
     db: Arc<DB>,
     txs: &[Transaction],
     data_to_write: &mut Vec<ProcessedData>,

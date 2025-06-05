@@ -39,7 +39,7 @@ use {
         ops::{Bound, RangeBounds},
         path::PathBuf,
         str::FromStr,
-        sync::{atomic::AtomicU64, Arc},
+        sync::{atomic::AtomicU64, Arc, LazyLock},
         time::{Duration, Instant},
     },
     tables::DB,
@@ -80,31 +80,40 @@ impl IsOpReturnHash for FullHash {
         self.eq(&*OP_RETURN_HASH)
     }
 }
-lazy_static! {
-    static ref BLK_DIR: String = load_env!("BLK_DIR");
-    static ref URL: String = load_env!("RPC_URL");
-    static ref USER: String = load_env!("RPC_USER");
-    static ref PASS: String = load_env!("RPC_PASS");
-    static ref BLOCKCHAIN: String = load_env!("BLOCKCHAIN").to_lowercase();
-    static ref NETWORK: Network = load_opt_env!("NETWORK")
+
+macro_rules! define_static {
+    ($($name:ident: $ty:ty = $value:expr);* ;) => {
+        $(
+            static $name: std::sync::LazyLock<$ty> = std::sync::LazyLock::new(|| $value);
+        )*
+    };
+}
+
+define_static! {
+    BLK_DIR: String = load_env!("BLK_DIR");
+    URL: String = load_env!("RPC_URL");
+    USER: String = load_env!("RPC_USER");
+    PASS: String = load_env!("RPC_PASS");
+    BLOCKCHAIN: String = load_env!("BLOCKCHAIN").to_lowercase();
+    NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);
     // multiple input inscription scan activation
-    static ref JUBILEE_HEIGHT: usize = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
+    JUBILEE_HEIGHT: usize = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
         (Network::Bellscoin, "bells") => 133_000,
         (_, "doge") => usize::MAX,
         _ => 0,
     };
     // first token block height
-    static ref START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
+    START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
         (Network::Bellscoin, "bells") => 26_371,
         (Network::Bellscoin, "doge") => 4_609_723,
         (Network::Testnet, "doge") => 4_260_514,
         _ => 0,
     };
-    static ref SERVER_URL: String =
+    SERVER_URL: String =
         load_opt_env!("SERVER_BIND_URL").unwrap_or("0.0.0.0:8000".to_string());
-    static ref DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
+    DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
 }
 
 fn main() {

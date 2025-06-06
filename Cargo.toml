@@ -32,7 +32,6 @@ tracing-indicatif = "0.3.6"
 indicatif = "0.17.9"
 dutils = "0.1.7"
 parking_lot = "0.12.3"
-lazy_static = "1.5.0"
 dotenv = "0.15.0"
 tokio-stream = "0.1.16"
 axum-streams = { version = "0.20.0", features = ["json"] }

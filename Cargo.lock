@@ -270,7 +270,6 @@ dependencies = [
  "itertools 0.14.0",
  "jsonrpc-async",
  "kanal",
- "lazy_static",
  "nintondo-dogecoin",
  "nintypes",
  "num-traits",

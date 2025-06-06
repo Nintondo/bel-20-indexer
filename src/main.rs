@@ -25,7 +25,6 @@ use {
     futures::future::join_all,
     inscriptions::Location,
     itertools::Itertools,
-    lazy_static::lazy_static,
     num_traits::Zero,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{serde_as, DisplayFromStr},
@@ -64,33 +63,11 @@ mod utils;
 mod server;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
-
 const OP_RETURN_ADDRESS: &str = "BURNED";
 const NON_STANDARD_ADDRESS: &str = "non-standard";
 
-lazy_static! {
-    static ref OP_RETURN_HASH: FullHash = OP_RETURN_ADDRESS.compute_script_hash();
-}
-
-trait IsOpReturnHash {
-    fn is_op_return_hash(&self) -> bool;
-}
-
-impl IsOpReturnHash for FullHash {
-    fn is_op_return_hash(&self) -> bool {
-        self.eq(&*OP_RETURN_HASH)
-    }
-}
-
-macro_rules! define_static {
-    ($($name:ident: $ty:ty = $value:expr);* ;) => {
-        $(
-            static $name: std::sync::LazyLock<$ty> = std::sync::LazyLock::new(|| $value);
-        )*
-    };
-}
-
 define_static! {
+    OP_RETURN_HASH: FullHash = OP_RETURN_ADDRESS.compute_script_hash();
     BLK_DIR: String = load_env!("BLK_DIR");
     URL: String = load_env!("RPC_URL");
     USER: String = load_env!("RPC_USER");
@@ -132,8 +109,7 @@ fn main() {
         &*SERVER_URL,
     );
 
-    let indexer_runtime = spawn_runtime("indexer".to_string(), Some(21.try_into().unwrap()));
-    indexer_runtime.block_on(async {
+    spawn_runtime("indexer".to_string(), Some(21)).block_on(async {
         let (raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
 
         let server = Arc::new(server);
@@ -152,7 +128,7 @@ fn main() {
 
         let rest_server = server.clone();
         std::thread::spawn(move || {
-            let rest_runtime = spawn_runtime("rest".to_string(), Some(20.try_into().unwrap()));
+            let rest_runtime = spawn_runtime("rest".to_string(), Some(20));
             rest_runtime.block_on(run_rest(rest_server))
         });
 
@@ -196,12 +172,9 @@ async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
     }
 }
 
-fn spawn_runtime(
-    name: String,
-    priority: Option<thread_priority::ThreadPriority>,
-) -> tokio::runtime::Runtime {
+fn spawn_runtime(name: String, priority: Option<u8>) -> tokio::runtime::Runtime {
     if let Some(priority) = priority {
-        if let Err(e) = thread_priority::set_current_thread_priority(priority) {
+        if let Err(e) = thread_priority::set_current_thread_priority(priority.try_into().unwrap()) {
             warn!("can't set priority {priority:?}, error {e:?}");
         };
     }

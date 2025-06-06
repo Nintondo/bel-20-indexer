@@ -33,7 +33,7 @@ pub async fn address_token_balance(
     url: Uri,
     State(state): State<Arc<Server>>,
     Path((script_str, tick)): Path<(String, String)>,
-    Query(params): Query<api::AddressTokenBalanceArgs>,
+    Query(params): Query<types::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash = state
@@ -73,7 +73,7 @@ pub async fn address_token_balance(
         })
         .collect_vec();
 
-    let data = api::TokenBalance {
+    let data = types::TokenBalance {
         transfers,
         tick,
         balance: balance.balance,
@@ -105,7 +105,7 @@ pub async fn address_tokens(
             },
             false,
         )
-        .map(|(k, v)| api::TokenBalance {
+        .map(|(k, v)| types::TokenBalance {
             tick: k.token,
             balance: v.balance,
             transferable_balance: v.transferable_balance,

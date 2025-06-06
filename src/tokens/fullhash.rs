@@ -84,3 +84,13 @@ impl ComputeScriptHash for &'static str {
         compute_script_hash(self.as_bytes())
     }
 }
+
+pub trait IsOpReturnHash {
+    fn is_op_return_hash(&self) -> bool;
+}
+
+impl IsOpReturnHash for FullHash {
+    fn is_op_return_hash(&self) -> bool {
+        self.eq(&*OP_RETURN_HASH)
+    }
+}

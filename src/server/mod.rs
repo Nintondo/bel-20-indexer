@@ -81,13 +81,13 @@ impl Server {
             let mut buffer = Vec::<u8>::new();
 
             for (address_token, action) in history {
-                let rest = rest::api::History {
+                let rest = rest::types::History {
                     height: action.height,
-                    action: rest::api::TokenAction::from_with_addresses(
+                    action: rest::types::TokenAction::from_with_addresses(
                         action.action.clone(),
                         addresses,
                     ),
-                    address_token: rest::api::AddressTokenId {
+                    address_token: rest::types::AddressTokenId {
                         address: addresses.get(&address_token.address),
                         id: address_token.id,
                         tick: address_token.token,
@@ -113,7 +113,7 @@ impl Server {
         let Ok(pubkey) = PublicKey::from_str(script_str) else {
             return match script_type {
                 "address" => self.address_to_scripthash(script_str),
-                "scripthash" => Self::parse_scripthash(script_str),
+                "scripthash" => hex::decode(script_str)?.try_into(),
                 _ => anyhow::bail!("Invalid script type"),
             };
         };
@@ -125,10 +125,5 @@ impl Server {
             .decode(address)
             .map(|x| x.script_pubkey().compute_script_hash())
             .map_err(|_| anyhow::anyhow!(""))
-    }
-
-    fn parse_scripthash(scripthash: &str) -> anyhow::Result<FullHash> {
-        let bytes = hex::decode(scripthash)?;
-        bytes.try_into()
     }
 }

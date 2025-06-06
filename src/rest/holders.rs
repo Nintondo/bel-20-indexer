@@ -2,7 +2,7 @@ use super::*;
 
 pub async fn holders(
     State(server): State<Arc<Server>>,
-    Query(query): Query<api::HoldersArgs>,
+    Query(query): Query<types::HoldersArgs>,
 ) -> ApiResult<impl IntoResponse> {
     query.validate().bad_request(BAD_PARAMS)?;
 
@@ -36,7 +36,7 @@ pub async fn holders(
             let percent =
                 balance.into_decimal() * Decimal::new(100, 0) / proto.supply.into_decimal();
 
-            holders.push(api::Holder {
+            holders.push(types::Holder {
                 rank,
                 address,
                 balance: balance.to_string(),
@@ -44,14 +44,14 @@ pub async fn holders(
             })
         }
 
-        api::Holders {
+        types::Holders {
             pages,
             count,
             max_percent,
             holders,
         }
     } else {
-        api::Holders::default()
+        types::Holders::default()
     };
 
     Ok(Json(result))

@@ -2,7 +2,7 @@ use super::*;
 
 pub async fn subscribe(
     State(server): State<Arc<Server>>,
-    Json(payload): Json<api::SubscribeArgs>,
+    Json(payload): Json<types::SubscribeArgs>,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>> {
     let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(200_000);
 
@@ -37,7 +37,7 @@ pub async fn subscribe(
                                 }
 
                                 let data = Event::default().data(
-                                    serde_json::to_string(&api::History {
+                                    serde_json::to_string(&types::History {
                                         address_token: address_token.into(),
                                         height: action.height,
                                         action: action.into(),
@@ -51,7 +51,7 @@ pub async fn subscribe(
                             }
                             ServerEvent::Reorg(blocks_count, new_height) => {
                                 let data = Event::default().data(
-                                    serde_json::to_string(&api::Reorg {
+                                    serde_json::to_string(&types::Reorg {
                                         event_type: "reorg".to_string(),
                                         blocks_count,
                                         new_height,
@@ -65,7 +65,7 @@ pub async fn subscribe(
                             }
                             ServerEvent::NewBlock(height, poh, blockhash) => {
                                 let data = Event::default().data(
-                                    serde_json::to_string(&api::NewBlock {
+                                    serde_json::to_string(&types::NewBlock {
                                         event_type: "new_block".to_string(),
                                         height,
                                         proof: poh,
@@ -102,7 +102,7 @@ pub async fn subscribe(
 pub async fn address_token_history(
     State(server): State<Arc<Server>>,
     Path(script_str): Path<String>,
-    Query(query): Query<api::AddressTokenHistoryArgs>,
+    Query(query): Query<types::AddressTokenHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
     let scripthash = server
         .to_scripthash("address", &script_str)
@@ -140,7 +140,7 @@ pub async fn address_token_history(
         .address_token_to_history
         .range(&from..&to, true)
         .take(query.limit.unwrap_or(100))
-        .map(|(k, v)| api::AddressHistory::new(v.height, v.action, k, &server))
+        .map(|(k, v)| types::AddressHistory::new(v.height, v.action, k, &server))
         .collect::<anyhow::Result<Vec<_>>>()
         .internal("Failed to load addresses")?;
 
@@ -158,7 +158,7 @@ pub async fn events_by_height(
         .address_token_to_history
         .multi_get_kv(keys.iter(), true)
         .into_iter()
-        .map(|(k, v)| api::History::new(v.height, v.action, *k, &server))
+        .map(|(k, v)| types::History::new(v.height, v.action, *k, &server))
         .collect::<anyhow::Result<Vec<_>>>()
         .internal("Failed to load addresses")?;
 
@@ -167,7 +167,7 @@ pub async fn events_by_height(
 
 pub async fn proof_of_history(
     State(server): State<Arc<Server>>,
-    Query(query): Query<api::ProofHistoryArgs>,
+    Query(query): Query<types::ProofHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
     if let Some(limit) = query.limit {
         if limit > 100 {
@@ -179,7 +179,7 @@ pub async fn proof_of_history(
         .db
         .proof_of_history
         .range(..&query.offset.unwrap_or(u32::MAX), true)
-        .map(|(height, hash)| api::ProofOfHistory {
+        .map(|(height, hash)| types::ProofOfHistory {
             hash: hash.to_string(),
             height,
         })
@@ -211,7 +211,7 @@ pub async fn txid_events(
         .address_token_to_history
         .multi_get_kv(keys.iter(), false)
         .into_iter()
-        .map(|(k, v)| api::History::new(v.height, v.action, *k, &server))
+        .map(|(k, v)| types::History::new(v.height, v.action, *k, &server))
         .collect::<anyhow::Result<Vec<_>>>()
         .internal("Failed to load addresses")?;
 

@@ -2,7 +2,7 @@ use super::*;
 
 pub async fn tokens(
     State(server): State<Arc<Server>>,
-    Query(args): Query<api::TokensArgs>,
+    Query(args): Query<types::TokensArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_PARAMS)?;
     let search = args.search.map(|x| x.to_lowercase().as_bytes().to_vec());
@@ -12,9 +12,9 @@ pub async fn tokens(
         .token_to_meta
         .iter()
         .filter(|x| match args.filter_by {
-            api::TokenFilterBy::All => true,
-            api::TokenFilterBy::Completed => x.1.is_completed(),
-            api::TokenFilterBy::InProgress => !x.1.is_completed(),
+            types::TokenFilterBy::All => true,
+            types::TokenFilterBy::Completed => x.1.is_completed(),
+            types::TokenFilterBy::InProgress => !x.1.is_completed(),
         })
         .filter(|x| match &search {
             Some(tick) => x.0.starts_with(tick),
@@ -23,24 +23,24 @@ pub async fn tokens(
 
     let stats = server.holders.stats();
     let all = match args.sort_by {
-        api::TokenSortBy::DeployTimeAsc => {
+        types::TokenSortBy::DeployTimeAsc => {
             iter.sorted_by_key(|(_, v)| v.proto.created).collect_vec()
         }
-        api::TokenSortBy::DeployTimeDesc => iter
+        types::TokenSortBy::DeployTimeDesc => iter
             .sorted_by_key(|(_, v)| v.proto.created)
             .rev()
             .collect_vec(),
-        api::TokenSortBy::HoldersAsc => iter
+        types::TokenSortBy::HoldersAsc => iter
             .sorted_by_key(|(_, v)| stats.get(&v.proto.tick))
             .collect_vec(),
-        api::TokenSortBy::HoldersDesc => iter
+        types::TokenSortBy::HoldersDesc => iter
             .sorted_by_key(|(_, v)| stats.get(&v.proto.tick))
             .rev()
             .collect_vec(),
-        api::TokenSortBy::TransactionsAsc => iter
+        types::TokenSortBy::TransactionsAsc => iter
             .sorted_by_key(|(_, v)| v.proto.transactions)
             .collect_vec(),
-        api::TokenSortBy::TransactionsDesc => iter
+        types::TokenSortBy::TransactionsDesc => iter
             .sorted_by_key(|(_, v)| v.proto.transactions)
             .rev()
             .collect_vec(),
@@ -52,7 +52,7 @@ pub async fn tokens(
         .iter()
         .skip((args.page - 1) * args.page_size)
         .take(args.page_size)
-        .map(|(_, v)| api::Token {
+        .map(|(_, v)| types::Token {
             height: v.proto.height,
             created: v.proto.created,
             mint_percent: v.proto.mint_percent().to_string(),
@@ -73,7 +73,7 @@ pub async fn tokens(
         })
         .collect_vec();
 
-    Ok(Json(api::TokensResult {
+    Ok(Json(types::TokensResult {
         count,
         pages,
         tokens,
@@ -82,7 +82,7 @@ pub async fn tokens(
 
 pub async fn token(
     State(back): State<Arc<Server>>,
-    Query(args): Query<api::TokenArgs>,
+    Query(args): Query<types::TokenArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_REQUEST)?;
     let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
@@ -90,7 +90,7 @@ pub async fn token(
         .db
         .token_to_meta
         .get(lower_case_token_tick.clone())
-        .map(|v| api::Token {
+        .map(|v| types::Token {
             height: v.proto.height,
             created: v.proto.created,
             deployer: back
@@ -129,7 +129,7 @@ pub async fn token_transfer_proof(
         .address_location_to_transfer
         .range(&from..&to, false)
         .map(|(_, TransferProtoDB { tick, amt, height })| {
-            anyhow::Ok(api::TokenTransferProof { amt, tick, height })
+            anyhow::Ok(types::TokenTransferProof { amt, tick, height })
         })
         .try_collect()
         .track_with("")

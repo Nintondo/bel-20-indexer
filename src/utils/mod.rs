@@ -23,3 +23,11 @@ macro_rules! load_opt_env {
         std::env::var($var).ok()
     };
 }
+
+macro_rules! define_static {
+    ($($name:ident: $ty:ty = $value:expr);* ;) => {
+        $(
+            static $name: std::sync::LazyLock<$ty> = std::sync::LazyLock::new(|| $value);
+        )*
+    };
+}

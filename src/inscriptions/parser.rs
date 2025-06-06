@@ -8,6 +8,7 @@ use crate::server::Server;
 use crate::tokens::{ComputeScriptHash, FullHash, InscriptionId, InscriptionTemplate, TokenCache};
 use crate::{JUBILEE_HEIGHT, OP_RETURN_HASH};
 use bellscoin::{OutPoint, Transaction, TxOut};
+use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -19,34 +20,42 @@ pub struct ParseInscription<'a> {
     prevouts: &'a HashMap<OutPoint, TxOut>,
 }
 
-pub struct Parser;
+pub struct Parser<'a> {
+    pub server: &'a Server,
+    pub reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+    pub token_cache: &'a mut TokenCache,
+}
 
-impl Parser {
+impl Parser<'_> {
     pub fn parse_block(
-        server: &Server,
-        data_to_write: &mut Vec<ProcessedData>,
+        &mut self,
         height: u32,
-        created: u32,
-        txs: &[Transaction],
+        block: &bellscoin::Block,
         prevouts: &HashMap<OutPoint, TxOut>,
-        token_cache: &mut TokenCache,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+        data_to_write: &mut Vec<ProcessedData>,
     ) {
         let is_jubilee_height = height as usize >= *JUBILEE_HEIGHT;
 
         // Hold inscription's partials from db and new in the block
         let mut outpoint_to_partials =
-            Self::load_partials(server, prevouts.keys().cloned().collect());
+            Self::load_partials(self.server, prevouts.keys().cloned().collect());
 
         // Hold inscription's partials to remove from db
-        let partials_to_remove: Vec<_> = outpoint_to_partials.keys().cloned().collect();
+        let partials_to_remove: Vec<_> = outpoint_to_partials.keys().copied().collect();
 
-        let mut inscription_outpoint_to_offsets =
-            Self::load_inscription_outpoint_to_offsets(server, prevouts.keys().cloned().collect());
+        let mut inscription_outpoint_to_offsets = Self::load_inscription_outpoint_to_offsets(
+            self.server,
+            prevouts.keys().cloned().collect(),
+        );
+
+        let prev_offsets = inscription_outpoint_to_offsets
+            .iter()
+            .map(|(k, v)| (*k, v.clone()))
+            .collect_vec();
 
         let mut leaked: Option<LeakedInscriptions> = None;
 
-        for tx in txs {
+        for tx in &block.txdata {
             if tx.is_coin_base() {
                 leaked = Some(LeakedInscriptions::new(tx.clone()));
 
@@ -73,7 +82,7 @@ impl Parser {
                         };
 
                         let is_token_transfer_move =
-                            token_cache.all_transfers.contains_key(&old_location);
+                            self.token_cache.all_transfers.contains_key(&old_location);
 
                         let offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
                         match InscriptionSearcher::get_output_index_by_input(offset, &tx.output) {
@@ -91,12 +100,16 @@ impl Parser {
                                 // handle move of token transfer
                                 if is_token_transfer_move {
                                     if tx.output[new_vout as usize].script_pubkey.is_op_return() {
-                                        token_cache.burned_transfer(old_location, txid, new_vout);
+                                        self.token_cache.burned_transfer(
+                                            old_location,
+                                            txid,
+                                            new_vout,
+                                        );
                                     } else {
                                         let owner = tx.output[new_vout as usize]
                                             .script_pubkey
                                             .compute_script_hash();
-                                        token_cache.transferred(
+                                        self.token_cache.transferred(
                                             old_location,
                                             owner,
                                             txid,
@@ -115,7 +128,8 @@ impl Parser {
                                         .expect("Owner of token transfer must exist")
                                         .script_pubkey
                                         .compute_script_hash();
-                                    token_cache.transferred(old_location, recipient, txid, 0);
+                                    self.token_cache
+                                        .transferred(old_location, recipient, txid, 0);
                                 }
                                 leaked.as_mut().unwrap().add(
                                     input_index,
@@ -197,10 +211,15 @@ impl Parser {
                     };
 
                     for inscription_template in inscription_templates {
-                        let offset_occupied = !inscription_outpoint_to_offsets
+                        let mut offset_occupied = !inscription_outpoint_to_offsets
                             .entry(inscription_template.location.outpoint)
                             .or_default()
                             .insert(inscription_template.location.offset); // return false if item already exist
+
+                        // This is only for BELLS
+                        if *JUBILEE_HEIGHT == 133_000 {
+                            offset_occupied = false;
+                        }
 
                         // skip inscription which was created into occupied offset
                         if !inscription_template.leaked && offset_occupied && !is_jubilee_height {
@@ -208,7 +227,11 @@ impl Parser {
                         }
 
                         // handle token deploy|mint|transfer creation
-                        token_cache.parse_token_action(&inscription_template, height, created);
+                        self.token_cache.parse_token_action(
+                            &inscription_template,
+                            height,
+                            block.header.time,
+                        );
                     }
                 }
             }
@@ -230,30 +253,17 @@ impl Parser {
         });
 
         {
-            // Write inscriptions offsets
-            let mut to_write = Vec::new();
-            let mut to_restore_offsets = Vec::new();
-            let mut to_remove = Vec::new();
-            let mut to_remove_outpoints = Vec::new();
-
-            for (outpoint, offsets) in inscription_outpoint_to_offsets {
-                if offsets.is_empty() {
-                    to_remove.push(outpoint);
-                    to_restore_offsets.push((outpoint, offsets));
-                } else {
-                    to_write.push((outpoint, offsets));
-                    to_remove_outpoints.push(outpoint);
-                }
-            }
-
-            if let Some(reorg_cache) = reorg_cache.as_ref() {
+            if let Some(reorg_cache) = self.reorg_cache.as_ref() {
                 let mut cache = reorg_cache.lock();
-                cache.add_inscription_offsets(to_restore_offsets, to_remove_outpoints);
+                cache.add_inscription_offsets(
+                    prev_offsets.clone(),
+                    inscription_outpoint_to_offsets.keys().copied().collect(),
+                );
             };
 
             data_to_write.push(ProcessedData::InscriptionOffset {
-                to_remove,
-                to_write,
+                to_remove: prev_offsets.iter().map(|x| x.0).collect(),
+                to_write: inscription_outpoint_to_offsets.into_iter().collect(),
             });
         }
     }
@@ -262,10 +272,9 @@ impl Parser {
         server
             .db
             .outpoint_to_partials
-            .multi_get(outpoints.iter())
+            .multi_get_kv(outpoints.iter(), false)
             .into_iter()
-            .zip(outpoints)
-            .filter_map(|(partials, outpoint)| partials.map(|partials| (outpoint, partials)))
+            .map(|(k, v)| (*k, v))
             .collect()
     }
 
@@ -276,10 +285,9 @@ impl Parser {
         server
             .db
             .outpoint_to_inscription_offsets
-            .multi_get(outpoints.iter())
+            .multi_get_kv(outpoints.iter(), false)
             .into_iter()
-            .zip(outpoints)
-            .filter_map(|(offsets, outpoint)| offsets.map(|offsets| (outpoint, offsets)))
+            .map(|(k, v)| (*k, v))
             .collect()
     }
 

@@ -85,6 +85,34 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .collect()
     }
 
+    pub fn multi_get_kv<'a>(
+        &'a self,
+        keys: impl IntoIterator<Item = &'a K::Inner>,
+        panic_if_not_exists: bool,
+    ) -> Vec<(&'a K::Inner, V::Inner)> {
+        let keys_bytes = keys.into_iter().map(|x| (x, K::get_bytes(x))).collect_vec();
+
+        self.db
+            .db
+            .batched_multi_get_cf(&self.cf(), keys_bytes.iter().map(|x| &x.1), false)
+            .into_iter()
+            .map(|x| {
+                x.unwrap().map(|x| {
+                    V::from_bytes(Cow::Owned((*x).to_vec()))
+                        .unwrap_or_else(|e| _panic("multi_get", &self.cf, e))
+                })
+            })
+            .zip(keys_bytes.into_iter().map(|x| x.0))
+            .filter_map(|(v, k)| {
+                if panic_if_not_exists {
+                    Some((k, v.unwrap()))
+                } else {
+                    Some((k, v?))
+                }
+            })
+            .collect()
+    }
+
     pub fn set(&self, k: impl Borrow<K::Inner>, v: impl Borrow<V::Inner>) {
         self.db
             .db

@@ -71,15 +71,9 @@ async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl Into
             .map(|x| x.0.address)
             .collect::<HashSet<_>>();
 
-        let addresses = server
-            .load_addresses(
-                addresses.iter().copied(),
-                *server.last_indexed_address_height.read().await,
-            )
-            .await
-            .unwrap();
+        let addresses = server.load_addresses(addresses.iter().copied()).unwrap();
 
-        for (_, address) in addresses {
+        for address in addresses.iter() {
             if tx.send(address).await.is_err() {
                 break;
             }

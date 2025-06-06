@@ -63,7 +63,7 @@ pub enum TokenHistoryEvent {
 }
 
 impl TokenHistoryEvent {
-    fn into_event(value: TokenHistoryDB, addresses: &HashMap<FullHash, String>) -> Self {
+    fn into_event(value: TokenHistoryDB, addresses: &AddressesFullHash) -> Self {
         match value {
             TokenHistoryDB::Deploy {
                 max,
@@ -89,7 +89,7 @@ impl TokenHistoryEvent {
                 vout,
             } => Self::Send {
                 amt,
-                recipient: addresses.get(&recipient).unwrap().clone(),
+                recipient: addresses.get(&recipient),
                 txid,
                 vout,
             },
@@ -100,7 +100,7 @@ impl TokenHistoryEvent {
                 vout,
             } => Self::Receive {
                 amt,
-                sender: addresses.get(&sender).unwrap().clone(),
+                sender: addresses.get(&sender),
                 txid,
                 vout,
             },
@@ -112,7 +112,7 @@ impl TokenHistoryEvent {
 }
 
 impl HistoryValueEvent {
-    pub fn into_event(value: HistoryValue, addresses: &HashMap<FullHash, String>) -> Self {
+    pub fn into_event(value: HistoryValue, addresses: &AddressesFullHash) -> Self {
         Self {
             height: value.height,
             action: TokenHistoryEvent::into_event(value.action, addresses),
@@ -120,7 +120,7 @@ impl HistoryValueEvent {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct BlockInfo {
     pub hash: BlockHash,
     pub created: u32,

@@ -48,30 +48,30 @@ pub enum ProcessedData {
 }
 
 impl ProcessedData {
-    pub fn write(&self, db: &DB) {
+    pub fn write(self, db: &DB) {
         match self {
             ProcessedData::Info {
                 block_number,
                 block_info,
             } => {
-                db.last_block.set((), *block_number);
-                db.block_info.set(*block_number, block_info.clone());
+                db.last_block.set((), block_number);
+                db.block_info.set(block_number, block_info);
             }
             ProcessedData::Prevouts {
                 to_write,
                 to_remove,
             } => {
-                db.prevouts.remove_batch(to_remove.clone().into_iter());
-                db.prevouts.extend(to_write.clone());
+                db.prevouts.remove_batch(to_remove.into_iter());
+                db.prevouts.extend(to_write);
             }
             ProcessedData::FullHash { addresses } => {
-                db.fullhash_to_address.extend(addresses.clone());
+                db.fullhash_to_address.extend(addresses);
             }
             ProcessedData::Proof {
                 block_number,
                 block_proof,
             } => {
-                db.proof_of_history.set(*block_number, *block_proof);
+                db.proof_of_history.set(block_number, block_proof);
             }
             ProcessedData::History {
                 block_number,
@@ -80,18 +80,18 @@ impl ProcessedData {
             } => {
                 let block_events: Vec<_> = history
                     .iter()
-                    .map(|(address_token_id, _)| address_token_id.clone())
+                    .map(|(address_token_id, _)| *address_token_id)
                     .sorted_unstable_by_key(|address_token_id| address_token_id.id)
                     .collect();
 
                 let outpoint_to_event = history.iter().map(|(address_token_id, history_value)| {
-                    (history_value.action.outpoint(), address_token_id.clone())
+                    (history_value.action.outpoint(), address_token_id)
                 });
 
-                db.block_events.set(*block_number, block_events);
+                db.block_events.set(block_number, block_events);
                 db.outpoint_to_event.extend(outpoint_to_event);
-                db.address_token_to_history.extend(history.clone());
-                db.last_history_id.set((), *last_history_id);
+                db.address_token_to_history.extend(history);
+                db.last_history_id.set((), last_history_id);
             }
             ProcessedData::Tokens {
                 metas,
@@ -99,28 +99,26 @@ impl ProcessedData {
                 transfers_to_write,
                 transfers_to_remove,
             } => {
-                db.token_to_meta.extend(metas.clone());
-                db.address_token_to_balance.extend(balances.clone());
+                db.token_to_meta.extend(metas);
+                db.address_token_to_balance.extend(balances);
                 db.address_location_to_transfer
-                    .remove_batch(transfers_to_remove.clone().into_iter());
-                db.address_location_to_transfer
-                    .extend(transfers_to_write.clone());
+                    .remove_batch(transfers_to_remove.into_iter());
+                db.address_location_to_transfer.extend(transfers_to_write);
             }
             ProcessedData::InscriptionPartials {
                 to_remove,
                 to_write,
             } => {
-                db.outpoint_to_partials
-                    .remove_batch(to_remove.clone().into_iter());
-                db.outpoint_to_partials.extend(to_write.clone());
+                db.outpoint_to_partials.remove_batch(to_remove.into_iter());
+                db.outpoint_to_partials.extend(to_write);
             }
             ProcessedData::InscriptionOffset {
                 to_remove,
                 to_write,
             } => {
                 db.outpoint_to_inscription_offsets
-                    .remove_batch(to_remove.clone().into_iter());
-                db.outpoint_to_inscription_offsets.extend(to_write.clone());
+                    .remove_batch(to_remove.into_iter());
+                db.outpoint_to_inscription_offsets.extend(to_write);
             }
         }
     }

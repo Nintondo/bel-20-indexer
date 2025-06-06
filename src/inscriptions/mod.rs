@@ -20,7 +20,7 @@ mod tag;
 mod utils;
 
 use envelope::{ParsedEnvelope, RawEnvelope};
-use indexer::Indexer;
+use indexer::InscriptionIndexer;
 use structs::Inscription;
 use tag::Tag;
 
@@ -57,16 +57,48 @@ pub fn load_magic() -> [u8; 4] {
     }
 }
 
-pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
-    let reorg_cache = Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new()));
-    let tip_hash = server.client.best_block_hash().await?;
-    let tip_height = server.client.get_block_info(&tip_hash).await?.height as u32;
+pub struct Indexer {
+    server: Arc<Server>,
+    reorg_cache: Arc<parking_lot::Mutex<reorg::ReorgCache>>,
+}
 
-    let last_block = server.db.last_block.get(()).map(|x| x + 1).unwrap_or(1);
+impl Indexer {
+    pub fn new(server: Arc<Server>) -> Self {
+        Self {
+            reorg_cache: Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new())),
+            server,
+        }
+    }
 
-    warn!("Blocks to sync: {}", tip_height - last_block);
+    pub async fn run(self) -> anyhow::Result<()> {
+        self.initial_index().await?;
+        self.new_fetcher().await.track().ok();
 
-    {
+        self.reorg_cache
+            .lock()
+            .restore_all(&self.server)
+            .track()
+            .ok();
+
+        self.server.db.flush_all();
+
+        Ok(())
+    }
+
+    async fn initial_index(&self) -> anyhow::Result<()> {
+        let tip_hash = self.server.client.best_block_hash().await?;
+        let tip_height = self.server.client.get_block_info(&tip_hash).await?.height as u32;
+
+        let last_block = self
+            .server
+            .db
+            .last_block
+            .get(())
+            .map(|x| x + 1)
+            .unwrap_or(1);
+
+        warn!("Blocks to sync: {}", tip_height - last_block);
+
         let (block_tx, block_rx) = bounded(50);
 
         let blk_loader = Arc::new(parking_lot::Mutex::new(BlockBlkLoader {
@@ -77,10 +109,12 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
         }));
         BlockBlkLoader::run(blk_loader.clone(), block_tx);
 
+        let indexer = InscriptionIndexer::new(self.server.clone(), None);
+
         let progress = crate::utils::Progress::begin("Indexing", tip_height as _, last_block as _);
         let mut prev_height: Option<u32> = None;
         loop {
-            let Some(Ok(data)) = token.run_fn(block_rx.as_async().recv()).await else {
+            let Some(Ok(data)) = self.server.token.run_fn(block_rx.as_async().recv()).await else {
                 break;
             };
 
@@ -99,89 +133,74 @@ pub async fn main_loop(token: WaitToken, server: Arc<Server>) -> anyhow::Result<
             }
 
             blk_loader.lock().from_block = Some(height);
-            Indexer::handle(height, block, server.clone(), None)
-                .await
-                .track()?;
+
+            indexer.handle(height, block).await.track()?;
 
             progress.inc(1);
 
-            if token.is_cancelled() {
+            if self.server.token.is_cancelled() {
                 return Ok(());
             }
         }
+
+        Ok(())
     }
 
-    new_fetcher(token, server.clone(), reorg_cache.clone())
-        .await
-        .track()
-        .ok();
+    async fn new_fetcher(&self) -> anyhow::Result<()> {
+        let (block_tx, block_rx) = bounded(50);
 
-    info!("Server is finished");
-
-    reorg_cache.lock().restore_all(&server).track().ok();
-
-    server.db.flush_all();
-
-    Ok(())
-}
-
-async fn new_fetcher(
-    token: WaitToken,
-    server: Arc<Server>,
-    reorg_cache: Arc<parking_lot::Mutex<reorg::ReorgCache>>,
-) -> anyhow::Result<()> {
-    let (block_tx, block_rx) = bounded(50);
-
-    let block_loader = BlockRpcLoader {
-        server: server.clone(),
-        tx: block_tx,
-        last_sent_block: Arc::default(),
-    };
-
-    ThreadController::new(block_loader)
-        .with_name("BlockRpcLoader")
-        .with_cancellation(token.clone())
-        .with_invoke_frq(Duration::from_millis(250))
-        .with_restart(Duration::from_secs(5))
-        .kill()
-        .run();
-
-    loop {
-        let Some(Ok(data)) = token.run_fn(block_rx.as_async().recv()).await else {
-            break;
+        let block_loader = BlockRpcLoader {
+            server: self.server.clone(),
+            tx: block_tx,
+            last_sent_block: Arc::default(),
         };
-        let (height, block, _) = data;
 
-        let current_block_height = server.db.last_block.get(()).unwrap_or(0);
+        ThreadController::new(block_loader)
+            .with_name("BlockRpcLoader")
+            .with_cancellation(self.server.token.clone())
+            .with_invoke_frq(Duration::from_millis(250))
+            .with_restart(Duration::from_secs(5))
+            .kill()
+            .run();
 
-        if height <= current_block_height {
-            let prev_block_hash = server
-                .db
-                .block_info
-                .get(height - 1)
-                .expect("Prev block hash must exist")
-                .hash;
+        let indexer = InscriptionIndexer::new(self.server.clone(), Some(self.reorg_cache.clone()));
 
-            if prev_block_hash != block.header.prev_blockhash {
-                panic!(
-                    "Block loader prepared bad reorg: got height {} current height {}, but prev hash mismatch for height - 1. Got {} but expected {}",
-                    height, current_block_height,prev_block_hash,block.header.prev_blockhash
-                )
+        loop {
+            let Some(Ok(data)) = self.server.token.run_fn(block_rx.as_async().recv()).await else {
+                break;
+            };
+            let (height, block, _) = data;
+
+            let current_block_height = self.server.db.last_block.get(()).unwrap_or(0);
+
+            if height <= current_block_height {
+                let prev_block_hash = self
+                    .server
+                    .db
+                    .block_info
+                    .get(height - 1)
+                    .expect("Prev block hash must exist")
+                    .hash;
+
+                if prev_block_hash != block.header.prev_blockhash {
+                    panic!(
+                        "Block loader prepared bad reorg: got height {} current height {}, but prev hash mismatch for height - 1. Got {} but expected {}",
+                        height, current_block_height,prev_block_hash,block.header.prev_blockhash
+                    )
+                }
+
+                let reorg_counter = current_block_height - height;
+                warn!("Reorg detected: {} blocks", reorg_counter);
+                self.reorg_cache.lock().restore(&self.server, height)?;
+                self.server
+                    .event_sender
+                    .send(ServerEvent::Reorg(reorg_counter, height))
+                    .ok();
             }
 
-            let reorg_counter = current_block_height - height;
-            warn!("Reorg detected: {} blocks", reorg_counter);
-            reorg_cache.lock().restore(&server, height)?;
-            server
-                .event_sender
-                .send(ServerEvent::Reorg(reorg_counter, height))
-                .ok();
+            indexer.handle(height, block).await.track()?;
         }
 
-        Indexer::handle(height, block, server.clone(), Some(reorg_cache.clone()))
-            .await
-            .track()?;
+        Ok(())
     }
-
-    Ok(())
 }

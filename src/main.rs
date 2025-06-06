@@ -3,6 +3,7 @@ extern crate serde;
 extern crate tracing;
 
 use {
+    crate::inscriptions::Indexer,
     axum::{
         body::Body,
         extract::{Path, Query, State},
@@ -39,7 +40,7 @@ use {
         ops::{Bound, RangeBounds},
         path::PathBuf,
         str::FromStr,
-        sync::{atomic::AtomicU64, Arc, LazyLock},
+        sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
     },
     tables::DB,
@@ -128,7 +129,6 @@ fn main() {
         &*BLOCKCHAIN,
         *NETWORK,
         *JUBILEE_HEIGHT,
-        // *START_HEIGHT,
         &*SERVER_URL,
     );
 
@@ -153,18 +153,17 @@ fn main() {
         let rest_server = server.clone();
         std::thread::spawn(move || {
             let rest_runtime = spawn_runtime("rest".to_string(), Some(20.try_into().unwrap()));
-            rest_runtime.block_on(run_rest(rest_server.token.clone(), rest_server))
+            rest_runtime.block_on(run_rest(rest_server))
         });
 
         let threads_handle = server1
             .run_threads(server.token.clone(), raw_event_tx, event_tx)
             .spawn();
 
-        let main_result = inscriptions::main_loop(server.token.clone(), server.clone())
-            .spawn()
-            .await
-            .unwrap();
+        let main_result = Indexer::new(server.clone()).run().spawn().await.unwrap();
         server.token.cancel();
+
+        info!("Server is finished");
 
         let threads_result = threads_handle.await.unwrap();
 
@@ -173,15 +172,15 @@ fn main() {
     })
 }
 
-async fn run_rest(token: WaitToken, server: Arc<Server>) -> anyhow::Result<()> {
+async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&*SERVER_URL).await.unwrap();
 
-    let rest = axum::serve(listener, rest::get_router(server))
-        .with_graceful_shutdown(token.cancelled())
+    let rest = axum::serve(listener, rest::get_router(server.clone()))
+        .with_graceful_shutdown(server.token.cancelled())
         .into_future();
 
     let deadline = async move {
-        token.cancelled().await;
+        server.token.cancelled().await;
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
 

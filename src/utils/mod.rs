@@ -1,11 +1,13 @@
 use super::*;
 
 pub mod address_encoder;
+mod address_fullhash;
 pub mod blk;
 mod client;
 mod logging;
 mod progress;
 
+pub use address_fullhash::AddressesFullHash;
 pub use client::AsyncClient;
 pub use logging::init_logger;
 pub use progress::Progress;

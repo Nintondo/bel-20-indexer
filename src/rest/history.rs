@@ -135,21 +135,14 @@ pub async fn address_token_history(
         token,
     };
 
-    let mut res = Vec::<api::AddressHistory>::new();
-
-    for (k, v) in server
+    let res = server
         .db
         .address_token_to_history
         .range(&from..&to, true)
         .take(query.limit.unwrap_or(100))
-        .collect_vec()
-    {
-        res.push(
-            api::AddressHistory::new(v.height, v.action, k, &server)
-                .await
-                .internal("Failed to load addresses")?,
-        );
-    }
+        .map(|(k, v)| api::AddressHistory::new(v.height, v.action, k, &server))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .internal("Failed to load addresses")?;
 
     Ok(Json(res))
 }
@@ -160,23 +153,14 @@ pub async fn events_by_height(
 ) -> ApiResult<impl IntoResponse> {
     let keys = server.db.block_events.get(height).unwrap_or_default();
 
-    let mut res = Vec::<api::History>::new();
-
-    let iterator = server
+    let res = server
         .db
         .address_token_to_history
-        .multi_get(keys.iter())
+        .multi_get_kv(keys.iter(), true)
         .into_iter()
-        .zip(keys);
-
-    for (v, k) in iterator {
-        let v = v.not_found("No events found")?;
-        res.push(
-            api::History::new(v.height, v.action, k, &server)
-                .await
-                .internal("Failed to load addresses")?,
-        );
-    }
+        .map(|(k, v)| api::History::new(v.height, v.action, *k, &server))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .internal("Failed to load addresses")?;
 
     Ok(Json(res))
 }
@@ -222,20 +206,14 @@ pub async fn txid_events(
         .map(|(_, v)| v)
         .collect_vec();
 
-    let mut events = join_all(
-        server
-            .db
-            .address_token_to_history
-            .multi_get(keys.iter())
-            .into_iter()
-            .zip(keys)
-            .filter_map(|(v, k)| v.map(|v| (k, v)))
-            .map(|(k, v)| api::History::new(v.height, v.action, k, &server)),
-    )
-    .await
-    .into_iter()
-    .collect::<anyhow::Result<Vec<_>>>()
-    .internal("Failed to load addresses")?;
+    let mut events = server
+        .db
+        .address_token_to_history
+        .multi_get_kv(keys.iter(), false)
+        .into_iter()
+        .map(|(k, v)| api::History::new(v.height, v.action, *k, &server))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .internal("Failed to load addresses")?;
 
     events.sort_unstable_by_key(|x| x.address_token.id);
 

@@ -1,42 +1,48 @@
 use super::*;
 use crate::inscriptions::parser::Parser;
 use crate::inscriptions::processe_data::ProcessedData;
+use crate::utils::AddressesFullHash;
 
-pub struct Indexer;
+pub struct InscriptionIndexer {
+    server: Arc<Server>,
+    reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+}
 
-impl Indexer {
-    pub async fn handle(
-        block_height: u32,
-        block: bellscoin::Block,
+#[derive(Default)]
+pub struct DataToWrite {
+    pub processed: Vec<ProcessedData>,
+    pub block_events: Vec<ServerEvent>,
+    pub history: Vec<(AddressTokenId, HistoryValue)>,
+}
+
+impl InscriptionIndexer {
+    pub fn new(
         server: Arc<Server>,
         reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
-    ) -> anyhow::Result<()> {
-        let mut data_to_write: Vec<ProcessedData> = vec![];
-        let mut block_events: Vec<ServerEvent> = vec![];
-        let mut history = vec![];
-
-        Self::handle_block(
-            &mut data_to_write,
-            &mut block_events,
-            &mut history,
-            block_height,
-            &block,
-            &server,
+    ) -> Self {
+        Self {
             reorg_cache,
-        )?;
+            server,
+        }
+    }
+
+    pub async fn handle(&self, block_height: u32, block: bellscoin::Block) -> anyhow::Result<()> {
+        let mut to_write = DataToWrite::default();
+
+        self.handle_block(&mut to_write, block_height, &block)?;
 
         // write/remove data from block
-        for data in data_to_write {
-            data.write(&server.db);
+        for data in to_write.processed {
+            data.write(&self.server.db);
         }
 
-        *server.last_indexed_address_height.write().await = block_height;
-
-        for event in block_events {
-            server.event_sender.send(event).ok();
+        for event in to_write.block_events {
+            self.server.event_sender.send(event).ok();
         }
 
-        if server.raw_event_sender.send(history).is_err() && !server.token.is_cancelled() {
+        if self.server.raw_event_sender.send(to_write.history).is_err()
+            && !self.server.token.is_cancelled()
+        {
             panic!("Failed to send raw event");
         }
 
@@ -44,19 +50,16 @@ impl Indexer {
     }
 
     fn handle_block(
-        data_to_write: &mut Vec<ProcessedData>,
-        block_events: &mut Vec<ServerEvent>,
-        history: &mut Vec<(AddressTokenId, HistoryValue)>,
+        &self,
+        to_write: &mut DataToWrite,
         block_height: u32,
         block: &bellscoin::Block,
-        server: &Server,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
     ) -> anyhow::Result<()> {
         let current_hash = block.block_hash();
 
-        let mut last_history_id = server.db.last_history_id.get(()).unwrap_or_default();
+        let mut last_history_id = self.server.db.last_history_id.get(()).unwrap_or_default();
 
-        if let Some(cache) = reorg_cache.as_ref() {
+        if let Some(cache) = self.reorg_cache.as_ref() {
             debug!("Syncing block: {} ({})", current_hash, block_height);
             cache.lock().new_block(block_height, last_history_id);
         }
@@ -66,9 +69,9 @@ impl Indexer {
             hash: current_hash,
         };
 
-        let created = block.header.time;
         let prev_block_height = block_height.checked_sub(1).unwrap_or_default();
-        let prev_block_proof = server
+        let prev_block_proof = self
+            .server
             .db
             .proof_of_history
             .get(prev_block_height)
@@ -79,23 +82,31 @@ impl Indexer {
             .iter()
             .flat_map(|x| &x.output)
             .filter_map(|x| {
-                let fullhash = x.script_pubkey.compute_script_hash();
-                let payload = bellscoin::address::Payload::from_script(&x.script_pubkey);
-                if x.script_pubkey.is_op_return() || payload.is_err() {
+                if x.script_pubkey.is_provably_unspendable() {
                     return None;
                 }
-                Some((fullhash, server.address_decoder.encode(&payload.unwrap())))
+
+                let fullhash = x.script_pubkey.compute_script_hash();
+
+                bellscoin::address::Payload::from_script(&x.script_pubkey)
+                    .map(|payload| (fullhash, self.server.address_decoder.encode(&payload)))
+                    .ok()
             })
+            .unique()
             .collect::<HashMap<_, _>>();
 
-        data_to_write.push(ProcessedData::Info {
+        to_write.processed.push(ProcessedData::Info {
             block_number: block_height,
             block_info,
         });
 
-        let prevouts = utils::process_prevouts(server.db.clone(), &block.txdata, data_to_write)?;
+        let prevouts = utils::process_prevouts(
+            self.server.db.clone(),
+            &block.txdata,
+            &mut to_write.processed,
+        )?;
 
-        data_to_write.push(ProcessedData::FullHash {
+        to_write.processed.push(ProcessedData::FullHash {
             addresses: outpoint_fullhash_to_address
                 .iter()
                 .map(|(fullhash, address)| (*fullhash, address.clone()))
@@ -107,14 +118,15 @@ impl Indexer {
         }
 
         if block.txdata.len() == 1 {
-            let new_proof = Server::generate_history_hash(prev_block_proof, &[], &HashMap::new())?;
+            let new_proof =
+                Server::generate_history_hash(prev_block_proof, &[], &Default::default())?;
 
-            data_to_write.push(ProcessedData::Proof {
+            to_write.processed.push(ProcessedData::Proof {
                 block_number: block_height,
                 block_proof: new_proof,
             });
 
-            block_events.push(ServerEvent::NewBlock(
+            to_write.block_events.push(ServerEvent::NewBlock(
                 block_height,
                 new_proof,
                 block.block_hash(),
@@ -123,31 +135,37 @@ impl Indexer {
             return Ok(());
         }
 
-        if let Some(cache) = reorg_cache.as_ref() {
+        if let Some(cache) = self.reorg_cache.as_ref() {
             prevouts.iter().for_each(|(key, value)| {
                 cache.lock().removed_prevout(*key, value.clone());
             });
         }
 
-        let (mut token_cache, transfers_to_remove) = TokenCache::new(&prevouts, &server.db);
+        let mut token_cache = TokenCache::load(&prevouts, &self.server.db);
 
-        Parser::parse_block(
-            server,
-            data_to_write,
-            block_height,
-            created,
-            &block.txdata,
-            &prevouts,
-            &mut token_cache,
-            reorg_cache.clone(),
-        );
+        let transfers_to_remove = token_cache
+            .valid_transfers
+            .iter()
+            .map(|(key, value)| AddressLocation {
+                address: value.0,
+                location: *key,
+            })
+            .collect::<HashSet<_>>();
 
-        token_cache.load_tokens_data(&server.db)?;
+        let mut parser = Parser {
+            token_cache: &mut token_cache,
+            server: &self.server,
+            reorg_cache: self.reorg_cache.clone(),
+        };
+
+        parser.parse_block(block_height, block, &prevouts, &mut to_write.processed);
+
+        token_cache.load_tokens_data(&self.server.db)?;
 
         let mut fullhash_to_load = HashSet::new();
 
-        *history = token_cache
-            .process_token_actions(reorg_cache.clone(), &server.holders)
+        to_write.history = token_cache
+            .process_token_actions(self.reorg_cache.clone(), &self.server.holders)
             .into_iter()
             .flat_map(|action| {
                 last_history_id += 1;
@@ -165,9 +183,7 @@ impl Indexer {
                     amt, txid, vout, ..
                 } = db_action
                 {
-                    let sender = action
-                        .sender()
-                        .expect("Should be in here with the Send action");
+                    let sender = action.sender().unwrap();
                     fullhash_to_load.insert(sender);
                     last_history_id += 1;
                     results.extend([
@@ -209,45 +225,43 @@ impl Indexer {
             })
             .collect();
 
-        let mut rest_addresses = server
+        let rest_addresses: AddressesFullHash = self
+            .server
             .db
             .fullhash_to_address
-            .multi_get(fullhash_to_load.iter())
+            .multi_get_kv(
+                fullhash_to_load
+                    .iter()
+                    .filter(|x| !outpoint_fullhash_to_address.contains_key(x)),
+                true,
+            )
             .into_iter()
-            .zip(fullhash_to_load)
-            .map(|(v, k)| {
-                if k.is_op_return_hash() {
-                    return (k, OP_RETURN_ADDRESS.to_string());
-                }
-                if v.is_none() {
-                    return (k, NON_STANDARD_ADDRESS.to_string());
-                }
-                (k, v.unwrap())
-            })
-            .collect::<HashMap<_, _>>();
-        rest_addresses.extend(outpoint_fullhash_to_address);
+            .map(|(k, v)| (*k, v))
+            .chain(outpoint_fullhash_to_address)
+            .collect::<HashMap<_, _>>()
+            .into();
 
-        let new_proof = Server::generate_history_hash(prev_block_proof, history, &rest_addresses)?;
+        let new_proof =
+            Server::generate_history_hash(prev_block_proof, &to_write.history, &rest_addresses)?;
 
-        data_to_write.push(ProcessedData::Proof {
+        to_write.processed.push(ProcessedData::Proof {
             block_number: block_height,
             block_proof: new_proof,
         });
 
-        data_to_write.push(ProcessedData::History {
+        to_write.processed.push(ProcessedData::History {
             block_number: block_height,
             last_history_id,
-            history: history.clone(),
+            history: to_write.history.clone(),
         });
 
-        if let Some(reorg_cache) = reorg_cache.as_ref() {
+        if let Some(reorg_cache) = self.reorg_cache.as_ref() {
             let mut cache = reorg_cache.lock();
-            history
-                .iter()
-                .for_each(|(k, _)| cache.added_history(k.clone()));
+            let keys = to_write.history.iter().map(|x| x.0);
+            cache.extend_history(keys);
         };
 
-        data_to_write.push(ProcessedData::Tokens {
+        to_write.processed.push(ProcessedData::Tokens {
             metas: token_cache
                 .tokens
                 .into_iter()
@@ -262,7 +276,7 @@ impl Indexer {
             transfers_to_remove: transfers_to_remove.into_iter().collect(),
         });
 
-        block_events.push(ServerEvent::NewBlock(
+        to_write.block_events.push(ServerEvent::NewBlock(
             block_height,
             new_proof,
             block.block_hash(),

@@ -54,7 +54,7 @@ impl db::Pebble for AddressToken {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct AddressTokenId {
     pub address: FullHash,
     pub token: OriginalTokenTick,
@@ -245,6 +245,12 @@ pub struct TokenProtoRest {
 pub struct AddressLocation {
     pub address: FullHash,
     pub location: Location,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, PartialOrd, Ord, Eq)]
+pub struct AddressOutPoint {
+    pub address: FullHash,
+    pub outpoint: OutPoint,
 }
 
 impl AddressLocation {

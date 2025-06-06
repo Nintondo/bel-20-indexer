@@ -72,13 +72,13 @@ impl ReorgCache {
             .push(TokenHistoryEntry::RemoveMint(token, amount));
     }
 
-    pub fn added_history(&mut self, key: AddressTokenId) {
+    pub fn extend_history(&mut self, keys: impl Iterator<Item = AddressTokenId>) {
         self.blocks
             .last_entry()
             .unwrap()
             .get_mut()
             .token_history
-            .push(TokenHistoryEntry::RemoveHistory(key));
+            .extend(keys.into_iter().map(TokenHistoryEntry::RemoveHistory));
     }
 
     pub fn removed_prevout(&mut self, key: OutPoint, value: TxOut) {
@@ -216,12 +216,10 @@ impl ReorgCache {
                     let deploys = server
                         .db
                         .token_to_meta
-                        .multi_get(deploy_keys.iter())
+                        .multi_get_kv(deploy_keys.iter(), true)
                         .into_iter()
-                        .zip(deploy_keys)
-                        .map(|(v, k)| v.map(|x| (k, x)))
-                        .collect::<Option<HashMap<_, _>>>()
-                        .anyhow_with("Some of deploys is not found")?;
+                        .map(|(k, v)| (k.clone(), v))
+                        .collect::<HashMap<_, _>>();
 
                     let updated_values = to_update_deployed.into_iter().rev().map(|x| match x {
                         DeployedUpdate::Mint(tick, amt) => {
@@ -289,12 +287,10 @@ impl ReorgCache {
                     server
                         .db
                         .address_token_to_balance
-                        .multi_get(keys.iter())
+                        .multi_get_kv(keys.iter(), true)
                         .into_iter()
-                        .zip(keys)
-                        .map(|(v, k)| v.map(|x| (k, x)))
-                        .collect::<Option<HashMap<_, _>>>()
-                        .anyhow_with("Some of accounts is not found")?
+                        .map(|(k, v)| (k.clone(), v))
+                        .collect::<HashMap<_, _>>()
                 };
 
                 {

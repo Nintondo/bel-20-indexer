@@ -84,18 +84,16 @@ pub struct TokenCache {
     /// All transfer actions that are valid. Used to write to the db.
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
 }
+
 impl TokenCache {
-    pub fn new(prevouts: &HashMap<OutPoint, TxOut>, db: &DB) -> (Self, HashSet<AddressLocation>) {
+    pub fn load(prevouts: &HashMap<OutPoint, TxOut>, db: &DB) -> Self {
         let mut token_cache = Self::default();
 
         let transfers_to_remove: HashSet<_> = prevouts
             .iter()
-            .map(|(k, v)| AddressLocation {
+            .map(|(k, v)| AddressOutPoint {
                 address: v.script_pubkey.compute_script_hash(),
-                location: Location {
-                    outpoint: *k,
-                    offset: 0,
-                },
+                outpoint: *k,
             })
             .collect();
 
@@ -109,7 +107,7 @@ impl TokenCache {
             .map(|(location, (_, proto))| (*location, proto.clone()))
             .collect();
 
-        (token_cache, transfers_to_remove)
+        token_cache
     }
 
     fn try_parse(content_type: &str, content: &[u8]) -> Result<Brc4, Brc4ParseErr> {
@@ -273,10 +271,9 @@ impl TokenCache {
 
         self.tokens = db
             .token_to_meta
-            .multi_get(tickers.iter())
+            .multi_get_kv(tickers.iter(), false)
             .into_iter()
-            .zip(tickers)
-            .filter_map(|(v, k)| v.map(|x| (k, TokenMeta::from(x))))
+            .map(|(k, v)| (k.clone(), TokenMeta::from(v)))
             .collect::<HashMap<_, _>>();
 
         let keys: Vec<_> = users

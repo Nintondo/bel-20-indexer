@@ -43,16 +43,13 @@ impl Handler for EventSender {
                 .flatten()
                 .collect_vec();
 
-            let addresses = self
-                .server
-                .load_addresses(keys, events.last().unwrap().1.height)
-                .await?;
+            let addresses = self.server.load_addresses(keys)?;
 
             for (k, v) in events {
                 self.event_tx
                     .send(ServerEvent::NewHistory(
                         AddressTokenIdEvent {
-                            address: addresses.get(&k.address).unwrap().clone(),
+                            address: addresses.get(&k.address),
                             token: k.token,
                             id: k.id,
                         },

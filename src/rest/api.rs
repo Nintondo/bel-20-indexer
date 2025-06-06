@@ -1,6 +1,8 @@
 use nintypes::common::inscriptions::Outpoint;
 use validator::Validate;
 
+use crate::utils::AddressesFullHash;
+
 use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -90,7 +92,7 @@ pub struct History {
 }
 
 impl History {
-    pub async fn new(
+    pub fn new(
         height: u32,
         action: TokenHistoryDB,
         address_token: crate::tokens::AddressTokenId,
@@ -100,13 +102,13 @@ impl History {
             .into_iter()
             .flatten();
 
-        let addresses = server.load_addresses(keys, height).await?;
+        let addresses = server.load_addresses(keys)?;
 
         Ok(Self {
             height,
             action: TokenAction::from_with_addresses(action, &addresses),
             address_token: AddressTokenId {
-                address: addresses.get(&address_token.address).unwrap().clone(),
+                address: addresses.get(&address_token.address),
                 id: address_token.id,
                 tick: address_token.token,
             },
@@ -122,13 +124,13 @@ pub struct AddressHistory {
 }
 
 impl AddressHistory {
-    pub async fn new(
+    pub fn new(
         height: u32,
         action: TokenHistoryDB,
         address_token: crate::tokens::AddressTokenId,
         server: &Server,
     ) -> anyhow::Result<Self> {
-        let history = History::new(height, action, address_token, server).await?;
+        let history = History::new(height, action, address_token, server)?;
         let created = server.db.block_info.get(height).anyhow()?.created;
         Ok(Self { history, created })
     }
@@ -223,10 +225,7 @@ impl From<server::HistoryValueEvent> for TokenAction {
 }
 
 impl TokenAction {
-    pub fn from_with_addresses(
-        value: TokenHistoryDB,
-        addresses: &HashMap<FullHash, String>,
-    ) -> Self {
+    pub fn from_with_addresses(value: TokenHistoryDB, addresses: &AddressesFullHash) -> Self {
         match value {
             TokenHistoryDB::Deploy {
                 max,
@@ -252,7 +251,7 @@ impl TokenAction {
                 vout,
             } => TokenAction::Send {
                 amt,
-                recipient: addresses.get(&recipient).unwrap().clone(),
+                recipient: addresses.get(&recipient),
                 txid,
                 vout,
             },
@@ -263,7 +262,7 @@ impl TokenAction {
                 vout,
             } => TokenAction::Receive {
                 amt,
-                sender: addresses.get(&sender).unwrap().clone(),
+                sender: addresses.get(&sender),
                 txid,
                 vout,
             },

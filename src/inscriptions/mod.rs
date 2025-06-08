@@ -77,12 +77,6 @@ impl Indexer {
                 reorg_len,
             } = data;
 
-            if let Some(prev) = prev_height {
-                if prev + 1 != id.height {
-                    panic!("Expected {} height but got {}", prev + 1, id.height);
-                }
-            }
-
             if id.height > tip - reorg::REORG_CACHE_MAX_LEN as u64 && indexer.reorg_cache.is_none()
             {
                 indexer.reorg_cache = Some(self.reorg_cache.clone());

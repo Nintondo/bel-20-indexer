@@ -1,3 +1,5 @@
+use nint_blk::proto::{tx::EvaluatedTx, Hashed};
+
 use super::*;
 
 #[derive(Clone)]
@@ -9,7 +11,7 @@ pub enum LeakedInscription {
 pub struct LeakedInscriptions {
     pub inscriptions: HashMap<u64, Vec<LeakedInscription>>,
     pub total_amount: u64,
-    pub coinbase_tx: Transaction,
+    pub coinbase_tx: Hashed<EvaluatedTx>,
     pub coinbase_reward: Option<u64>,
 }
 
@@ -19,7 +21,7 @@ struct FeeResult {
 }
 
 impl LeakedInscriptions {
-    pub fn new(coinbase_tx: Transaction) -> Self {
+    pub fn new(coinbase_tx: Hashed<EvaluatedTx>) -> Self {
         Self {
             coinbase_tx,
             inscriptions: HashMap::new(),
@@ -31,7 +33,7 @@ impl LeakedInscriptions {
     pub fn add(
         &mut self,
         input_idx: usize,
-        tx: &Transaction,
+        tx: &Hashed<EvaluatedTx>,
         input_offset: u64,
         tx_outs: &HashMap<OutPoint, TxOut>,
         inscription: LeakedInscription,
@@ -48,14 +50,15 @@ impl LeakedInscriptions {
             .or_insert(vec![inscription]);
     }
 
-    pub fn add_tx_fee(&mut self, tx: &Transaction, txos: &HashMap<OutPoint, TxOut>) -> u64 {
+    pub fn add_tx_fee(&mut self, tx: &Hashed<EvaluatedTx>, txos: &HashMap<OutPoint, TxOut>) -> u64 {
         let inputs_sum = tx
-            .input
+            .value
+            .inputs
             .iter()
-            .map(|x| txos.get(&x.previous_output).unwrap().value)
+            .map(|x| txos.get(&x.outpoint).unwrap().value)
             .sum::<u64>();
 
-        let outputs_sum = tx.output.iter().map(|x| x.value).sum::<u64>();
+        let outputs_sum = tx.value.outputs.iter().map(|x| x.out.value).sum::<u64>();
 
         self.total_amount += inputs_sum - outputs_sum;
 
@@ -63,8 +66,15 @@ impl LeakedInscriptions {
     }
 
     fn update_reward(&mut self) {
-        self.coinbase_reward =
-            Some(self.coinbase_tx.output.iter().map(|x| x.value).sum::<u64>() - self.total_amount);
+        self.coinbase_reward = Some(
+            self.coinbase_tx
+                .value
+                .outputs
+                .iter()
+                .map(|x| x.out.value)
+                .sum::<u64>()
+                - self.total_amount,
+        );
     }
 
     pub fn get_leaked_inscriptions(mut self) -> impl Iterator<Item = Location> {
@@ -79,7 +89,7 @@ impl LeakedInscriptions {
                     .map(|(vout, offset)| Location {
                         offset,
                         outpoint: OutPoint {
-                            txid: self.coinbase_tx.txid(),
+                            txid: self.coinbase_tx.hash.into(),
                             vout,
                         },
                     })
@@ -89,17 +99,17 @@ impl LeakedInscriptions {
     fn find_inscription_vout(&self, offset: u64) -> Option<(u32, u64)> {
         let mut offset = offset + self.coinbase_reward.unwrap();
 
-        for (i, tx) in self.coinbase_tx.output.iter().enumerate() {
-            if offset < tx.value {
+        for (i, tx) in self.coinbase_tx.value.outputs.iter().enumerate() {
+            if offset < tx.out.value {
                 return Some((i as u32, offset));
             }
-            offset -= tx.value;
+            offset -= tx.out.value;
         }
         None
     }
 
     fn find_fee(
-        tx: &Transaction,
+        tx: &Hashed<EvaluatedTx>,
         input_idx: usize,
         input_offset: u64,
         tx_outs: &HashMap<OutPoint, TxOut>,
@@ -107,20 +117,21 @@ impl LeakedInscriptions {
         let inputs_cum = {
             let mut last_value = 0;
 
-            tx.input
+            tx.value
+                .inputs
                 .iter()
                 .map(|x| {
-                    last_value += tx_outs.get(&x.previous_output).unwrap().value;
+                    last_value += tx_outs.get(&x.outpoint).unwrap().value;
                     last_value
                 })
                 .collect_vec()
         };
 
-        let output_sum = tx.output.iter().map(|x| x.value).sum::<u64>();
+        let output_sum = tx.value.outputs.iter().map(|x| x.out.value).sum::<u64>();
         let input_sum = *inputs_cum.last().unwrap();
 
         let prev_out_value = tx_outs
-            .get(&tx.input.get(input_idx).unwrap().previous_output)
+            .get(&tx.value.inputs.get(input_idx).unwrap().outpoint)
             .map(|x| x.value)
             .unwrap();
 

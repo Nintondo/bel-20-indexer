@@ -1,5 +1,7 @@
 use std::ops::Deref;
 
+use bitcoin_hashes::Hash;
+
 use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord, Copy)]
@@ -9,6 +11,18 @@ pub struct FullHash([u8; 32]);
 
 impl FullHash {
     pub const ZERO: Self = Self([0; 32]);
+}
+
+impl From<bitcoin_hashes::sha256d::Hash> for FullHash {
+    fn from(value: bitcoin_hashes::sha256d::Hash) -> Self {
+        Self(value.to_byte_array())
+    }
+}
+
+impl From<&bitcoin_hashes::sha256d::Hash> for FullHash {
+    fn from(value: &bitcoin_hashes::sha256d::Hash) -> Self {
+        Self(*value.as_byte_array())
+    }
 }
 
 impl_pebble!(FullHash = [u8; 32]);

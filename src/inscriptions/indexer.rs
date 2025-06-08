@@ -1,3 +1,5 @@
+use bitcoin_hashes::sha256d;
+
 use super::*;
 use crate::inscriptions::parser::Parser;
 use crate::inscriptions::processe_data::ProcessedData;
@@ -5,7 +7,7 @@ use crate::utils::AddressesFullHash;
 
 pub struct InscriptionIndexer {
     server: Arc<Server>,
-    reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+    pub reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
 }
 
 #[derive(Default)]
@@ -26,10 +28,14 @@ impl InscriptionIndexer {
         }
     }
 
-    pub async fn handle(&self, block_height: u32, block: bellscoin::Block) -> anyhow::Result<()> {
+    pub async fn handle(
+        &self,
+        block_height: u32,
+        block: nint_blk::proto::block::Block,
+    ) -> anyhow::Result<()> {
         let mut to_write = DataToWrite::default();
 
-        self.handle_block(&mut to_write, block_height, &block)?;
+        self.handle_block(&mut to_write, block_height, block)?;
 
         // write/remove data from block
         for data in to_write.processed {
@@ -53,9 +59,9 @@ impl InscriptionIndexer {
         &self,
         to_write: &mut DataToWrite,
         block_height: u32,
-        block: &bellscoin::Block,
+        block: nint_blk::proto::block::Block,
     ) -> anyhow::Result<()> {
-        let current_hash = block.block_hash();
+        let current_hash = block.header.hash;
 
         let mut last_history_id = self.server.db.last_history_id.get(()).unwrap_or_default();
 
@@ -65,8 +71,8 @@ impl InscriptionIndexer {
         }
 
         let block_info = BlockInfo {
-            created: block.header.time,
-            hash: current_hash,
+            created: block.header.value.timestamp,
+            hash: current_hash.into(),
         };
 
         let prev_block_height = block_height.checked_sub(1).unwrap_or_default();
@@ -78,21 +84,15 @@ impl InscriptionIndexer {
             .unwrap_or(*DEFAULT_HASH);
 
         let outpoint_fullhash_to_address = block
-            .txdata
+            .txs
             .iter()
-            .flat_map(|x| &x.output)
+            .flat_map(|x| &x.value.outputs)
             .filter_map(|x| {
-                if x.script_pubkey.is_provably_unspendable() {
-                    return None;
-                }
-
-                let fullhash = x.script_pubkey.compute_script_hash();
-
-                bellscoin::address::Payload::from_script(&x.script_pubkey)
-                    .map(|payload| (fullhash, self.server.address_decoder.encode(&payload)))
-                    .ok()
+                x.script.address.as_ref().map(|address| {
+                    let fullhash: FullHash = sha256d::Hash::hash(&x.out.script_pubkey).into();
+                    (fullhash, address.to_owned())
+                })
             })
-            .unique()
             .collect::<HashMap<_, _>>();
 
         to_write.processed.push(ProcessedData::Info {
@@ -100,16 +100,13 @@ impl InscriptionIndexer {
             block_info,
         });
 
-        let prevouts = utils::process_prevouts(
-            self.server.db.clone(),
-            &block.txdata,
-            &mut to_write.processed,
-        )?;
+        let prevouts =
+            utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed)?;
 
         to_write.processed.push(ProcessedData::FullHash {
             addresses: outpoint_fullhash_to_address
                 .iter()
-                .map(|(fullhash, address)| (*fullhash, address.clone()))
+                .map(|(fullhash, address)| (*fullhash, address.to_owned()))
                 .collect(),
         });
 
@@ -117,7 +114,7 @@ impl InscriptionIndexer {
             return Ok(());
         }
 
-        if block.txdata.len() == 1 {
+        if block.txs.len() == 1 {
             let new_proof =
                 Server::generate_history_hash(prev_block_proof, &[], &Default::default())?;
 
@@ -129,7 +126,7 @@ impl InscriptionIndexer {
             to_write.block_events.push(ServerEvent::NewBlock(
                 block_height,
                 new_proof,
-                block.block_hash(),
+                block.header.hash.into(),
             ));
 
             return Ok(());
@@ -279,7 +276,7 @@ impl InscriptionIndexer {
         to_write.block_events.push(ServerEvent::NewBlock(
             block_height,
             new_proof,
-            block.block_hash(),
+            current_hash.into(),
         ));
 
         Ok(())

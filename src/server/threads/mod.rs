@@ -2,7 +2,6 @@ use super::*;
 
 use dutils::async_thread::{Handler, Thread, ThreadController};
 
-pub mod block_loader;
 mod event_sender;
 
 impl Server {

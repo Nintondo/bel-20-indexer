@@ -1,13 +1,9 @@
-use crate::{
-    inscriptions::load_decoder,
-    utils::{address_encoder::Decoder, AddressesFullHash},
-};
+use crate::{reorg::REORG_CACHE_MAX_LEN, utils::AddressesFullHash};
 
 use super::*;
 
 mod structs;
 pub mod threads;
-use bellscoin::{PublicKey, ScriptBuf};
 pub use structs::*;
 
 pub struct Server {
@@ -15,9 +11,8 @@ pub struct Server {
     pub event_sender: tokio::sync::broadcast::Sender<ServerEvent>,
     pub raw_event_sender: kanal::Sender<RawServerEvent>,
     pub token: WaitToken,
-    pub client: Arc<AsyncClient>,
     pub holders: Arc<Holders>,
-    pub address_decoder: Box<dyn Decoder>,
+    pub indexer: Arc<nint_blk::Indexer>,
 }
 
 impl Server {
@@ -33,22 +28,32 @@ impl Server {
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
 
+        let coin = match (BLOCKCHAIN.as_str(), *NETWORK) {
+            ("bells", Network::Bellscoin) => "bellscoin",
+            ("bells", Network::Testnet) => "bellscoin-testnet",
+            ("doge", Network::Bellscoin) => "dogecoin",
+            ("doge", Network::Testnet) => "dogecoin-testnet",
+            _ => "bellscoin",
+        }
+        .to_string();
+
+        let indexer = nint_blk::Indexer {
+            coin,
+            last_height: db.last_block.get(()).unwrap_or_default(),
+            path: BLK_DIR.to_string(),
+            reorg_max_len: REORG_CACHE_MAX_LEN,
+            rpc_auth: nint_blk::Auth::UserPass(USER.to_string(), PASS.to_string()),
+            rpc_url: URL.to_string(),
+            token: token.clone(),
+        };
+
         let server = Self {
-            client: Arc::new(
-                AsyncClient::new(
-                    &URL,
-                    Some(USER.to_string()),
-                    Some(PASS.to_string()),
-                    token.clone(),
-                )
-                .await?,
-            ),
-            address_decoder: load_decoder(),
             holders: Arc::new(Holders::init(&db)),
-            db,
             raw_event_sender: raw_tx.clone(),
             token,
             event_sender: tx.clone(),
+            indexer: Arc::new(indexer),
+            db,
         };
 
         Ok((raw_rx, tx, server))
@@ -107,23 +112,5 @@ impl Server {
         };
 
         Ok(new_hash)
-    }
-
-    pub fn to_scripthash(&self, script_type: &str, script_str: &str) -> anyhow::Result<FullHash> {
-        let Ok(pubkey) = PublicKey::from_str(script_str) else {
-            return match script_type {
-                "address" => self.address_to_scripthash(script_str),
-                "scripthash" => hex::decode(script_str)?.try_into(),
-                _ => anyhow::bail!("Invalid script type"),
-            };
-        };
-        Ok(ScriptBuf::new_p2pk(&pubkey).compute_script_hash())
-    }
-
-    pub fn address_to_scripthash(&self, address: &str) -> anyhow::Result<FullHash> {
-        self.address_decoder
-            .decode(address)
-            .map(|x| x.script_pubkey().compute_script_hash())
-            .map_err(|_| anyhow::anyhow!(""))
     }
 }

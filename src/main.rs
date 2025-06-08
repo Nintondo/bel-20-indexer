@@ -14,7 +14,7 @@ use {
     },
     bellscoin::{
         hashes::{sha256, Hash},
-        opcodes, script, BlockHash, Network, OutPoint, Transaction, TxOut, Txid,
+        opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
     },
     db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     dutils::{
@@ -37,7 +37,6 @@ use {
         iter::Peekable,
         marker::PhantomData,
         ops::{Bound, RangeBounds},
-        path::PathBuf,
         str::FromStr,
         sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
@@ -46,10 +45,6 @@ use {
     tokens::*,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
-    utils::{
-        address_encoder::{BellscoinDecoder, DogecoinDecoder},
-        AsyncClient,
-    },
 };
 
 mod db;

@@ -1,3 +1,5 @@
+use nint_blk::ScriptType;
+
 use super::*;
 
 pub async fn tokens(
@@ -119,10 +121,11 @@ pub async fn token_transfer_proof(
     Path((address, outpoint)): Path<(String, Outpoint)>,
 ) -> ApiResult<impl IntoResponse> {
     let scripthash = state
-        .to_scripthash("address", &address)
+        .indexer
+        .to_scripthash(&address, ScriptType::Address)
         .bad_request("Invalid address")?;
 
-    let (from, to) = AddressLocation::search(scripthash, Some(outpoint.into())).into_inner();
+    let (from, to) = AddressLocation::search(scripthash.into(), Some(outpoint.into())).into_inner();
 
     let data: Vec<_> = state
         .db

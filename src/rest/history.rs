@@ -1,3 +1,5 @@
+use nint_blk::ScriptType;
+
 use super::*;
 
 pub async fn subscribe(
@@ -104,9 +106,11 @@ pub async fn address_token_history(
     Path(script_str): Path<String>,
     Query(query): Query<types::AddressTokenHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
-    let scripthash = server
-        .to_scripthash("address", &script_str)
-        .bad_request("Invalid address")?;
+    let scripthash: FullHash = server
+        .indexer
+        .to_scripthash(&script_str, ScriptType::Address)
+        .bad_request("Invalid address")?
+        .into();
 
     if let Some(limit) = query.limit {
         if limit > 100 {

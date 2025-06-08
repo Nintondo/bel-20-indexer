@@ -1,5 +1,3 @@
-use bellscoin::hex::DisplayHex;
-
 use super::*;
 
 #[derive(Default)]
@@ -29,15 +27,5 @@ impl AddressesFullHash {
 impl From<HashMap<FullHash, String>> for AddressesFullHash {
     fn from(value: HashMap<FullHash, String>) -> Self {
         Self(value)
-    }
-}
-
-impl std::fmt::Debug for AddressesFullHash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.0
-            .iter()
-            .map(|(k, v)| (k.to_hex_string(bellscoin::hex::Case::Lower), v))
-            .collect::<HashMap<_, _>>()
-            .fmt(f)
     }
 }

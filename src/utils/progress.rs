@@ -37,6 +37,7 @@ impl Progress {
         self.c.fetch_add(c, std::sync::atomic::Ordering::AcqRel);
         self.update_msg();
     }
+
     fn update_msg(&self) {
         let time = self.start.elapsed().as_secs_f32();
         self.span.pb_set_message(&format!(
@@ -45,6 +46,11 @@ impl Progress {
             self.len,
             &self.msg
         ));
+    }
+
+    pub fn update_len(&mut self, new_len: u64) {
+        self.len = new_len;
+        self.span.pb_set_length(new_len);
     }
 }
 impl Drop for Progress {

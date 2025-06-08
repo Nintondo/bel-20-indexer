@@ -7,13 +7,16 @@ use crate::inscriptions::Location;
 use crate::server::Server;
 use crate::tokens::{ComputeScriptHash, FullHash, InscriptionId, InscriptionTemplate, TokenCache};
 use crate::{JUBILEE_HEIGHT, OP_RETURN_HASH};
-use bellscoin::{OutPoint, Transaction, TxOut};
+use bellscoin::{OutPoint, ScriptBuf, TxOut, Txid};
+use bitcoin_hashes::{sha256d, Hash};
 use itertools::Itertools;
+use nint_blk::proto::tx::EvaluatedTx;
+use nint_blk::proto::Hashed;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub struct ParseInscription<'a> {
-    tx: &'a Transaction,
+    tx: &'a Hashed<EvaluatedTx>,
     input_index: u32,
     inputs_cum: &'a [u64],
     partials: &'a Partials,
@@ -30,7 +33,7 @@ impl Parser<'_> {
     pub fn parse_block(
         &mut self,
         height: u32,
-        block: &bellscoin::Block,
+        block: nint_blk::proto::block::Block,
         prevouts: &HashMap<OutPoint, TxOut>,
         data_to_write: &mut Vec<ProcessedData>,
     ) {
@@ -55,9 +58,12 @@ impl Parser<'_> {
 
         let mut leaked: Option<LeakedInscriptions> = None;
 
-        for tx in &block.txdata {
-            if tx.is_coin_base() {
-                leaked = Some(LeakedInscriptions::new(tx.clone()));
+        for tx in &block.txs {
+            if tx.value.is_coinbase() {
+                leaked = Some(LeakedInscriptions::new(Hashed {
+                    hash: tx.hash,
+                    value: tx.value.clone(),
+                }));
 
                 continue;
             }
@@ -65,19 +71,19 @@ impl Parser<'_> {
             leaked.as_mut().unwrap().add_tx_fee(tx, prevouts);
 
             let mut inscription_index_in_tx = 0;
-            let txid = tx.txid();
+            let txid: Txid = tx.hash.into();
 
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts)
                 .expect("failed to find all txos to calculate offsets");
 
-            for (input_index, txin) in tx.input.iter().enumerate() {
+            for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
                 if let Some(inscription_offsets) =
-                    inscription_outpoint_to_offsets.remove(&txin.previous_output)
+                    inscription_outpoint_to_offsets.remove(&txin.outpoint)
                 {
                     for inscription_offset in inscription_offsets {
                         let old_location = Location {
-                            outpoint: txin.previous_output,
+                            outpoint: txin.outpoint,
                             offset: inscription_offset,
                         };
 
@@ -85,7 +91,10 @@ impl Parser<'_> {
                             self.token_cache.all_transfers.contains_key(&old_location);
 
                         let offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
-                        match InscriptionSearcher::get_output_index_by_input(offset, &tx.output) {
+                        match InscriptionSearcher::get_output_index_by_input(
+                            offset,
+                            &tx.value.outputs,
+                        ) {
                             Ok((new_vout, new_offset)) => {
                                 let new_outpoint = OutPoint {
                                     txid,
@@ -99,19 +108,26 @@ impl Parser<'_> {
 
                                 // handle move of token transfer
                                 if is_token_transfer_move {
-                                    if tx.output[new_vout as usize].script_pubkey.is_op_return() {
+                                    if ScriptBuf::from_bytes(
+                                        tx.value.outputs[new_vout as usize]
+                                            .out
+                                            .script_pubkey
+                                            .clone(),
+                                    )
+                                    .is_op_return()
+                                    {
                                         self.token_cache.burned_transfer(
                                             old_location,
                                             txid,
                                             new_vout,
                                         );
                                     } else {
-                                        let owner = tx.output[new_vout as usize]
-                                            .script_pubkey
-                                            .compute_script_hash();
+                                        let owner = bellscoin::hashes::sha256d::Hash::hash(
+                                            &tx.value.outputs[new_vout as usize].out.script_pubkey,
+                                        );
                                         self.token_cache.transferred(
                                             old_location,
-                                            owner,
+                                            owner.into(),
                                             txid,
                                             new_vout,
                                         );
@@ -124,7 +140,7 @@ impl Parser<'_> {
                                     // because of token protocol leaked token amount
                                     // comeback to owner
                                     let recipient = prevouts
-                                        .get(&txin.previous_output)
+                                        .get(&txin.outpoint)
                                         .expect("Owner of token transfer must exist")
                                         .script_pubkey
                                         .compute_script_hash();
@@ -145,13 +161,14 @@ impl Parser<'_> {
 
                 // handle inscription creation
                 if is_jubilee_height || input_index == 0 {
-                    let mut partials = outpoint_to_partials
-                        .remove(&txin.previous_output)
-                        .unwrap_or(Partials {
-                            genesis_txid: txid,
-                            inscription_index: 0,
-                            parts: vec![],
-                        });
+                    let mut partials =
+                        outpoint_to_partials
+                            .remove(&txin.outpoint)
+                            .unwrap_or(Partials {
+                                genesis_txid: txid,
+                                inscription_index: 0,
+                                parts: vec![],
+                            });
 
                     let part = if let Some(tapscript) = txin.witness.tapscript() {
                         Part {
@@ -161,7 +178,7 @@ impl Parser<'_> {
                     } else {
                         Part {
                             is_tapscript: false,
-                            script_buffer: txin.script_sig.to_bytes(),
+                            script_buffer: txin.script_sig.clone(),
                         }
                     };
 
@@ -185,7 +202,7 @@ impl Parser<'_> {
                                 partials.inscription_index = inscription_index_in_tx;
                                 inscription_index_in_tx += 1;
                             }
-                            outpoint_to_partials.insert(txin.previous_output, partials);
+                            outpoint_to_partials.insert(txin.outpoint, partials);
                             continue;
                         }
                         ParsedInscriptionResult::Single(mut inscription_template) => {
@@ -230,7 +247,7 @@ impl Parser<'_> {
                         self.token_cache.parse_token_action(
                             &inscription_template,
                             height,
-                            block.header.time,
+                            block.header.value.timestamp,
                         );
                     }
                 }
@@ -339,7 +356,7 @@ impl Parser<'_> {
             location: Location {
                 offset: 0,
                 outpoint: OutPoint {
-                    txid: payload.tx.txid(),
+                    txid: payload.tx.hash.into(),
                     vout: payload.input_index,
                 },
             },
@@ -353,7 +370,7 @@ impl Parser<'_> {
                 .inputs_cum
                 .get(payload.input_index as usize)
                 .copied(),
-            &payload.tx.output,
+            &payload.tx.value.outputs,
         ) else {
             leaked.add(
                 payload.input_index as usize,
@@ -366,7 +383,7 @@ impl Parser<'_> {
         };
 
         if let Ok((new_vout, new_offset)) =
-            InscriptionSearcher::get_output_index_by_input(pointer, &payload.tx.output)
+            InscriptionSearcher::get_output_index_by_input(pointer, &payload.tx.value.outputs)
         {
             vout = new_vout;
             offset = new_offset;
@@ -374,22 +391,22 @@ impl Parser<'_> {
 
         let location: Location = Location {
             outpoint: OutPoint {
-                txid: payload.tx.txid(),
+                txid: payload.tx.hash.into(),
                 vout,
             },
             offset,
         };
 
-        let tx_out = &payload.tx.output[vout as usize];
+        let tx_out = &payload.tx.value.outputs[vout as usize];
 
-        if tx_out.script_pubkey.is_op_return() {
+        if ScriptBuf::from_bytes(tx_out.out.script_pubkey.clone()).is_op_return() {
             inscription_template.owner = *OP_RETURN_HASH;
         } else {
-            inscription_template.owner = tx_out.script_pubkey.compute_script_hash();
+            inscription_template.owner = sha256d::Hash::hash(&tx_out.out.script_pubkey).into();
         }
 
         inscription_template.location = location;
-        inscription_template.value = tx_out.value;
+        inscription_template.value = tx_out.out.value;
 
         Some(inscription_template)
     }

@@ -1,34 +1,43 @@
+use bellscoin::ScriptBuf;
+use nint_blk::proto::block::Block;
+
 use super::{processe_data::ProcessedData, *};
 
 pub fn process_prevouts(
     db: Arc<DB>,
-    txs: &[Transaction],
+    block: &Block,
     data_to_write: &mut Vec<ProcessedData>,
 ) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
-    let prevouts = txs
+    let prevouts = block
+        .txs
         .iter()
         .flat_map(|tx| {
-            let txid = tx.txid();
-            tx.output
+            let txid = tx.hash;
+            tx.value
+                .outputs
                 .iter()
                 .enumerate()
-                .map(move |(input_index, txout)| {
+                .map(move |(vout, txout)| {
                     (
                         OutPoint {
-                            txid,
-                            vout: input_index as u32,
+                            txid: txid.into(),
+                            vout: vout as u32,
                         },
-                        txout.clone(),
+                        TxOut {
+                            value: txout.out.value,
+                            script_pubkey: ScriptBuf::from_bytes(txout.out.script_pubkey.clone()),
+                        },
                     )
                 })
         })
         .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
         .collect::<HashMap<_, _>>();
 
-    let txids_keys = txs
+    let txids_keys = block
+        .txs
         .iter()
-        .skip(1)
-        .flat_map(|x| x.input.iter().map(|x| x.previous_output))
+        .filter(|tx| !tx.value.is_coinbase())
+        .flat_map(|tx| tx.value.inputs.iter().map(|x| x.outpoint))
         .unique()
         .collect_vec();
 
@@ -46,7 +55,7 @@ pub fn process_prevouts(
                     if let Some(value) = prevouts.get(key) {
                         result.insert(*key, value.clone());
                     } else {
-                        return Err(anyhow::anyhow!("Missing prevout for key: {:?}", key));
+                        return Err(anyhow::anyhow!("Missing prevout for key {}", key));
                     }
                 }
             }

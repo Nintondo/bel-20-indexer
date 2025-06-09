@@ -75,12 +75,7 @@ impl TryFrom<Vec<u8>> for FullHash {
 }
 
 fn compute_script_hash(data: impl AsRef<[u8]>) -> FullHash {
-    let mut hasher = <sha2::Sha256 as sha2::digest::Digest>::new();
-    sha2::digest::Update::update(&mut hasher, data.as_ref());
-    let bytes: [u8; 32] = sha2::digest::Digest::finalize(hasher)[..]
-        .try_into()
-        .expect("SHA256 size is 32 bytes");
-    bytes.into()
+    bitcoin_hashes::sha256d::Hash::hash(data.as_ref()).into()
 }
 
 pub trait ComputeScriptHash {

@@ -105,7 +105,10 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .zip(keys_bytes.into_iter().map(|x| x.0))
             .filter_map(|(v, k)| {
                 if panic_if_not_exists {
-                    Some((k, v.unwrap()))
+                    Some((
+                        k,
+                        v.unwrap_or_else(|| _panic("multi_get", &self.cf, anyhow::Error::msg(""))),
+                    ))
                 } else {
                     Some((k, v?))
                 }

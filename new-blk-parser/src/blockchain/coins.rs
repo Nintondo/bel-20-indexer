@@ -134,7 +134,7 @@ impl FromStr for CoinType {
             "dogecoin" => Ok(CoinType::from(Dogecoin)),
             "dogecoin-testnet" => Ok(CoinType::from(DogecoinTestnet)),
             "bellscoin" => Ok(CoinType::from(Bellscoin)),
-            "bellscoin-testnet" => Ok(CoinType::from(Bellscoin)),
+            "bellscoin-testnet" => Ok(CoinType::from(BellscoinTestnet)),
             n => anyhow::bail!("There is no implementation for `{}`!", n),
         }
     }

@@ -101,6 +101,7 @@ fn main() {
         &*BLOCKCHAIN,
         *NETWORK,
         *JUBILEE_HEIGHT,
+        *START_HEIGHT,
         &*SERVER_URL,
     );
 

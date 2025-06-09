@@ -5,8 +5,22 @@ use super::*;
 use byteorder::ReadBytesExt;
 use rusty_leveldb::{DB, LdbIterator, Options};
 
-const BLOCK_VALID_CHAIN: u64 = 4;
 const BLOCK_HAVE_DATA: u64 = 8;
+const BLOCK_VALID_RESERVED: u64 = 1;
+const BLOCK_VALID_TREE: u64 = 2;
+const BLOCK_VALID_CHAIN: u64 = 4;
+const BLOCK_VALID_TRANSACTIONS: u64 = 3;
+const BLOCK_VALID_SCRIPTS: u64 = 5;
+
+const BLOCK_VALID_MASK: u64 = BLOCK_VALID_RESERVED
+    | BLOCK_VALID_TREE
+    | BLOCK_VALID_TRANSACTIONS
+    | BLOCK_VALID_CHAIN
+    | BLOCK_VALID_SCRIPTS;
+
+const BLOCK_FAILED_VALID: u64 = 32;
+const BLOCK_FAILED_CHILD: u64 = 64;
+const BLOCK_FAILED_MASK: u64 = BLOCK_FAILED_VALID | BLOCK_FAILED_CHILD;
 
 /// Holds the index of longest valid chain
 pub struct ChainIndex {
@@ -138,15 +152,19 @@ pub fn get_block_index(path: &Path) -> Result<HashMap<u64, BlockIndexRecord>> {
         db_iter.current(&mut key, &mut value);
         if is_block_index_record(&key) {
             let record = BlockIndexRecord::from(&key[1..], &value)?;
-            if record.status & (BLOCK_VALID_CHAIN | BLOCK_HAVE_DATA) > 0 {
-                block_index
-                    .entry(record.height)
-                    .and_modify(|x: &mut BlockIndexRecord| {
-                        if record.version > x.version {
-                            *x = record.clone();
-                        }
-                    })
-                    .or_insert(record);
+
+            if record.status & BLOCK_FAILED_MASK > 0 {
+                continue;
+            }
+            if record.status & BLOCK_VALID_MASK < BLOCK_VALID_TREE {
+                continue;
+            }
+            if !(record.status & BLOCK_HAVE_DATA != 0 || record.tx_count > 0) {
+                continue;
+            }
+
+            if !block_index.contains_key(&record.height) {
+                block_index.insert(record.height, record);
             }
         }
     }

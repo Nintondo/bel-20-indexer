@@ -230,7 +230,7 @@ impl InscriptionIndexer {
                 fullhash_to_load
                     .iter()
                     .filter(|x| !outpoint_fullhash_to_address.contains_key(x)),
-                true,
+                false,
             )
             .into_iter()
             .map(|(k, v)| (*k, v))

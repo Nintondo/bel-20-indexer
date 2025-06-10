@@ -1,7 +1,16 @@
 #[macro_use]
 extern crate tracing;
 
-use bellscoin::hashes::{Hash, sha256d};
+use crate::{
+    blockchain::{
+        parser::{ChainOptions, ChainStorage}, proto::address_to_fullhash,
+        BlockId,
+        CoinType,
+    },
+    utils::BlockHeightRange,
+};
+use bellscoin::hashes::{sha256d, Hash};
+use bellscoin::network::message::NetworkMessage::Block;
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
 use kanal::Receiver;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -18,21 +27,13 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    blockchain::{
-        BlockId, CoinType,
-        parser::{ChainOptions, ChainStorage},
-        proto::address_to_fullhash,
-    },
-    utils::BlockHeightRange,
-};
-
 mod blockchain;
 mod utils;
 
+use crate::blockchain::checkpoint::CheckPoint;
 pub use blockchain::{
-    LoadBlocks, LoadBlocksArgs,
-    proto::{self, ScriptType},
+    proto::{self, ScriptType}, LoadBlocks,
+    LoadBlocksArgs,
 };
 pub use utils::Auth;
 
@@ -40,6 +41,7 @@ const BOUNDED_CHANNEL_SIZE: usize = 50;
 
 type Result<T> = std::result::Result<T, anyhow::Error>;
 
+#[derive(Debug)]
 pub struct BlockEvent {
     pub id: BlockId,
     pub block: blockchain::proto::block::Block,
@@ -65,37 +67,10 @@ impl Indexer {
 
         std::thread::spawn(move || {
             let coin = CoinType::from_str(&this.coin).unwrap();
-            let last_height = this.last_height as u64 + 1;
-
-            let mut chain = ChainStorage::new(&ChainOptions::new(&this.path, coin)).unwrap();
-
-            let max_height = chain.max_height();
-
-            for height in last_height..=max_height {
-                if this.token.is_cancelled() {
-                    return;
-                }
-
-                let Some(block) = chain.get_block(height).unwrap() else {
-                    break;
-                };
-                if tx
-                    .send(BlockEvent {
-                        id: BlockId {
-                            height,
-                            hash: block.header.hash,
-                        },
-                        block,
-                        reorg_len: 0,
-                        tip: max_height,
-                    })
-                    .is_err()
-                {
-                    return;
-                };
-            }
-
-            let mut checkpoint = chain.complete();
+            let last_height = match this.last_height {
+                0 => 0,
+                _ => this.last_height as u64 + 1,
+            };
 
             let client = utils::Client::new(
                 &this.rpc_url,
@@ -104,6 +79,58 @@ impl Indexer {
                 this.token.clone(),
             )
             .unwrap();
+
+            let mut checkpoint = match ChainStorage::new(&ChainOptions::new(&this.path, coin)) {
+                Ok(mut chain) => {
+                    let max_height = chain.max_height();
+
+                    for height in last_height..=max_height {
+                        if this.token.is_cancelled() {
+                            return;
+                        }
+
+                        let Some(block) = chain.get_block(height).unwrap() else {
+                            break;
+                        };
+                        if tx
+                            .send(BlockEvent {
+                                id: BlockId {
+                                    height,
+                                    hash: block.header.hash,
+                                },
+                                block,
+                                reorg_len: 0,
+                                tip: max_height,
+                            })
+                            .is_err()
+                        {
+                            return;
+                        };
+                    }
+
+                    chain.complete()
+                }
+                Err(_) => {
+                    let height = 0u64;
+                    let hash = client.get_block_hash(height).unwrap();
+                    let block = client.get_block(&hash).unwrap();
+                    let best_block_hash = client.get_best_block_hash().unwrap();
+                    let tip = client.get_block_info(&best_block_hash).unwrap().height as u64;
+
+                    if tx
+                        .send(BlockEvent {
+                            id: BlockId::from((height, hash)),
+                            block,
+                            reorg_len: 0,
+                            tip,
+                        })
+                        .is_err()
+                    {
+                        return;
+                    }
+                    CheckPoint::new(BlockId::from((height, hash)))
+                }
+            };
 
             while checkpoint.height() < last_height {
                 let height = checkpoint.height() + 1;

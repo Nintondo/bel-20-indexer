@@ -64,5 +64,10 @@ impl ChainStorage {
             });
 
         CheckPoint::from_block_ids(iterator).unwrap()
+/*        match CheckPoint::from_block_ids(iterator) {
+            Ok(ch_p) => Some(ch_p),
+            Err(_) => None,
+        }*/
+
     }
 }

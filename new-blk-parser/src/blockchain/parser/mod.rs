@@ -15,9 +15,9 @@ pub struct ChainOptions {
 }
 
 impl ChainOptions {
-    pub fn new(path: &str, coin: CoinType) -> Self {
+    pub fn new(path: &str, coin: CoinType, last_height: u32) -> Self {
         let dir = PathBuf::from_str(path).expect("Invalid path");
-        let range = crate::utils::BlockHeightRange::new(0, None).unwrap();
+        let range = crate::utils::BlockHeightRange::new(last_height as u64, None).unwrap();
 
         Self {
             blockchain_dir: dir,

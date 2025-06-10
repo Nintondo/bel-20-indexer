@@ -13,10 +13,6 @@ impl BlockHeightRange {
         }
         Ok(Self { start, end })
     }
-
-    pub fn is_default(&self) -> bool {
-        self.start == 0 && self.end.is_none()
-    }
 }
 
 impl fmt::Display for BlockHeightRange {

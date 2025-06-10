@@ -67,7 +67,8 @@ impl Indexer {
             let coin = CoinType::from_str(&this.coin).unwrap();
             let last_height = this.last_height as u64 + 1;
 
-            let mut chain = ChainStorage::new(&ChainOptions::new(&this.path, coin)).unwrap();
+            let mut chain =
+                ChainStorage::new(&ChainOptions::new(&this.path, coin, this.last_height)).unwrap();
 
             let max_height = chain.max_height();
 

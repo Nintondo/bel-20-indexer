@@ -1740,6 +1740,7 @@ dependencies = [
  "byteorder",
  "dutils",
  "hex",
+ "indexmap 2.9.0",
  "itertools 0.14.0",
  "jsonrpc 0.18.0",
  "kanal",

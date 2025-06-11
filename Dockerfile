@@ -16,6 +16,7 @@ RUN apt update -y && \
 
 COPY Cargo.toml ./
 COPY src src
+COPY new-blk-parser new-blk-parser
 
 RUN cargo fetch && cargo build --release
 

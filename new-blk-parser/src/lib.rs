@@ -10,7 +10,6 @@ use crate::{
     utils::BlockHeightRange,
 };
 use bellscoin::hashes::{sha256d, Hash};
-use bellscoin::network::message::NetworkMessage::Block;
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
 use kanal::Receiver;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -50,7 +49,7 @@ pub struct BlockEvent {
 }
 
 pub struct Indexer {
-    pub path: String,
+    pub path: Option<String>,
     pub coin: String,
     pub rpc_url: String,
     pub rpc_auth: Auth,
@@ -80,56 +79,55 @@ impl Indexer {
             )
             .unwrap();
 
-            let mut checkpoint = match ChainStorage::new(&ChainOptions::new(&this.path, coin)) {
-                Ok(mut chain) => {
-                    let max_height = chain.max_height();
+            let mut checkpoint = if let Some(blocks_path) = &this.path {
+                let mut chain = ChainStorage::new(&ChainOptions::new(blocks_path, coin)).unwrap();
 
-                    for height in last_height..=max_height {
-                        if this.token.is_cancelled() {
-                            return;
-                        }
+                let max_height = chain.max_height();
 
-                        let Some(block) = chain.get_block(height).unwrap() else {
-                            break;
-                        };
-                        if tx
-                            .send(BlockEvent {
-                                id: BlockId {
-                                    height,
-                                    hash: block.header.hash,
-                                },
-                                block,
-                                reorg_len: 0,
-                                tip: max_height,
-                            })
-                            .is_err()
-                        {
-                            return;
-                        };
+                for height in last_height..=max_height {
+                    if this.token.is_cancelled() {
+                        return;
                     }
 
-                    chain.complete()
-                }
-                Err(_) => {
-                    let height = 0u64;
-                    let hash = client.get_block_hash(height).unwrap();
-                    let block = client.get_block(&hash).unwrap();
-                    let best_block_hash = client.get_best_block_hash().unwrap();
-                    let tip = client.get_block_info(&best_block_hash).unwrap().height as u64;
-
+                    let Some(block) = chain.get_block(height).unwrap() else {
+                        break;
+                    };
                     if tx
                         .send(BlockEvent {
-                            id: BlockId::from((height, hash)),
+                            id: BlockId {
+                                height,
+                                hash: block.header.hash,
+                            },
                             block,
                             reorg_len: 0,
-                            tip,
+                            tip: max_height,
                         })
                         .is_err()
                     {
                         return;
-                    }
-                    CheckPoint::new(BlockId::from((height, hash)))
+                    };
                 }
+
+                chain.complete()
+            } else {
+                let height = 0u64;
+                let hash = client.get_block_hash(height).unwrap();
+                let block = client.get_block(&hash).unwrap();
+                let best_block_hash = client.get_best_block_hash().unwrap();
+                let tip = client.get_block_info(&best_block_hash).unwrap().height as u64;
+
+                if tx
+                    .send(BlockEvent {
+                        id: BlockId::from((height, hash)),
+                        block,
+                        reorg_len: 0,
+                        tip,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+                CheckPoint::new(BlockId::from((height, hash)))
             };
 
             while checkpoint.height() < last_height {

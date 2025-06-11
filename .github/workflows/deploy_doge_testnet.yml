@@ -1,0 +1,35 @@
+name: Deploy service for Doge Testnet
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [Deploy-Doge]
+
+jobs:
+  deployment:
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.client_payload.ref }}
+    - name: Deploy
+      uses: appleboy/ssh-action@v1.0.0
+      env:
+        CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+        CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+        SERVICE_TAG: ${{ github.event.client_payload.sha }}
+        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
+        COIN: doge
+        NETWORK: testnet
+      with:
+        host: ${{ secrets.DOGE_TESTNET_HOST_1 }}
+        username: ${{ secrets.DOGE_TESTNET_HOST_1_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
+        script: |
+          cd /opt/${COIN}-${NETWORK}/services/${SERVICE_NAME}
+          sed -i "s|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:.*|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:${SERVICE_TAG}|" ${DOCKER_COMPOSE_FILE}
+          cd ../../
+          docker compose up -d --force-recreate ${COIN}-${NETWORK}-${SERVICE_NAME}

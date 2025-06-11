@@ -35,11 +35,3 @@ jobs:
         tags: |
           ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}-blk:${{ github.sha }}
           ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}-blk:latest
-
-    - name: Trigger Deploy Workflow
-      uses: peter-evans/repository-dispatch@v2
-      with:
-        token: ${{ secrets.GIT_ACCESS_TOKEN }}
-        repository: ${{ github.repository }}
-        event-type: Deploy-Doge
-        client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'

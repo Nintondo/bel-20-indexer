@@ -80,7 +80,7 @@ define_static! {
     // first token block height
     START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
         (Network::Bellscoin, "bells") => 26_371,
-        (Network::Bellscoin, "doge") => 4_609_723,
+        (Network::Bellscoin, "doge") => 4_609_001,
         (Network::Testnet, "doge") => 4_260_001,
         _ => 0,
     };

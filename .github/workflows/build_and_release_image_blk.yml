@@ -1,4 +1,4 @@
-name: Build and release Docker image for Doge
+name: Build and release Docker image Blk
 
 on:
   workflow_dispatch:

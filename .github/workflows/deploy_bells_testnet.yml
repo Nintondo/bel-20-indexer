@@ -3,7 +3,7 @@ name: Deploy service for Bells Testnet
 on:
   workflow_dispatch:
   repository_dispatch:
-    types: [Deploy-Bells]
+    types: [Deploy]
 
 jobs:
   deployment:

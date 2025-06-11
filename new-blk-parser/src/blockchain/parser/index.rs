@@ -5,7 +5,7 @@ use super::*;
 use byteorder::ReadBytesExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use rusty_leveldb::{DB, LdbIterator, Options};
+use rusty_leveldb::{LdbIterator, Options, DB};
 
 const BLOCK_HAVE_DATA: u64 = 8;
 const BLOCK_HAVE_UNDO: u64 = 16;
@@ -229,7 +229,7 @@ pub fn get_block_index(
 
             let prev_hash = cur[last_pos.unwrap_or_default()].prev_hash;
 
-            it.peek_mut().map(|prev| {
+            it.peek().map(|prev| {
                 last_pos = prev.iter().position(|x| x.block_hash == prev_hash);
                 vec![prev[last_pos.unwrap()].clone()]
             })

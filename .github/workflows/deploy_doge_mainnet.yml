@@ -26,6 +26,6 @@ jobs:
         envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
         script: |
           cd /opt/${COIN}-${NETWORK}/services/${SERVICE_NAME}
-          sed -i "s|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:.*|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:${SERVICE_TAG}|" ${DOCKER_COMPOSE_FILE}
+          sed -i "s|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:.*|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}|" ${DOCKER_COMPOSE_FILE}
           cd ../../
           docker compose up -d --force-recreate ${COIN}-${NETWORK}-${SERVICE_NAME}

@@ -33,8 +33,8 @@ jobs:
         push: true
         no-cache: true
         tags: |
-          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}-blk:${{ github.sha }}
-          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}-blk:latest
+          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}:${{ github.sha }}
+          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}:latest
 
     - name: Trigger Deploy Workflow
       uses: peter-evans/repository-dispatch@v2

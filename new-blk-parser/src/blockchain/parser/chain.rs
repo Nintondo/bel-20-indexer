@@ -52,7 +52,7 @@ impl ChainStorage {
         self.chain_index.max_height()
     }
 
-    pub fn complete(self) -> CheckPoint {
+    pub fn complete(self) -> Option<CheckPoint> {
         let iterator = self
             .chain_index
             .block_index
@@ -63,6 +63,6 @@ impl ChainStorage {
                 height: k,
             });
 
-        CheckPoint::from_block_ids(iterator).unwrap()
+        CheckPoint::from_block_ids(iterator).ok()
     }
 }

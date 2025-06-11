@@ -4,6 +4,7 @@ extern crate tracing;
 use bellscoin::hashes::{Hash, sha256d};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
 use kanal::Receiver;
+use num_traits::Zero;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::BorrowMut,
@@ -21,6 +22,7 @@ use std::{
 use crate::{
     blockchain::{
         BlockId, CoinType,
+        checkpoint::CheckPoint,
         parser::{ChainOptions, ChainStorage},
         proto::address_to_fullhash,
     },
@@ -65,7 +67,11 @@ impl Indexer {
 
         std::thread::spawn(move || {
             let coin = CoinType::from_str(&this.coin).unwrap();
-            let last_height = this.last_height as u64 + 1;
+            let last_height = this
+                .last_height
+                .is_zero()
+                .then_some(0)
+                .unwrap_or(this.last_height + 1) as u64;
 
             let mut chain =
                 ChainStorage::new(&ChainOptions::new(&this.path, coin, this.last_height)).unwrap();
@@ -96,8 +102,6 @@ impl Indexer {
                 };
             }
 
-            let mut checkpoint = chain.complete();
-
             let client = utils::Client::new(
                 &this.rpc_url,
                 this.rpc_auth.clone(),
@@ -105,6 +109,17 @@ impl Indexer {
                 this.token.clone(),
             )
             .unwrap();
+
+            let mut checkpoint = match chain.complete() {
+                Some(v) => v,
+                None => {
+                    let hash = client.get_block_hash(last_height).unwrap();
+                    CheckPoint::new(BlockId {
+                        height: last_height,
+                        hash,
+                    })
+                }
+            };
 
             while checkpoint.height() < last_height {
                 let height = checkpoint.height() + 1;

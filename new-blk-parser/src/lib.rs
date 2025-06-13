@@ -30,6 +30,7 @@ mod blockchain;
 mod utils;
 
 use crate::blockchain::checkpoint::CheckPoint;
+use crate::proto::block::Block;
 pub use blockchain::{
     proto::{self, ScriptType}, LoadBlocks,
     LoadBlocksArgs,
@@ -79,6 +80,8 @@ impl Indexer {
             )
             .unwrap();
 
+            let mut last_sent_hash: Option<sha256d::Hash> = None;
+
             let mut checkpoint = if let Some(blocks_path) = &this.path {
                 let mut chain = ChainStorage::new(&ChainOptions::new(blocks_path, coin)).unwrap();
 
@@ -92,6 +95,9 @@ impl Indexer {
                     let Some(block) = chain.get_block(height).unwrap() else {
                         break;
                     };
+
+                    Self::check_order(&mut last_sent_hash, &block);
+
                     if tx
                         .send(BlockEvent {
                             id: BlockId {
@@ -208,5 +214,17 @@ impl Indexer {
     pub fn to_scripthash(&self, address: &str, script_type: ScriptType) -> Result<sha256d::Hash> {
         let coin = CoinType::from_str(&self.coin).anyhow_with("Unsupported coin")?;
         address_to_fullhash(address, script_type, coin)
+    }
+
+    #[inline]
+    fn check_order(last_sent_hash: &mut Option<sha256d::Hash>, block: &Block) {
+        if last_sent_hash.is_none() {
+            let _ = last_sent_hash.insert(block.header.hash);
+        } else {
+            if last_sent_hash.unwrap() != block.header.value.prev_hash {
+                panic!("Invalid blocks order");
+            }
+            let _ = last_sent_hash.insert(block.header.hash);
+        }
     }
 }

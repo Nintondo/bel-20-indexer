@@ -1,4 +1,4 @@
-use crate::db::Pebble;
+use rocksdb_wrapper::Pebble;
 
 use super::*;
 

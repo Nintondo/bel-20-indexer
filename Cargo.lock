@@ -277,7 +277,7 @@ dependencies = [
  "parking_lot",
  "postcard",
  "rayon",
- "rocksdb",
+ "rocksdb-wrapper",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -2281,6 +2281,19 @@ checksum = "26ec73b20525cb235bad420f911473b69f9fe27cc856c5461bccd7e4af037f43"
 dependencies = [
  "libc",
  "librocksdb-sys",
+]
+
+[[package]]
+name = "rocksdb-wrapper"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bellscoin",
+ "dutils",
+ "postcard",
+ "rocksdb",
+ "serde",
+ "tracing",
 ]
 
 [[package]]

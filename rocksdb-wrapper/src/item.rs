@@ -1,12 +1,17 @@
 use super::*;
 
 pub trait Pebble {
+    const FIXED_SIZE: Option<usize> = None;
     type Inner;
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]>;
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner>;
+    fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
+        (f)(&Self::get_bytes(v))
+    }
 }
 
 impl Pebble for () {
+    const FIXED_SIZE: Option<usize> = Some(0);
     type Inner = Self;
     fn get_bytes(_: &Self::Inner) -> Cow<[u8]> {
         Cow::Borrowed(&[])
@@ -26,16 +31,9 @@ impl Pebble for Cow<'_, [u8]> {
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
         Ok(Cow::Owned(v.into_owned())) //todo: lifetime shit
     }
-}
 
-impl Pebble for Vec<u8> {
-    type Inner = Self;
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
-        Cow::Borrowed(v)
-    }
-
-    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        Ok(v.into_owned())
+    fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
+        (f)(v)
     }
 }
 
@@ -50,6 +48,13 @@ impl Pebble for String {
     }
 }
 
+thread_local! {
+    static POSTCARD_BUFFER: RefCell<Vec<Vec<u8>>> = Default::default();
+}
+
+/// Provides rocksdb support for types that implements serde::Serialize and serde::Deserialize (via derive). <br/>
+/// UsingSerde internally uses postcard. Certain serde features, for example untagged enums are not supported and will panic at runtime. <br/>
+/// If you can derive bitcode::Encode and bitcode::Decode, UsingBitcode<T> is preferred.
 pub struct UsingSerde<T>(PhantomData<T>)
 where
     T: serde::Serialize + for<'de> serde::Deserialize<'de>;
@@ -65,6 +70,17 @@ where
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<T> {
         postcard::from_bytes(&v).anyhow()
+    }
+
+    fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
+        let mut buf = POSTCARD_BUFFER
+            .with_borrow_mut(|buf| buf.pop())
+            .unwrap_or_default();
+        buf.clear();
+        let buf = postcard::to_extend(v, buf).unwrap();
+        let x = (f)(&buf);
+        POSTCARD_BUFFER.with_borrow_mut(|x| x.push(buf));
+        x
     }
 }
 
@@ -103,10 +119,16 @@ where
     }
 }
 
+/// Wrapper for a type with align of 1
+#[derive(Copy, Clone)]
+#[repr(C, packed)]
+struct Packed<T>(pub T);
+
 #[macro_export]
 macro_rules! impl_pebble {
     (int $T:ty) => {
-        impl $crate::db::Pebble for $T {
+        impl $crate::Pebble for $T {
+            const FIXED_SIZE: Option<usize> = Some(std::mem::size_of::<Packed<$T>>());
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -120,7 +142,8 @@ macro_rules! impl_pebble {
     };
 
     ($WRAPPER:ty = $INNER:ty) => {
-        impl $crate::db::Pebble for $WRAPPER {
+        impl $crate::Pebble for $WRAPPER {
+            //todo: impl FIXED_SIZE
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -134,7 +157,8 @@ macro_rules! impl_pebble {
     };
 
     ($WRAPPER:ty as $INNER:ty) => {
-        impl $crate::db::Pebble for $WRAPPER {
+        impl $crate::Pebble for $WRAPPER {
+            const FIXED_SIZE: Option<usize> = $INNER::FIXED_SIZE;
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
@@ -160,3 +184,56 @@ impl_pebble!(int i64);
 impl_pebble!(int u64);
 impl_pebble!(int i128);
 impl_pebble!(int u128);
+
+/// K0 must have fixed size
+pub trait MultiPebble {
+    type K0: Pebble;
+    type K1: Pebble;
+
+    fn get_bytes_k0_into(src: &<Self::K0 as Pebble>::Inner, dest: &mut Vec<u8>) {
+        let x = <Self::K0 as Pebble>::get_bytes(src);
+        if x.len() > dest.len() {
+            *dest = x.to_vec();
+        } else {
+            dest.clear();
+            dest.extend_from_slice(&x);
+        }
+    }
+    fn get_bytes_k1_into(src: &<Self::K1 as Pebble>::Inner, dest: &mut Vec<u8>) {
+        let x = <Self::K1 as Pebble>::get_bytes(src);
+        dest.extend_from_slice(&x);
+    }
+}
+
+impl<K0: Pebble, K1: Pebble> MultiPebble for (K0, K1) {
+    type K0 = K0;
+    type K1 = K1;
+}
+
+impl<K0: Pebble, K1: Pebble> Pebble for (K0, K1) {
+    type Inner = (K0::Inner, K1::Inner);
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        assert!(
+            K0::FIXED_SIZE.is_some(),
+            "First key in MultiPebble must have fixed size"
+        );
+
+        let mut buf = K0::get_bytes(&v.0).to_vec();
+        buf.extend_from_slice(&K1::get_bytes(&v.1));
+        Cow::Owned(buf)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        assert!(
+            K0::FIXED_SIZE.is_some(),
+            "First key in MultiPebble must have fixed size"
+        );
+
+        let k0_s = K0::FIXED_SIZE.unwrap();
+        let k0 = K0::from_bytes(Cow::Borrowed(&v[..k0_s]))?;
+        let k1 = K1::from_bytes(Cow::Borrowed(&v[k0_s..]))?;
+
+        Ok((k0, k1))
+    }
+}

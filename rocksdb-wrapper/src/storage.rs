@@ -71,7 +71,10 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         &'a self,
         keys: impl IntoIterator<Item = &'a K::Inner>,
     ) -> Vec<Option<V::Inner>> {
-        let keys = keys.into_iter().map(|x| K::get_bytes(x)).collect_vec();
+        let keys = keys
+            .into_iter()
+            .map(|x| K::get_bytes(x))
+            .collect::<Vec<_>>();
         self.db
             .db
             .batched_multi_get_cf(&self.cf(), keys.iter(), false)
@@ -90,7 +93,10 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         keys: impl IntoIterator<Item = &'a K::Inner>,
         panic_if_not_exists: bool,
     ) -> Vec<(&'a K::Inner, V::Inner)> {
-        let keys_bytes = keys.into_iter().map(|x| (x, K::get_bytes(x))).collect_vec();
+        let keys_bytes = keys
+            .into_iter()
+            .map(|x| (x, K::get_bytes(x)))
+            .collect::<Vec<_>>();
 
         self.db
             .db

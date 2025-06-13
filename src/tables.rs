@@ -2,7 +2,7 @@ use super::*;
 
 use inscriptions::structs::Partials;
 
-generate_db_code! {
+rocksdb_wrapper::generate_db_code! {
     token_to_meta: LowerCaseTokenTick => UsingSerde<TokenMetaDB>,
     address_location_to_transfer: AddressLocation => UsingSerde<TransferProtoDB>,
     address_token_to_balance: AddressToken => UsingSerde<TokenBalance>,
@@ -14,7 +14,7 @@ generate_db_code! {
     last_block: () => u32,
     last_history_id: () => u64,
     proof_of_history: u32 => UsingConsensus<sha256::Hash>,
-    block_events: u32 => Vec<AddressTokenId>,
+    block_events: u32 => UsingSerde<Vec<AddressTokenId>>,
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenId,
 }

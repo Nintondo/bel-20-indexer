@@ -25,7 +25,7 @@ impl From<&bitcoin_hashes::sha256d::Hash> for FullHash {
     }
 }
 
-impl_pebble!(FullHash = [u8; 32]);
+rocksdb_wrapper::impl_pebble!(FullHash = [u8; 32]);
 
 impl Deref for FullHash {
     type Target = [u8; 32];

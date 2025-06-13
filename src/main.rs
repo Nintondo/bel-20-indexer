@@ -16,7 +16,6 @@ use {
         hashes::{sha256, Hash},
         opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
     },
-    db::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     dutils::{
         async_thread::Spawn,
         error::{ApiError, ContextWrapper},
@@ -26,17 +25,16 @@ use {
     inscriptions::Location,
     itertools::Itertools,
     num_traits::Zero,
+    rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{serde_as, DisplayFromStr},
     server::{BlockInfo, Server, ServerEvent},
     std::{
-        borrow::{Borrow, Cow},
+        borrow::Cow,
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
         fmt::{Display, Formatter},
         future::IntoFuture,
         iter::Peekable,
-        marker::PhantomData,
-        ops::{Bound, RangeBounds},
         str::FromStr,
         sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
@@ -47,7 +45,6 @@ use {
     tracing_indicatif::span_ext::IndicatifSpanExt,
 };
 
-mod db;
 mod inscriptions;
 mod reorg;
 mod rest;

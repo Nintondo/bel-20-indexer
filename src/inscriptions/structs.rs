@@ -367,7 +367,7 @@ pub struct Partials {
     pub parts: Vec<Part>,
 }
 
-impl db::Pebble for Partials {
+impl rocksdb_wrapper::Pebble for Partials {
     type Inner = Self;
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {

@@ -18,7 +18,7 @@ serde_json = "1.0.132"
 bellscoin = "0.30.8"
 nintondo-dogecoin = "0.30.6"
 
-rocksdb = { version = "0.23.0", features = ["multi-threaded-cf"] }
+rocksdb-wrapper = { path = "./rocksdb-wrapper" }
 postcard = "1.0.10"
 bytemuck = { version = "1.19.0", features = ["derive"] }
 tokio = { version = "1.43.1", features = ["full"] }
@@ -29,7 +29,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 axum = "0.8.1"
 tracing-indicatif = "0.3.6"
 indicatif = "0.17.9"
-dutils = "0.1.7"
+dutils = "0.1.12"
 parking_lot = "0.12.3"
 dotenv = "0.15.0"
 tokio-stream = "0.1.16"

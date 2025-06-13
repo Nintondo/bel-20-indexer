@@ -36,7 +36,7 @@ impl From<AddressTokenId> for AddressToken {
     }
 }
 
-impl db::Pebble for AddressToken {
+impl rocksdb_wrapper::Pebble for AddressToken {
     type Inner = Self;
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
@@ -61,7 +61,7 @@ pub struct AddressTokenId {
     pub id: u64,
 }
 
-impl db::Pebble for AddressTokenId {
+impl rocksdb_wrapper::Pebble for AddressTokenId {
     type Inner = Self;
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
@@ -79,24 +79,6 @@ impl db::Pebble for AddressTokenId {
         let id = u64::from_be_bytes(v[v.len() - 8..].try_into().anyhow()?);
 
         Ok(Self { address, id, token })
-    }
-}
-
-impl db::Pebble for Vec<AddressTokenId> {
-    type Inner = Self;
-
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
-        let mut result = Vec::new();
-        for item in v {
-            result.extend(AddressTokenId::get_bytes(item).into_owned());
-        }
-        Cow::Owned(result)
-    }
-
-    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        v.chunks(32 + 4 + 8)
-            .map(|x| AddressTokenId::from_bytes(Cow::Borrowed(x)))
-            .collect()
     }
 }
 
@@ -303,7 +285,7 @@ impl AddressLocation {
     }
 }
 
-impl db::Pebble for AddressLocation {
+impl rocksdb_wrapper::Pebble for AddressLocation {
     type Inner = Self;
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
@@ -645,7 +627,7 @@ impl std::ops::DerefMut for LowerCaseTokenTick {
     }
 }
 
-impl db::Pebble for LowerCaseTokenTick {
+impl rocksdb_wrapper::Pebble for LowerCaseTokenTick {
     type Inner = Self;
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {

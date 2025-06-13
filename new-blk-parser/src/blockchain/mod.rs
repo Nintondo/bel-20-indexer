@@ -11,6 +11,7 @@ pub use coins::*;
 
 pub struct LoadBlocksArgs<'a> {
     path: &'a str,
+    index_dir_path: &'a str,
     from_height: Option<u64>,
     network: &'a str,
     reorg_len: u64,
@@ -31,6 +32,7 @@ impl LoadBlocks {
                 blockchain_dir: PathBuf::from_str(data.path).unwrap(),
                 range: BlockHeightRange::new(from_height, None).unwrap(),
                 coin: CoinType::from_str(data.network).expect("Unsupported network"),
+                index_dir_path: PathBuf::from_str(data.index_dir_path).unwrap(),
             })
             .unwrap(),
             from_height,

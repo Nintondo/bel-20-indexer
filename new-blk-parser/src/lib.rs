@@ -57,6 +57,7 @@ pub struct Indexer {
     pub token: WaitToken,
     pub last_height: u32,
     pub reorg_max_len: usize,
+    pub index_dir_path: String,
 }
 
 impl Indexer {
@@ -73,8 +74,13 @@ impl Indexer {
                 .then_some(0)
                 .unwrap_or(this.last_height + 1) as u64;
 
-            let mut chain =
-                ChainStorage::new(&ChainOptions::new(&this.path, coin, this.last_height)).unwrap();
+            let mut chain = ChainStorage::new(&ChainOptions::new(
+                &this.path,
+                &this.index_dir_path,
+                coin,
+                this.last_height,
+            ))
+            .unwrap();
 
             let max_height = chain.max_height();
 

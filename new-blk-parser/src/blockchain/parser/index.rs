@@ -5,7 +5,7 @@ use super::*;
 use byteorder::ReadBytesExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use rusty_leveldb::{LdbIterator, Options, DB};
+use rusty_leveldb::{DB, LdbIterator, Options};
 
 const BLOCK_HAVE_DATA: u64 = 8;
 const BLOCK_HAVE_UNDO: u64 = 16;
@@ -34,7 +34,7 @@ pub struct ChainIndex {
 
 impl ChainIndex {
     pub fn new(options: &ChainOptions) -> Result<Self> {
-        let path = options.blockchain_dir.join("index");
+        let path = &options.index_dir_path;
         let start = Instant::now();
         let block_index = get_block_index(&path, options.range)?;
         tracing::trace!(

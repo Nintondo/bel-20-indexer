@@ -45,6 +45,7 @@ impl Server {
             rpc_auth: nint_blk::Auth::UserPass(USER.to_string(), PASS.to_string()),
             rpc_url: URL.to_string(),
             token: token.clone(),
+            index_dir_path: INDEX_DIR.to_string(),
         };
 
         let server = Self {

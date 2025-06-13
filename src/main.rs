@@ -68,6 +68,7 @@ define_static! {
     USER: String = load_env!("RPC_USER");
     PASS: String = load_env!("RPC_PASS");
     BLOCKCHAIN: String = load_env!("BLOCKCHAIN").to_lowercase();
+    INDEX_DIR: String = load_env!("INDEX_DIR");
     NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);

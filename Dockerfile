@@ -36,4 +36,4 @@ COPY --from=builder /usr/src/app/target/release/bel_20_node .
 
 EXPOSE 8000
 
-ENTRYPOINT ["./bel_20_node"]
+CMD ["./bel_20_node"]

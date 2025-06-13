@@ -28,7 +28,7 @@ FROM ubuntu:24.04 AS runner
 WORKDIR /app
 
 RUN apt update -y && \
-    apt install -y curl openssl libc6 libgcc-s1 librocksdb-dev && \
+    apt install -y curl openssl libc6 libgcc-s1 librocksdb-dev rsync && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

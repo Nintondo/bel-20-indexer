@@ -68,7 +68,7 @@ impl Indexer {
 
         std::thread::spawn(move || {
             let coin = CoinType::from_str(&this.coin).unwrap();
-            let last_height = this
+            let mut last_height = this
                 .last_height
                 .is_zero()
                 .then_some(0)
@@ -119,6 +119,7 @@ impl Indexer {
             let mut checkpoint = match chain.complete() {
                 Some(v) => v,
                 None => {
+                    last_height -= 1;
                     let hash = client.get_block_hash(last_height).unwrap();
                     CheckPoint::new(BlockId {
                         height: last_height,

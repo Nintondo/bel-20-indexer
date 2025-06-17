@@ -22,6 +22,7 @@ rocksdb-wrapper = { path = "./packages/rocksdb-wrapper" }
 postcard = "1.0.10"
 bytemuck = { version = "1.19.0", features = ["derive"] }
 tokio = { version = "1.43.1", features = ["full"] }
+tower-http = {version = "0.6.5", features = ["compression-full"]}
 itertools = "0.14.0"
 futures = "0.3.31"
 rayon = "1.10.0"

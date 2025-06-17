@@ -10,6 +10,7 @@ use nintypes::common::inscriptions::Outpoint;
 use rust_decimal::Decimal;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tower_http::compression::CompressionLayer;
 use validator::Validate;
 
 mod address;
@@ -61,4 +62,5 @@ pub fn get_router(server: Arc<Server>) -> Router {
         .route("/all-addresses", get(info::all_addresses))
         .route("/txid/{txid}", get(history::txid_events))
         .with_state(server)
+        .layer(CompressionLayer::new())
 }

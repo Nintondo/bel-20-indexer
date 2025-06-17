@@ -231,7 +231,11 @@ pub fn get_block_index(
 
             it.peek().map(|prev| {
                 last_pos = prev.iter().position(|x| x.block_hash == prev_hash);
-                vec![prev[last_pos.unwrap()].clone()]
+                vec![
+                    prev[last_pos
+                        .expect("Failed to find previous block hash. -reindex-chainstate is required to proceed")]
+                    .clone(),
+                ]
             })
         })
         .flatten()

@@ -30,7 +30,7 @@ pub async fn address_tokens_tick(
         )
         .into_iter()
         .flatten()
-        .map(|x| x.proto.tick)
+        .map(|x| x.proto.tick.to_string())
         .collect_vec();
     Ok(Json(data))
 }

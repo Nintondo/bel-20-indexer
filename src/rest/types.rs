@@ -270,7 +270,7 @@ impl TokenAction {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Validate)]
+#[derive(Deserialize, Validate)]
 pub struct HoldersArgs {
     #[serde(default = "utils::page_size_default")]
     #[validate(range(min = utils::page_size_default(), max = 20))]
@@ -278,8 +278,12 @@ pub struct HoldersArgs {
     #[validate(range(min = 1))]
     #[serde(default = "utils::first_page")]
     pub page: usize,
-    #[validate(custom(function = "utils::validate_tick"))]
-    pub tick: String,
+    pub tick: OriginalTokenTick,
+}
+
+#[derive(Deserialize)]
+pub struct HoldersStatsArgs {
+    pub tick: OriginalTokenTick,
 }
 
 #[derive(Serialize)]
@@ -294,7 +298,7 @@ pub struct Holder {
 pub struct Holders {
     pub pages: usize,
     pub count: usize,
-    pub max_percent: Decimal,
+    pub max_percent: String,
     pub holders: Vec<Holder>,
 }
 
@@ -318,10 +322,9 @@ pub struct Token {
     pub dec: u8,
 }
 
-#[derive(Deserialize, Default, Validate)]
+#[derive(Deserialize, Validate)]
 pub struct TokenArgs {
-    #[validate(custom(function = "utils::validate_tick"))]
-    pub tick: String,
+    pub tick: OriginalTokenTick,
 }
 
 #[derive(Deserialize, Default)]
@@ -343,7 +346,7 @@ pub enum TokenFilterBy {
     InProgress,
 }
 
-#[derive(Deserialize, Default, Validate)]
+#[derive(Deserialize, Validate)]
 pub struct TokensArgs {
     #[serde(default = "utils::page_size_default")]
     #[validate(range(min = utils::page_size_default(), max = 20))]

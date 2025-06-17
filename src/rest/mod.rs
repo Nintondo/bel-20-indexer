@@ -7,7 +7,6 @@ use axum::{
 };
 use futures::Stream;
 use nintypes::common::inscriptions::Outpoint;
-use rust_decimal::Decimal;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tower_http::compression::CompressionLayer;
@@ -55,6 +54,7 @@ pub fn get_router(server: Arc<Server>) -> Router {
             get(tokens::token_transfer_proof),
         )
         .route("/holders", get(holders::holders))
+        .route("/holders-stats", get(holders::holders_stats))
         .route("/events", post(history::subscribe))
         .route("/status", get(info::status))
         .route("/proof-of-history", get(history::proof_of_history))

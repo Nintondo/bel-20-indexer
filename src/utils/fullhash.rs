@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use bitcoin_hashes::Hash;
 
 use super::*;

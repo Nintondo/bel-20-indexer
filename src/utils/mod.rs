@@ -1,10 +1,12 @@
 use super::*;
 
 mod address_fullhash;
+mod fullhash;
 mod logging;
 mod progress;
 
 pub use address_fullhash::AddressesFullHash;
+pub use fullhash::{ComputeScriptHash, FullHash, IsOpReturnHash};
 pub use logging::init_logger;
 pub use progress::Progress;
 

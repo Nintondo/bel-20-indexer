@@ -1,5 +1,3 @@
-use crate::Fixed128;
-
 use super::{proto::*, structs::*, *};
 
 type Tickers = HashSet<LowerCaseTokenTick>;
@@ -351,7 +349,7 @@ impl TokenCache {
 
     pub fn process_token_actions(
         &mut self,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+        reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>,
         holders: &Holders,
     ) -> Vec<HistoryTokenAction> {
         let mut history = vec![];

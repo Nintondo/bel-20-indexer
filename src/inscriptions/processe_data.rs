@@ -1,14 +1,4 @@
-use crate::inscriptions::structs::Partials;
-use crate::server::BlockInfo;
-use crate::tables::DB;
-use crate::tokens::{
-    AddressLocation, AddressToken, AddressTokenId, FullHash, HistoryValue, LowerCaseTokenTick,
-    TokenBalance, TokenMetaDB, TransferProtoDB,
-};
-use bellscoin::hashes::sha256;
-use bellscoin::{OutPoint, TxOut};
-use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
+use super::*;
 
 pub enum ProcessedData {
     Info {
@@ -29,7 +19,7 @@ pub enum ProcessedData {
     History {
         block_number: u32,
         last_history_id: u64,
-        history: Vec<(AddressTokenId, HistoryValue)>,
+        history: Vec<(AddressTokenIdDB, HistoryValue)>,
     },
     Tokens {
         metas: Vec<(LowerCaseTokenTick, TokenMetaDB)>,

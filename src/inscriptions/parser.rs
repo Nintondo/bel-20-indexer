@@ -1,19 +1,16 @@
-use crate::inscriptions::indexer::ParsedInscriptionResult;
-use crate::inscriptions::leaked::{LeakedInscription, LeakedInscriptions};
-use crate::inscriptions::processe_data::ProcessedData;
-use crate::inscriptions::searcher::InscriptionSearcher;
-use crate::inscriptions::structs::{Inscription, ParsedInscription, Part, Partials};
-use crate::inscriptions::Location;
-use crate::server::Server;
-use crate::tokens::{ComputeScriptHash, FullHash, InscriptionId, InscriptionTemplate, TokenCache};
-use crate::{JUBILEE_HEIGHT, OP_RETURN_HASH};
-use bellscoin::{OutPoint, ScriptBuf, TxOut, Txid};
-use bitcoin_hashes::{sha256d, Hash};
-use itertools::Itertools;
-use nint_blk::proto::tx::EvaluatedTx;
-use nint_blk::proto::Hashed;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use bellscoin::ScriptBuf;
+use bitcoin_hashes::sha256d;
+use nint_blk::proto::{tx::EvaluatedTx, Hashed};
+
+use crate::inscriptions::{
+    indexer::ParsedInscriptionResult,
+    leaked::{LeakedInscription, LeakedInscriptions},
+    processe_data::ProcessedData,
+    searcher::InscriptionSearcher,
+    structs::{ParsedInscription, Part},
+};
+
+use super::*;
 
 pub struct ParseInscription<'a> {
     tx: &'a Hashed<EvaluatedTx>,
@@ -25,7 +22,7 @@ pub struct ParseInscription<'a> {
 
 pub struct Parser<'a> {
     pub server: &'a Server,
-    pub reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+    pub reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>,
     pub token_cache: &'a mut TokenCache,
 }
 

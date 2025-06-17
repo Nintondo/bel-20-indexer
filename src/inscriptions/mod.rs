@@ -1,5 +1,3 @@
-use crate::utils::Progress;
-
 use super::*;
 
 pub const PROTOCOL_ID: &[u8; 3] = b"ord";
@@ -18,6 +16,8 @@ mod utils;
 use envelope::{ParsedEnvelope, RawEnvelope};
 use indexer::InscriptionIndexer;
 use nint_blk::BlockEvent;
+use parser::Parser;
+use processe_data::ProcessedData;
 use structs::Inscription;
 use tag::Tag;
 
@@ -25,13 +25,13 @@ pub use structs::Location;
 
 pub struct Indexer {
     server: Arc<Server>,
-    reorg_cache: Arc<parking_lot::Mutex<reorg::ReorgCache>>,
+    reorg_cache: Arc<parking_lot::Mutex<ReorgCache>>,
 }
 
 impl Indexer {
     pub fn new(server: Arc<Server>) -> Self {
         Self {
-            reorg_cache: Arc::new(parking_lot::Mutex::new(reorg::ReorgCache::new())),
+            reorg_cache: Arc::new(parking_lot::Mutex::new(ReorgCache::new())),
             server,
         }
     }
@@ -67,7 +67,7 @@ impl Indexer {
                 break;
             };
             if let Some(progress) = progress.as_mut() {
-                progress.update_len(data.tip.saturating_sub(reorg::REORG_CACHE_MAX_LEN as u64));
+                progress.update_len(data.tip.saturating_sub(REORG_CACHE_MAX_LEN as u64));
             }
 
             let BlockEvent {
@@ -77,8 +77,7 @@ impl Indexer {
                 reorg_len,
             } = data;
 
-            if id.height > tip - reorg::REORG_CACHE_MAX_LEN as u64 && indexer.reorg_cache.is_none()
-            {
+            if id.height > tip - REORG_CACHE_MAX_LEN as u64 && indexer.reorg_cache.is_none() {
                 indexer.reorg_cache = Some(self.reorg_cache.clone());
                 progress.take();
             }

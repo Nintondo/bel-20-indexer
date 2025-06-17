@@ -1,5 +1,3 @@
-use crate::{reorg::REORG_CACHE_MAX_LEN, utils::AddressesFullHash};
-
 use super::*;
 
 mod structs;
@@ -78,7 +76,7 @@ impl Server {
 
     pub fn generate_history_hash(
         prev_history_hash: sha256::Hash,
-        history: &[(AddressTokenId, HistoryValue)],
+        history: &[(AddressTokenIdDB, HistoryValue)],
         addresses: &AddressesFullHash,
     ) -> anyhow::Result<sha256::Hash> {
         let current_hash = if history.is_empty() {

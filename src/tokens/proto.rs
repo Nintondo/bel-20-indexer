@@ -1,8 +1,5 @@
-use crate::Fixed128;
-
 use super::*;
 
-use num_traits::FromPrimitive;
 use serde::de::Error;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -142,32 +139,6 @@ impl DeployProto {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DeployProtoDB {
-    pub tick: OriginalTokenTick,
-    pub max: Fixed128,
-    pub lim: Fixed128,
-    pub dec: u8,
-    pub supply: Fixed128,
-    pub transfer_count: u64,
-    pub mint_count: u64,
-    pub height: u32,
-    pub created: u32,
-    pub deployer: FullHash,
-    pub transactions: u32,
-}
-
-impl DeployProtoDB {
-    pub fn is_completed(&self) -> bool {
-        self.supply == Fixed128::from(self.max)
-    }
-    pub fn mint_percent(&self) -> Fixed128 {
-        (rust_decimal::Decimal::from_u64(100).unwrap() * self.supply.into_decimal()
-            / self.max.into_decimal())
-        .into()
-    }
-}
-
 impl DeployProto {
     pub const DEFAULT_DEC: u8 = 18;
     pub const MAX_DEC: u8 = 18;
@@ -192,40 +163,6 @@ impl TransferProto {
             TransferProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
             TransferProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TransferProtoDB {
-    pub tick: OriginalTokenTick,
-    pub amt: Fixed128,
-    pub height: u32,
-}
-
-impl TransferProtoDB {
-    pub fn from_proto(value: TransferProto, height: u32) -> anyhow::Result<Self> {
-        let v = value.value()?;
-        Ok(Self {
-            amt: v.amt,
-            height,
-            tick: v.tick,
-        })
-    }
-}
-
-impl From<TransferProtoDB> for TransferProto {
-    fn from(v: TransferProtoDB) -> Self {
-        if *BLOCKCHAIN == "bells" {
-            TransferProto::Bel20(MintProtoWrapper {
-                tick: v.tick,
-                amt: v.amt,
-            })
-        } else {
-            TransferProto::Drc20(MintProtoWrapper {
-                tick: v.tick,
-                amt: v.amt,
-            })
         }
     }
 }

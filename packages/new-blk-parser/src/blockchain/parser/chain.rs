@@ -1,4 +1,4 @@
-use crate::blockchain::{block_id::BlockId, checkpoint::CheckPoint};
+use blockchain::{block_id::BlockId, checkpoint::CheckPoint};
 
 use super::*;
 

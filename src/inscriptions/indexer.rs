@@ -1,26 +1,23 @@
 use bitcoin_hashes::sha256d;
 
 use super::*;
-use crate::inscriptions::parser::Parser;
-use crate::inscriptions::processe_data::ProcessedData;
-use crate::utils::AddressesFullHash;
 
 pub struct InscriptionIndexer {
     server: Arc<Server>,
-    pub reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+    pub reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>,
 }
 
 #[derive(Default)]
 pub struct DataToWrite {
     pub processed: Vec<ProcessedData>,
     pub block_events: Vec<ServerEvent>,
-    pub history: Vec<(AddressTokenId, HistoryValue)>,
+    pub history: Vec<(AddressTokenIdDB, HistoryValue)>,
 }
 
 impl InscriptionIndexer {
     pub fn new(
         server: Arc<Server>,
-        reorg_cache: Option<Arc<parking_lot::Mutex<crate::reorg::ReorgCache>>>,
+        reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>,
     ) -> Self {
         Self {
             reorg_cache,
@@ -166,11 +163,11 @@ impl InscriptionIndexer {
             .into_iter()
             .flat_map(|action| {
                 last_history_id += 1;
-                let mut results: Vec<(AddressTokenId, HistoryValue)> = vec![];
+                let mut results: Vec<(AddressTokenIdDB, HistoryValue)> = vec![];
                 let token = action.tick();
                 let recipient = action.recipient();
                 fullhash_to_load.insert(recipient);
-                let key = AddressTokenId {
+                let key = AddressTokenIdDB {
                     address: recipient,
                     token,
                     id: last_history_id,
@@ -185,7 +182,7 @@ impl InscriptionIndexer {
                     last_history_id += 1;
                     results.extend([
                         (
-                            AddressTokenId {
+                            AddressTokenIdDB {
                                 address: sender,
                                 token,
                                 id: last_history_id,

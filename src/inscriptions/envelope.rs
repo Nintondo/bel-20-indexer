@@ -1,10 +1,10 @@
 use super::*;
 
+use bellscoin::blockdata::script::Instruction::{Op, PushBytes};
+
 pub type RawEnvelope = Envelope<Vec<Vec<u8>>>;
 pub type ParsedEnvelope = Envelope<Inscription>;
 type Result<T> = std::result::Result<T, script::Error>;
-
-use bellscoin::blockdata::script::Instruction::{Op, PushBytes};
 
 #[derive(Default, PartialEq, Clone, Serialize, Deserialize, Debug, Eq)]
 pub struct Envelope<T> {

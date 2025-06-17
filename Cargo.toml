@@ -18,7 +18,7 @@ serde_json = "1.0.132"
 bellscoin = "0.30.8"
 nintondo-dogecoin = "0.30.6"
 
-rocksdb-wrapper = { path = "./rocksdb-wrapper" }
+rocksdb-wrapper = { path = "./packages/rocksdb-wrapper" }
 postcard = "1.0.10"
 bytemuck = { version = "1.19.0", features = ["derive"] }
 tokio = { version = "1.43.1", features = ["full"] }
@@ -42,5 +42,5 @@ validator = { version = "0.20.0", features = ["derive"] }
 thread-priority = "1.2.0"
 thiserror = "2.0.12"
 derive_deref = "1.1.1"
-nint-blk = { path = "./new-blk-parser" }
+nint-blk = { path = "./packages/new-blk-parser" }
 bitcoin_hashes = "0.12.0"

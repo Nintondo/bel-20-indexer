@@ -127,13 +127,13 @@ pub async fn address_token_history(
 
     let token = deploy_proto.proto.tick;
 
-    let from = AddressTokenId {
+    let from = AddressTokenIdDB {
         address: scripthash,
         id: 0,
         token,
     };
 
-    let to = AddressTokenId {
+    let to = AddressTokenIdDB {
         address: scripthash,
         id: query.offset.unwrap_or(u64::MAX),
         token,

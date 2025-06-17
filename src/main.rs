@@ -3,7 +3,6 @@ extern crate serde;
 extern crate tracing;
 
 use {
-    crate::inscriptions::Indexer,
     axum::{
         body::Body,
         extract::{Path, Query, State},
@@ -16,42 +15,45 @@ use {
         hashes::{sha256, Hash},
         opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
     },
+    db::*,
     dutils::{
         async_thread::Spawn,
         error::{ApiError, ContextWrapper},
         wait_token::WaitToken,
     },
     futures::future::join_all,
-    inscriptions::Location,
+    inscriptions::{Indexer, Location},
     itertools::Itertools,
-    num_traits::Zero,
+    num_traits::{FromPrimitive, Zero},
+    reorg::{ReorgCache, REORG_CACHE_MAX_LEN},
     rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     serde_with::{serde_as, DisplayFromStr},
-    server::{BlockInfo, Server, ServerEvent},
+    server::{Server, ServerEvent},
     std::{
         borrow::Cow,
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
         fmt::{Display, Formatter},
         future::IntoFuture,
         iter::Peekable,
+        ops::{Deref, RangeInclusive},
         str::FromStr,
         sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
     },
-    tables::DB,
     tokens::*,
     tracing::info,
     tracing_indicatif::span_ext::IndicatifSpanExt,
+    utils::*,
 };
 
 mod inscriptions;
 mod reorg;
 mod rest;
-mod tables;
 mod tokens;
 #[macro_use]
 mod utils;
+mod db;
 mod server;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
@@ -85,6 +87,7 @@ define_static! {
     SERVER_URL: String =
         load_opt_env!("SERVER_BIND_URL").unwrap_or("0.0.0.0:8000".to_string());
     DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
+    DB_PATH: String = load_opt_env!("DB_PATH").unwrap_or("rocksdb".to_string());
 }
 
 fn main() {
@@ -104,7 +107,7 @@ fn main() {
     );
 
     spawn_runtime("indexer".to_string(), Some(21)).block_on(async {
-        let (raw_event_tx, event_tx, server) = Server::new("rocksdb").await.unwrap();
+        let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).await.unwrap();
 
         let server = Arc::new(server);
 

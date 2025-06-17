@@ -1,9 +1,11 @@
 use super::*;
 
-use crate::blockchain::proto::header::BlockHeader;
-use crate::blockchain::proto::tx::{EvaluatedTx, RawTx};
-use crate::blockchain::proto::varuint::VarUint;
-use crate::blockchain::proto::{Hashed, MerkleBranch};
+use blockchain::proto::{
+    Hashed, MerkleBranch,
+    header::BlockHeader,
+    tx::{EvaluatedTx, RawTx},
+    varuint::VarUint,
+};
 
 /// Basic block structure which holds all information
 pub struct Block {

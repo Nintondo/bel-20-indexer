@@ -10,7 +10,7 @@ enum TokenHistoryEntry {
     RemoveTransfer(Location, AddressToken, Fixed128),
     /// Key and value of removed valid transfer
     RestoreTransferred(AddressLocation, TransferProtoDB, FullHash),
-    RemoveHistory(AddressTokenId),
+    RemoveHistory(AddressTokenIdDB),
     RestorePrevout(OutPoint, TxOut),
     RestoreInscriptionOffsets {
         to_restore_offsets: Vec<(OutPoint, HashSet<u64>)>,
@@ -72,7 +72,7 @@ impl ReorgCache {
             .push(TokenHistoryEntry::RemoveMint(token, amount));
     }
 
-    pub fn extend_history(&mut self, keys: impl Iterator<Item = AddressTokenId>) {
+    pub fn extend_history(&mut self, keys: impl Iterator<Item = AddressTokenIdDB>) {
         self.blocks
             .last_entry()
             .unwrap()

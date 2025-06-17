@@ -1,7 +1,4 @@
 use nintypes::common::inscriptions::Outpoint;
-use validator::Validate;
-
-use crate::utils::AddressesFullHash;
 
 use super::*;
 
@@ -95,7 +92,7 @@ impl History {
     pub fn new(
         height: u32,
         action: TokenHistoryDB,
-        address_token: crate::tokens::AddressTokenId,
+        address_token: AddressTokenIdDB,
         server: &Server,
     ) -> anyhow::Result<Self> {
         let keys = [action.address().copied(), Some(address_token.address)]
@@ -127,7 +124,7 @@ impl AddressHistory {
     pub fn new(
         height: u32,
         action: TokenHistoryDB,
-        address_token: crate::tokens::AddressTokenId,
+        address_token: AddressTokenIdDB,
         server: &Server,
     ) -> anyhow::Result<Self> {
         let history = History::new(height, action, address_token, server)?;

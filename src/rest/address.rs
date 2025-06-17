@@ -82,6 +82,7 @@ pub async fn address_token_balance(
             amount: v.amt,
             outpoint: k.location.outpoint,
         })
+        .skip(params.offset.is_some() as usize)
         .take(params.limit)
         .collect_vec();
 
@@ -127,6 +128,7 @@ pub async fn address_tokens(
             },
             false,
         )
+        .skip(params.offset.is_some() as usize)
         .take(params.limit)
         .map(|(k, v)| types::TokenBalance {
             tick: k.token,

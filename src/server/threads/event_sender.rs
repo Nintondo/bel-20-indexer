@@ -1,35 +1,36 @@
+use flume::TryRecvError;
+
 use super::*;
 
 #[derive(Clone)]
 pub struct EventSender {
     pub server: Arc<Server>,
     pub event_tx: tokio::sync::broadcast::Sender<ServerEvent>,
-    pub raw_event_tx: kanal::Receiver<RawServerEvent>,
-    pub token: WaitToken,
+    pub raw_event_tx: flume::Receiver<RawServerEvent>,
 }
 
-impl Handler for EventSender {
-    async fn run(&mut self) -> anyhow::Result<()> {
+impl EventSender {
+    pub fn run(&self) -> anyhow::Result<()> {
         'outer: loop {
             let mut events = vec![];
 
             loop {
                 match self.raw_event_tx.try_recv() {
-                    Ok(Some(v)) => {
+                    Ok(v) => {
                         events.extend(v);
                     }
-                    Ok(None) => {
+                    Err(TryRecvError::Empty) => {
                         if events.is_empty() {
-                            if self.token.is_cancelled() {
+                            if self.server.token.is_cancelled() {
                                 break 'outer;
                             }
 
-                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                            std::thread::sleep(Duration::from_millis(100));
                             continue;
                         }
                         break;
                     }
-                    Err(_) => {
+                    Err(TryRecvError::Disconnected) => {
                         if events.is_empty() {
                             break 'outer;
                         }

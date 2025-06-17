@@ -8,11 +8,11 @@ anyhow = "1.0.98"
 bellscoin = { version = "0.30.8", features = ["serde"] }
 byteorder = "1.5.0"
 dutils = "0.1.12"
+flume = "0.11.1"
 hex = "0.4.3"
 indexmap = "2.9.0"
 itertools = "0.14.0"
 jsonrpc = { version = "0.18.0" }
-kanal = "0.1.1"
 num-traits = "0.2.19"
 rayon = "1.10.0"
 rusty-leveldb = "3.0.3"

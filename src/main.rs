@@ -3,6 +3,7 @@ extern crate serde;
 extern crate tracing;
 
 use {
+    crate::server::threads::EventSender,
     axum::{
         body::Body,
         extract::{Path, Query, State},
@@ -21,7 +22,6 @@ use {
         error::{ApiError, ContextWrapper},
         wait_token::WaitToken,
     },
-    futures::future::join_all,
     inscriptions::{Indexer, Location},
     itertools::Itertools,
     num_traits::{FromPrimitive, Zero},
@@ -121,27 +121,29 @@ fn main() {
             .spawn()
         };
 
-        let server1 = server.clone();
-
         let rest_server = server.clone();
         std::thread::spawn(move || {
             let rest_runtime = spawn_runtime("rest".to_string(), Some(20));
             rest_runtime.block_on(run_rest(rest_server))
         });
 
-        let threads_handle = server1
-            .run_threads(server.token.clone(), raw_event_tx, event_tx)
-            .spawn();
+        let event_sender = EventSender {
+            event_tx,
+            raw_event_tx,
+            server: server.clone(),
+        };
+
+        let event_sender = std::thread::spawn(move || event_sender.run());
 
         let main_result = Indexer::new(server.clone()).run().spawn().await.unwrap();
         server.token.cancel();
 
         info!("Server is finished");
 
-        let threads_result = threads_handle.await.unwrap();
+        let event_sender_result = event_sender.join().unwrap();
 
         main_result.track().ok();
-        threads_result.track().ok();
+        event_sender_result.track().ok();
     })
 }
 

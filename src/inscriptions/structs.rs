@@ -305,18 +305,6 @@ pub struct Location {
     pub offset: u64,
 }
 
-impl Location {
-    pub fn zero() -> Self {
-        Self {
-            offset: 0,
-            outpoint: OutPoint {
-                txid: Txid::all_zeros(),
-                vout: 0,
-            },
-        }
-    }
-}
-
 impl Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&format!(

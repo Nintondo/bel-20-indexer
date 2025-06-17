@@ -3,7 +3,7 @@ extern crate tracing;
 
 use bellscoin::hashes::{Hash, sha256d};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
-use kanal::Receiver;
+use flume::Receiver;
 use num_traits::Zero;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
@@ -62,7 +62,7 @@ pub struct Indexer {
 
 impl Indexer {
     pub fn parse_blocks(self: Arc<Self>) -> Receiver<BlockEvent> {
-        let (tx, rx) = kanal::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
+        let (tx, rx) = flume::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
 
         let this = self.clone();
 

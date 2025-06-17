@@ -51,7 +51,7 @@ impl Indexer {
     }
 
     async fn index(&self) -> anyhow::Result<()> {
-        let rx = self.server.indexer.clone().parse_blocks().to_async();
+        let rx = self.server.indexer.clone().parse_blocks();
 
         let mut indexer = InscriptionIndexer::new(self.server.clone(), None);
 
@@ -63,7 +63,7 @@ impl Indexer {
 
         let mut prev_height: Option<u64> = None;
         loop {
-            let Some(Ok(data)) = self.server.token.run_fn(rx.recv()).await else {
+            let Some(Ok(data)) = self.server.token.run_fn(rx.recv_async()).await else {
                 break;
             };
             if let Some(progress) = progress.as_mut() {

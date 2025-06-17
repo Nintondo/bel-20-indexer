@@ -111,15 +111,12 @@ fn main() {
 
         let server = Arc::new(server);
 
-        {
-            let token = server.token.clone();
-            async move {
-                tokio::signal::ctrl_c().await.track().ok();
-                warn!("Ctrl-C received, shutting down...");
-                token.cancel();
-            }
-            .spawn()
-        };
+        let token = server.token.clone();
+        ctrlc::set_handler(move || {
+            warn!("Ctrl-C received, shutting down...");
+            token.cancel();
+        })
+        .unwrap();
 
         let rest_server = server.clone();
         std::thread::spawn(move || {

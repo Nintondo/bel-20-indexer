@@ -45,3 +45,4 @@ thiserror = "2.0.12"
 derive_deref = "1.1.1"
 nint-blk = { path = "./packages/new-blk-parser" }
 bitcoin_hashes = "0.12.0"
+ctrlc = "3.4.7"

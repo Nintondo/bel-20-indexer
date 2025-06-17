@@ -366,9 +366,20 @@ pub struct TokensResult {
     pub tokens: Vec<Token>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct AddressTokenBalanceArgs {
     pub offset: Option<Outpoint>,
+    #[serde(default = "utils::page_size_default")]
+    #[validate(range(min = utils::tokens_count_default(), max = 100))]
+    pub limit: usize,
+}
+
+#[derive(Deserialize, Validate)]
+pub struct AddressTokensArgs {
+    pub offset: Option<OriginalTokenTick>,
+    #[serde(default = "utils::page_size_default")]
+    #[validate(range(min = utils::tokens_count_default(), max = 100))]
+    pub limit: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -377,8 +388,9 @@ pub struct TokenBalance {
     pub tick: OriginalTokenTick,
     pub balance: Fixed128,
     pub transferable_balance: Fixed128,
-    pub transfers: Vec<TokenTransfer>,
     pub transfers_count: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub transfers: Vec<TokenTransfer>,
 }
 
 #[derive(Serialize)]

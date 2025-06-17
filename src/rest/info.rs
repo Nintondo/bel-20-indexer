@@ -28,13 +28,11 @@ pub async fn all_tokens(State(server): State<Arc<Server>>) -> ApiResult<impl Int
         let iter = server.db.token_to_meta.iter().map(|(token, proto)| {
             let tick = String::from_utf8_lossy(token.as_ref()).to_lowercase();
             serde_json::json! ({
-                "genesis": proto.genesis.to_string(),
                 "tick": tick,
                 "max": proto.proto.max.to_string(),
                 "lim": proto.proto.lim.to_string(),
                 "dec": proto.proto.dec,
-                "transfer_count": proto.proto.transfer_count,
-                "mint_count": proto.proto.mint_count
+                "supply": proto.proto.supply.to_string()
             })
         });
 

@@ -82,6 +82,7 @@ pub async fn address_token_balance(
             amount: v.amt,
             outpoint: k.location.outpoint,
         })
+        .take(params.limit)
         .collect_vec();
 
     let data = types::TokenBalance {
@@ -99,6 +100,7 @@ pub async fn address_tokens(
     url: Uri,
     State(state): State<Arc<Server>>,
     Path(script_str): Path<String>,
+    Query(params): Query<types::AddressTokensArgs>,
 ) -> ApiResult<Response<Body>> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
@@ -110,19 +112,22 @@ pub async fn address_tokens(
         .bad_request("Invalid address")?
         .into();
 
-    let mut data = state
+    let token = params.offset.map(|x| x.0).unwrap_or_default();
+
+    let data = state
         .db
         .address_token_to_balance
         .range(
             &AddressToken {
                 address: scripthash,
-                token: [0; 4].into(),
+                token: token.into(),
             }..=&AddressToken {
                 address: scripthash,
                 token: [u8::MAX; 4].into(),
             },
             false,
         )
+        .take(params.limit)
         .map(|(k, v)| types::TokenBalance {
             tick: k.token,
             balance: v.balance,
@@ -131,43 +136,6 @@ pub async fn address_tokens(
             transfers: vec![],
         })
         .collect_vec();
-
-    let mut transfers = HashMap::<OriginalTokenTick, Vec<(Location, TransferProtoDB)>>::new();
-
-    for (key, value) in state
-        .db
-        .address_location_to_transfer
-        .range(
-            &AddressLocation {
-                address: scripthash,
-                location: Location::zero(),
-            }..,
-            false,
-        )
-        .take_while(|x| x.0.address == scripthash)
-    {
-        transfers
-            .entry(value.tick)
-            .and_modify(|x| x.push((key.location, value.clone())))
-            .or_insert(vec![(key.location, value)]);
-    }
-
-    for token in data.iter_mut() {
-        let transfers = transfers
-            .remove(&token.tick)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|x| {
-                let TransferProtoDB { amt, .. } = x.1;
-                TokenTransfer {
-                    outpoint: x.0.outpoint,
-                    amount: amt,
-                }
-            })
-            .collect();
-
-        token.transfers = transfers;
-    }
 
     let data = serde_json::to_vec(&data).internal(INTERNAL)?;
 

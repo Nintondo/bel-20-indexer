@@ -81,9 +81,28 @@ pub struct AddressLocation {
 }
 
 impl AddressLocation {
-    pub fn search(address: FullHash, outpoint: Option<OutPoint>) -> RangeInclusive<Self> {
-        if let Some(outpoint) = outpoint {
-            return Self::search_with_outpoint(address, outpoint);
+    pub fn search_with_offset(address: FullHash, outpoint: OutPoint) -> RangeInclusive<Self> {
+        let start = Self {
+            address,
+            location: Location {
+                outpoint,
+                offset: 0,
+            },
+        };
+        let end = Self {
+            address,
+            location: Location {
+                outpoint,
+                offset: u64::MAX,
+            },
+        };
+
+        start..=end
+    }
+
+    pub fn search(address: FullHash, offset: Option<OutPoint>) -> RangeInclusive<Self> {
+        if let Some(offset) = offset {
+            return Self::search_offset(address, offset);
         }
 
         let start = Self {
@@ -110,18 +129,21 @@ impl AddressLocation {
         start..=end
     }
 
-    fn search_with_outpoint(address: FullHash, outpoint: OutPoint) -> RangeInclusive<Self> {
+    fn search_offset(address: FullHash, offset: OutPoint) -> RangeInclusive<Self> {
         let start = Self {
             address,
             location: Location {
-                outpoint,
+                outpoint: offset,
                 offset: 0,
             },
         };
         let end = Self {
             address,
             location: Location {
-                outpoint,
+                outpoint: OutPoint {
+                    txid: Txid::from_byte_array([u8::MAX; 32]),
+                    vout: u32::MAX,
+                },
                 offset: u64::MAX,
             },
         };

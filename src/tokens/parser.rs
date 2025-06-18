@@ -458,7 +458,7 @@ impl TokenCache {
                     txid,
                     vout,
                 } => {
-                    let Some(data) = self.all_transfers.remove(&location) else {
+                    let Some(mut data) = self.all_transfers.remove(&location) else {
                         // skip cause is it transfer already spent
                         continue;
                     };
@@ -475,6 +475,8 @@ impl TokenCache {
                         tick,
                         ..
                     } = &mut token.proto;
+
+                    data.tick = *tick;
 
                     if amt.scale() > *dec {
                         // skip wrong protocol

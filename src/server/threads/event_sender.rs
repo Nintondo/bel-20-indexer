@@ -1,12 +1,10 @@
-use flume::TryRecvError;
-
 use super::*;
 
 #[derive(Clone)]
 pub struct EventSender {
     pub server: Arc<Server>,
     pub event_tx: tokio::sync::broadcast::Sender<ServerEvent>,
-    pub raw_event_tx: flume::Receiver<RawServerEvent>,
+    pub raw_event_tx: kanal::Receiver<RawServerEvent>,
 }
 
 impl EventSender {
@@ -16,10 +14,10 @@ impl EventSender {
 
             loop {
                 match self.raw_event_tx.try_recv() {
-                    Ok(v) => {
+                    Ok(Some(v)) => {
                         events.extend(v);
                     }
-                    Err(TryRecvError::Empty) => {
+                    Ok(None) => {
                         if events.is_empty() {
                             if self.server.token.is_cancelled() {
                                 break 'outer;
@@ -30,7 +28,7 @@ impl EventSender {
                         }
                         break;
                     }
-                    Err(TryRecvError::Disconnected) => {
+                    Err(_) => {
                         if events.is_empty() {
                             break 'outer;
                         }

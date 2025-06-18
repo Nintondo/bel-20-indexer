@@ -125,7 +125,8 @@ pub async fn token_transfer_proof(
         .to_scripthash(&address, ScriptType::Address)
         .bad_request("Invalid address")?;
 
-    let (from, to) = AddressLocation::search(scripthash.into(), Some(outpoint.into())).into_inner();
+    let (from, to) =
+        AddressLocation::search_with_offset(scripthash.into(), outpoint.into()).into_inner();
 
     let data: Vec<_> = state
         .db

@@ -3,7 +3,6 @@ extern crate tracing;
 
 use bellscoin::hashes::{Hash, sha256d};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
-use flume::Receiver;
 use num_traits::Zero;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
@@ -61,24 +60,22 @@ pub struct Indexer {
 }
 
 impl Indexer {
-    pub fn parse_blocks(self: Arc<Self>) -> Receiver<BlockEvent> {
-        let (tx, rx) = flume::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
-
-        let this = self.clone();
+    pub fn parse_blocks(self: Arc<Self>) -> kanal::Receiver<BlockEvent> {
+        let (tx, rx) = kanal::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
 
         std::thread::spawn(move || {
-            let coin = CoinType::from_str(&this.coin).unwrap();
-            let mut last_height = this
+            let coin = CoinType::from_str(&self.coin).unwrap();
+            let mut last_height = self
                 .last_height
                 .is_zero()
                 .then_some(0)
-                .unwrap_or(this.last_height + 1) as u64;
+                .unwrap_or(self.last_height + 1) as u64;
 
             let mut chain = ChainStorage::new(&ChainOptions::new(
-                &this.path,
-                &this.index_dir_path,
+                &self.path,
+                &self.index_dir_path,
                 coin,
-                this.last_height,
+                self.last_height,
             ))
             .unwrap();
 
@@ -87,7 +84,7 @@ impl Indexer {
             let mut last_sent_hash: Option<sha256d::Hash> = None;
 
             for height in last_height..=max_height {
-                if this.token.is_cancelled() {
+                if self.token.is_cancelled() {
                     return;
                 }
 
@@ -114,10 +111,10 @@ impl Indexer {
             }
 
             let client = utils::Client::new(
-                &this.rpc_url,
-                this.rpc_auth.clone(),
+                &self.rpc_url,
+                self.rpc_auth.clone(),
                 coin,
-                this.token.clone(),
+                self.token.clone(),
             )
             .unwrap();
 
@@ -139,14 +136,14 @@ impl Indexer {
                 checkpoint = checkpoint.insert(BlockId { height, hash });
             }
 
-            while !this.token.is_cancelled() {
+            while !self.token.is_cancelled() {
                 let mut reorg_counter = 0;
                 let mut new_blocks = VecDeque::new();
                 let best_hash = client.get_best_block_hash().unwrap();
 
                 if best_hash != checkpoint.hash() {
                     loop {
-                        if reorg_counter > this.reorg_max_len {
+                        if reorg_counter > self.reorg_max_len {
                             panic!("Reorg chain is too long");
                         }
 

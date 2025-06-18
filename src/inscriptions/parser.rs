@@ -147,7 +147,7 @@ impl Parser<'_> {
                                 leaked.as_mut().unwrap().add(
                                     input_index,
                                     tx,
-                                    offset.unwrap_or_default(),
+                                    inscription_offset,
                                     prevouts,
                                     LeakedInscription::Move,
                                 );

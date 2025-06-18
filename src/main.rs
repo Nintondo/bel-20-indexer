@@ -109,12 +109,7 @@ fn main() {
 
     let server = Arc::new(server);
 
-    let token = server.token.clone();
-    ctrlc::set_handler(move || {
-        warn!("Ctrl-C received, shutting down...");
-        token.cancel();
-    })
-    .unwrap();
+    shutdown_handler(server.token.clone());
 
     let rest_server = server.clone();
     std::thread::spawn(move || {
@@ -179,4 +174,18 @@ fn spawn_runtime(name: String, priority: Option<u8>) -> tokio::runtime::Runtime 
         .unwrap();
 
     runtime
+}
+
+fn shutdown_handler(token: dutils::wait_token::WaitToken) {
+    let _: std::thread::JoinHandle<Result<(), std::io::Error>> = std::thread::spawn(move || {
+        let term = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
+        signal_hook::flag::register(signal_hook::consts::SIGINT, term.clone())?;
+
+        while !term.load(std::sync::atomic::Ordering::Relaxed) {}
+
+        token.cancel();
+
+        Ok(())
+    });
 }

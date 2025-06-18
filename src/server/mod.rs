@@ -7,7 +7,7 @@ pub use structs::*;
 pub struct Server {
     pub db: Arc<DB>,
     pub event_sender: tokio::sync::broadcast::Sender<ServerEvent>,
-    pub raw_event_sender: flume::Sender<RawServerEvent>,
+    pub raw_event_sender: kanal::Sender<RawServerEvent>,
     pub token: WaitToken,
     pub holders: Arc<Holders>,
     pub indexer: Arc<nint_blk::Indexer>,
@@ -17,11 +17,11 @@ impl Server {
     pub fn new(
         db_path: &str,
     ) -> anyhow::Result<(
-        flume::Receiver<RawServerEvent>,
+        kanal::Receiver<RawServerEvent>,
         tokio::sync::broadcast::Sender<ServerEvent>,
         Self,
     )> {
-        let (raw_tx, raw_rx) = flume::unbounded();
+        let (raw_tx, raw_rx) = kanal::unbounded();
         let (tx, _) = tokio::sync::broadcast::channel(30_000);
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));

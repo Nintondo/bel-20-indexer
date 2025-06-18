@@ -98,6 +98,7 @@ impl Indexer {
             }
 
             indexer.handle(id.height as u32, block).track()?;
+
             prev_height = Some(id.height);
 
             if let Some(progress) = progress.as_ref() {

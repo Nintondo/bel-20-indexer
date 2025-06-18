@@ -38,7 +38,8 @@ impl DB {
     ) -> Vec<(Location, (FullHash, TransferProtoDB))> {
         keys.iter()
             .flat_map(|x| {
-                let (from, to) = AddressLocation::search(x.address, Some(x.outpoint)).into_inner();
+                let (from, to) =
+                    AddressLocation::search_with_offset(x.address, x.outpoint).into_inner();
                 self.address_location_to_transfer
                     .range(&from..=&to, false)
                     .collect_vec()

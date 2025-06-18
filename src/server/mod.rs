@@ -40,7 +40,7 @@ impl Server {
         let indexer = nint_blk::Indexer {
             coin,
             last_height: db.last_block.get(()).unwrap_or_default(),
-            path: BLK_DIR.to_string(),
+            path: Some(BLK_DIR.to_string()),
             reorg_max_len: REORG_CACHE_MAX_LEN,
             rpc_auth: nint_blk::Auth::UserPass(USER.to_string(), PASS.to_string()),
             rpc_url: URL.to_string(),

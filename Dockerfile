@@ -1,4 +1,4 @@
-FROM rust:1.85.1-bookworm AS builder
+FROM rust:1.86.0-bookworm AS builder
 
 WORKDIR /usr/src/app
 
@@ -22,7 +22,7 @@ RUN cargo fetch && cargo build --release
 RUN rm -rf ~/.cargo/git && \
     rm -rf ~/.cargo/registry
 
-FROM ubuntu:24.04 AS runner
+FROM debian:bookworm-slim AS runner
 
 WORKDIR /app
 

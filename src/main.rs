@@ -18,7 +18,6 @@ use {
     },
     db::*,
     dutils::{
-        async_thread::Spawn,
         error::{ApiError, ContextWrapper},
         wait_token::WaitToken,
     },
@@ -106,42 +105,40 @@ fn main() {
         &*SERVER_URL,
     );
 
-    spawn_runtime("indexer".to_string(), Some(21)).block_on(async {
-        let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).await.unwrap();
+    let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).unwrap();
 
-        let server = Arc::new(server);
+    let server = Arc::new(server);
 
-        let token = server.token.clone();
-        ctrlc::set_handler(move || {
-            warn!("Ctrl-C received, shutting down...");
-            token.cancel();
-        })
-        .unwrap();
-
-        let rest_server = server.clone();
-        std::thread::spawn(move || {
-            let rest_runtime = spawn_runtime("rest".to_string(), Some(20));
-            rest_runtime.block_on(run_rest(rest_server))
-        });
-
-        let event_sender = EventSender {
-            event_tx,
-            raw_event_tx,
-            server: server.clone(),
-        };
-
-        let event_sender = std::thread::spawn(move || event_sender.run());
-
-        let main_result = Indexer::new(server.clone()).run().spawn().await.unwrap();
-        server.token.cancel();
-
-        info!("Server is finished");
-
-        let event_sender_result = event_sender.join().unwrap();
-
-        main_result.track().ok();
-        event_sender_result.track().ok();
+    let token = server.token.clone();
+    ctrlc::set_handler(move || {
+        warn!("Ctrl-C received, shutting down...");
+        token.cancel();
     })
+    .unwrap();
+
+    let rest_server = server.clone();
+    std::thread::spawn(move || {
+        let rest_runtime = spawn_runtime("rest".to_string(), Some(20));
+        rest_runtime.block_on(run_rest(rest_server))
+    });
+
+    let event_sender = EventSender {
+        event_tx,
+        raw_event_tx,
+        server: server.clone(),
+    };
+
+    let event_sender = std::thread::spawn(move || event_sender.run());
+
+    let main_result = Indexer::new(server.clone()).run();
+    server.token.cancel();
+
+    info!("Server is finished");
+
+    let event_sender_result = event_sender.join().unwrap();
+
+    main_result.track().ok();
+    event_sender_result.track().ok();
 }
 
 async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {

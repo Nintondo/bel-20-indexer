@@ -25,7 +25,7 @@ impl InscriptionIndexer {
         }
     }
 
-    pub async fn handle(
+    pub fn handle(
         &self,
         block_height: u32,
         block: nint_blk::proto::block::Block,

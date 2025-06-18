@@ -36,8 +36,8 @@ impl Indexer {
         }
     }
 
-    pub async fn run(self) -> anyhow::Result<()> {
-        self.index().await?;
+    pub fn run(self) -> anyhow::Result<()> {
+        self.index()?;
 
         self.reorg_cache
             .lock()
@@ -50,7 +50,7 @@ impl Indexer {
         Ok(())
     }
 
-    async fn index(&self) -> anyhow::Result<()> {
+    fn index(&self) -> anyhow::Result<()> {
         let rx = self.server.indexer.clone().parse_blocks();
 
         let mut indexer = InscriptionIndexer::new(self.server.clone(), None);
@@ -62,8 +62,8 @@ impl Indexer {
         ));
 
         let mut prev_height: Option<u64> = None;
-        loop {
-            let Some(Ok(data)) = self.server.token.run_fn(rx.recv_async()).await else {
+        while !self.server.token.is_cancelled() {
+            let Ok(data) = rx.recv() else {
                 break;
             };
             if let Some(progress) = progress.as_mut() {
@@ -97,7 +97,7 @@ impl Indexer {
                     .ok();
             }
 
-            indexer.handle(id.height as u32, block).await.track()?;
+            indexer.handle(id.height as u32, block).track()?;
             prev_height = Some(id.height);
 
             if let Some(progress) = progress.as_ref() {

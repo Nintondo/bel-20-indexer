@@ -113,7 +113,14 @@ pub async fn address_tokens(
         .bad_request("Invalid address")?
         .into();
 
-    let token = params.offset.map(|x| x.0).unwrap_or_default();
+    let token = params
+        .offset
+        .as_ref()
+        .map(|x| OriginalTokenTick::from_str(x))
+        .transpose()
+        .bad_request("Invalid tick")?
+        .map(LowerCaseTokenTick::from)
+        .and_then(|x| state.db.token_to_meta.get(&x).map(|x| x.proto.tick));
 
     let data = state
         .db
@@ -121,7 +128,7 @@ pub async fn address_tokens(
         .range(
             &AddressToken {
                 address: scripthash,
-                token: token.into(),
+                token: token.unwrap_or_default(),
             }..=&AddressToken {
                 address: scripthash,
                 token: [u8::MAX; 4].into(),

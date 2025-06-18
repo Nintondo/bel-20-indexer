@@ -59,7 +59,7 @@ pub enum Brc4Error {
     Parse(Brc4ParseErr),
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize, Default)]
 pub struct OriginalTokenTick(pub [u8; 4]);
 
 impl TryFrom<Vec<u8>> for OriginalTokenTick {

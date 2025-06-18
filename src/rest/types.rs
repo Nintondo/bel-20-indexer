@@ -379,7 +379,7 @@ pub struct AddressTokenBalanceArgs {
 
 #[derive(Deserialize, Validate)]
 pub struct AddressTokensArgs {
-    pub offset: Option<OriginalTokenTick>,
+    pub offset: Option<String>,
     #[serde(default = "utils::page_size_default")]
     #[validate(range(min = utils::tokens_count_default(), max = 100))]
     pub limit: usize,

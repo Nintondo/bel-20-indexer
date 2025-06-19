@@ -49,7 +49,7 @@ impl EventSender {
                     .send(ServerEvent::NewHistory(
                         AddressTokenIdEvent {
                             address: addresses.get(&k.address),
-                            token: k.token,
+                            token: k.token.into(),
                             id: k.id,
                         },
                         HistoryValueEvent::into_event(v, &addresses),

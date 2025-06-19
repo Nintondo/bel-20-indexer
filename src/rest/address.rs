@@ -38,7 +38,7 @@ pub async fn address_tokens_tick(
 pub async fn address_token_balance(
     url: Uri,
     State(state): State<Arc<Server>>,
-    Path((script_str, tick)): Path<(String, String)>,
+    Path((script_str, tick)): Path<(String, OriginalTokenTickRest)>,
     Query(params): Query<types::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
@@ -88,7 +88,7 @@ pub async fn address_token_balance(
 
     let data = types::TokenBalance {
         transfers,
-        tick,
+        tick: tick.into(),
         balance: balance.balance,
         transferable_balance: balance.transferable_balance,
         transfers_count: balance.transfers_count,
@@ -102,7 +102,7 @@ pub async fn address_tokens(
     State(state): State<Arc<Server>>,
     Path(script_str): Path<String>,
     Query(params): Query<types::AddressTokensArgs>,
-) -> ApiResult<Response<Body>> {
+) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
@@ -116,11 +116,10 @@ pub async fn address_tokens(
     let token = params
         .offset
         .as_ref()
-        .map(|x| OriginalTokenTick::from_str(x))
-        .transpose()
-        .bad_request("Invalid tick")?
         .map(LowerCaseTokenTick::from)
         .and_then(|x| state.db.token_to_meta.get(&x).map(|x| x.proto.tick));
+
+    let search = params.search.map(|x| x.to_lowercase());
 
     let data = state
         .db
@@ -135,10 +134,16 @@ pub async fn address_tokens(
             },
             false,
         )
+        .filter(|(k, _)| {
+            search
+                .as_ref()
+                .map(|x| k.token.to_string().to_lowercase().starts_with(x))
+                .unwrap_or(true)
+        })
         .skip(params.offset.is_some() as usize)
         .take(params.limit)
         .map(|(k, v)| types::TokenBalance {
-            tick: k.token,
+            tick: k.token.into(),
             balance: v.balance,
             transferable_balance: v.transferable_balance,
             transfers_count: v.transfers_count,
@@ -146,57 +151,5 @@ pub async fn address_tokens(
         })
         .collect_vec();
 
-    let data = serde_json::to_vec(&data).internal(INTERNAL)?;
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "application/json")
-        .header("X-Powered-By", "NINTONDO")
-        .body(data.into())
-        .internal(INTERNAL)
-}
-
-pub async fn search_address_tokens(
-    url: Uri,
-    State(state): State<Arc<Server>>,
-    Path((script_str, tick)): Path<(String, String)>,
-) -> ApiResult<impl IntoResponse> {
-    let tick = tick.to_lowercase();
-
-    let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
-    let scripthash: FullHash = state
-        .indexer
-        .to_scripthash(
-            &script_str,
-            script_type.parse().bad_request("Invalid script type")?,
-        )
-        .bad_request("Invalid address")?
-        .into();
-
-    let account_tokens = state
-        .db
-        .address_token_to_balance
-        .range(
-            &AddressToken {
-                address: scripthash,
-                token: [0; 4].into(),
-            }..=&AddressToken {
-                address: scripthash,
-                token: [u8::MAX; 4].into(),
-            },
-            false,
-        )
-        .map(|(k, _)| k.token.to_string().to_lowercase())
-        .filter(|original_token| original_token.starts_with(&tick))
-        .collect_vec();
-
-    let data = serde_json::to_vec(&account_tokens).internal(INTERNAL)?;
-    let body = Body::from(data);
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "application/json")
-        .header("X-Powered-By", "NINTONDO")
-        .body(body)
-        .internal(INTERNAL)
+    Ok(Json(data))
 }

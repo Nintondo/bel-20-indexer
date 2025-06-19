@@ -25,10 +25,9 @@ pub async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl 
 pub async fn all_tokens(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
     let (tx, rx) = tokio::sync::mpsc::channel(1000);
     tokio::spawn(async move {
-        let iter = server.db.token_to_meta.iter().map(|(token, proto)| {
-            let tick = String::from_utf8_lossy(token.as_ref()).to_lowercase();
+        let iter = server.db.token_to_meta.iter().map(|(_, proto)| {
             serde_json::json! ({
-                "tick": tick,
+                "tick": proto.proto.tick.to_string(),
                 "max": proto.proto.max.to_string(),
                 "lim": proto.proto.lim.to_string(),
                 "dec": proto.proto.dec,

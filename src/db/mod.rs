@@ -10,7 +10,7 @@ rocksdb_wrapper::generate_db_code! {
     address_token_to_history: AddressTokenIdDB => UsingSerde<HistoryValue>,
     block_info: u32 => BlockInfo,
     prevouts: UsingConsensus<OutPoint> => UsingConsensus<TxOut>,
-    outpoint_to_partials: UsingConsensus<OutPoint> => Partials,
+    outpoint_to_partials: UsingConsensus<OutPoint> => UsingSerde<Partials>,
     outpoint_to_inscription_offsets: UsingConsensus<OutPoint> => UsingSerde<HashSet<u64>>,
     last_block: () => u32,
     last_history_id: () => u64,

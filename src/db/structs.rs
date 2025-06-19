@@ -178,55 +178,11 @@ impl rocksdb_wrapper::Pebble for AddressLocation {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Partials {
     pub inscription_index: u32,
     pub genesis_txid: Txid,
     pub parts: Vec<Part>,
-}
-
-impl rocksdb_wrapper::Pebble for Partials {
-    type Inner = Self;
-
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
-        let mut buffer = vec![];
-        buffer.extend(v.inscription_index.to_be_bytes().to_vec());
-        buffer.extend_from_slice(&bellscoin::consensus::serialize(&v.genesis_txid));
-
-        for part in &v.parts {
-            buffer.extend([part.is_tapscript as u8]);
-            let script_len = part.script_buffer.len() as u32;
-            buffer.extend(script_len.to_be_bytes().to_vec());
-            buffer.extend(part.script_buffer.clone());
-        }
-
-        Cow::Owned(buffer)
-    }
-
-    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        let inscription_index = u32::from_be_bytes(v[..4].try_into()?);
-        let genesis_txid: Txid = bellscoin::consensus::deserialize(&v[4..36])?;
-        let mut parts = vec![];
-        let mut offset = 4 + 32;
-        while offset != v.len() {
-            let is_tapscript = v[offset] == 1;
-            offset += 1;
-            let script_len = u32::from_be_bytes(v[offset..offset + 4].try_into()?) as usize;
-            offset += 4;
-            let script_buffer = v[offset..offset + script_len].to_vec();
-
-            parts.push(Part {
-                is_tapscript,
-                script_buffer,
-            });
-        }
-
-        Ok(Self {
-            genesis_txid,
-            inscription_index,
-            parts,
-        })
-    }
 }
 
 #[derive(Clone, Copy)]

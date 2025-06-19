@@ -5,9 +5,8 @@ extern crate tracing;
 use {
     crate::server::threads::EventSender,
     axum::{
-        body::Body,
         extract::{Path, Query, State},
-        http::{Response, StatusCode},
+        http::Response,
         response::IntoResponse,
         routing::get,
         Json, Router,

@@ -31,10 +31,6 @@ pub fn get_router(server: Arc<Server>) -> Router {
         .route("/address/{address}", get(address::address_tokens))
         .route("/address/{address}/tokens", get(address::address_tokens))
         .route(
-            "/address/{address}/tokens/{tick}",
-            get(address::search_address_tokens),
-        )
-        .route(
             "/address/{address}/history",
             get(history::address_token_history),
         )

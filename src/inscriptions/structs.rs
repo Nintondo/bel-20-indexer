@@ -342,7 +342,7 @@ impl FromStr for Location {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Part {
     pub is_tapscript: bool,
     pub script_buffer: Vec<u8>,

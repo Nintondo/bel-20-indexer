@@ -94,7 +94,7 @@ impl Server {
                     address_token: rest::types::AddressTokenId {
                         address: addresses.get(&address_token.address),
                         id: address_token.id,
-                        tick: address_token.token,
+                        tick: address_token.token.into(),
                     },
                 };
                 let bytes = serde_json::to_vec(&rest)?;

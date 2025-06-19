@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TokenBalanceRest {
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
     pub balance: Fixed128,
     pub transferable_balance: Fixed128,
     pub transfers: Vec<TokenTransfer>,
@@ -12,7 +12,7 @@ pub struct TokenBalanceRest {
 #[derive(Serialize, Deserialize)]
 pub struct TokenProtoRest {
     pub genesis: InscriptionId,
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
     pub max: u64,
     pub lim: u64,
     pub dec: u8,
@@ -59,7 +59,51 @@ pub enum Brc4Error {
     Parse(Brc4ParseErr),
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+pub struct OriginalTokenTickRest([u8; 4]);
+
+impl Serialize for OriginalTokenTickRest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let str = String::from_utf8_lossy(&self.0);
+        serializer.serialize_str(&str)
+    }
+}
+
+impl<'de> Deserialize<'de> for OriginalTokenTickRest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes: [u8; 4] = String::deserialize(deserializer)?
+            .as_bytes()
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("Invalid tick length"))?;
+        Ok(Self(bytes))
+    }
+}
+
+impl std::fmt::Debug for OriginalTokenTickRest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.collect_str(&String::from_utf8_lossy(&self.0))
+    }
+}
+
+impl AsRef<[u8]> for OriginalTokenTickRest {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<OriginalTokenTick> for OriginalTokenTickRest {
+    fn from(value: OriginalTokenTick) -> Self {
+        Self(value.0)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct OriginalTokenTick(pub [u8; 4]);
 
 impl TryFrom<Vec<u8>> for OriginalTokenTick {
@@ -70,6 +114,12 @@ impl TryFrom<Vec<u8>> for OriginalTokenTick {
             v.try_into()
                 .map_err(|_| anyhow::Error::msg("Invalid byte length"))?,
         ))
+    }
+}
+
+impl From<OriginalTokenTickRest> for OriginalTokenTick {
+    fn from(value: OriginalTokenTickRest) -> Self {
+        Self(value.0)
     }
 }
 

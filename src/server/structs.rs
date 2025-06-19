@@ -9,10 +9,10 @@ pub enum ServerEvent {
 
 pub type RawServerEvent = Vec<(AddressTokenIdDB, HistoryValue)>;
 
-#[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AddressTokenIdEvent {
     pub address: String,
-    pub token: OriginalTokenTick,
+    pub token: OriginalTokenTickRest,
     pub id: u64,
 }
 

@@ -4,8 +4,7 @@ use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AddressTokenBalance {
-    #[serde(serialize_with = "serialize_original_token_tick")]
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
     pub balance: Fixed128,
     pub transferable_balance: Fixed128,
     pub transfers: Vec<TokenTransfer>,
@@ -16,7 +15,7 @@ pub struct AddressTokenBalance {
 pub struct AddressTokenHistoryArgs {
     pub offset: Option<u64>,
     pub limit: Option<usize>,
-    pub tick: String,
+    pub tick: OriginalTokenTickRest,
 }
 
 #[derive(Deserialize)]
@@ -24,7 +23,7 @@ pub struct SubscribeArgs {
     #[serde(default)]
     pub addresses: Option<HashSet<String>>,
     #[serde(default)]
-    pub tokens: Option<HashSet<String>>,
+    pub tokens: Option<HashSet<OriginalTokenTickRest>>,
 }
 
 #[derive(Serialize)]
@@ -65,8 +64,7 @@ pub struct NewBlock {
 pub struct AddressTokenId {
     pub id: u64,
     pub address: String,
-    #[serde(serialize_with = "serialize_original_token_tick")]
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
 }
 
 impl From<server::AddressTokenIdEvent> for AddressTokenId {
@@ -107,7 +105,7 @@ impl History {
             address_token: AddressTokenId {
                 address: addresses.get(&address_token.address),
                 id: address_token.id,
-                tick: address_token.token,
+                tick: address_token.token.into(),
             },
         })
     }
@@ -278,12 +276,12 @@ pub struct HoldersArgs {
     #[validate(range(min = 1))]
     #[serde(default = "utils::first_page")]
     pub page: usize,
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
 }
 
 #[derive(Deserialize)]
 pub struct HoldersStatsArgs {
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
 }
 
 #[derive(Serialize)]
@@ -306,8 +304,7 @@ pub struct Holders {
 pub struct Token {
     pub height: u32,
     pub created: u32,
-    #[serde(serialize_with = "serialize_original_token_tick")]
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
     pub genesis: InscriptionId,
     pub deployer: String,
 
@@ -324,7 +321,7 @@ pub struct Token {
 
 #[derive(Deserialize, Validate)]
 pub struct TokenArgs {
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
 }
 
 #[derive(Deserialize, Default)]
@@ -358,7 +355,6 @@ pub struct TokensArgs {
     pub sort_by: TokenSortBy,
     #[serde(default)]
     pub filter_by: TokenFilterBy,
-    #[validate(length(min = 1, max = 4))]
     pub search: Option<String>,
 }
 
@@ -379,16 +375,16 @@ pub struct AddressTokenBalanceArgs {
 
 #[derive(Deserialize, Validate)]
 pub struct AddressTokensArgs {
-    pub offset: Option<String>,
+    pub offset: Option<OriginalTokenTickRest>,
     #[serde(default = "utils::page_size_default")]
     #[validate(range(min = utils::tokens_count_default(), max = 100))]
     pub limit: usize,
+    pub search: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct TokenBalance {
-    #[serde(serialize_with = "serialize_original_token_tick")]
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
     pub balance: Fixed128,
     pub transferable_balance: Fixed128,
     pub transfers_count: u64,
@@ -399,18 +395,6 @@ pub struct TokenBalance {
 #[derive(Serialize)]
 pub struct TokenTransferProof {
     pub amt: Fixed128,
-    #[serde(serialize_with = "serialize_original_token_tick")]
-    pub tick: OriginalTokenTick,
+    pub tick: OriginalTokenTickRest,
     pub height: u32,
-}
-
-fn serialize_original_token_tick<S>(
-    token: &OriginalTokenTick,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let str = token.to_string();
-    serializer.serialize_str(&str)
 }

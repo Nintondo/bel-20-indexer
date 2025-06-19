@@ -58,7 +58,7 @@ pub async fn tokens(
             height: v.proto.height,
             created: v.proto.created,
             mint_percent: v.proto.mint_percent().to_string(),
-            tick: v.proto.tick,
+            tick: v.proto.tick.into(),
             genesis: v.genesis,
             deployer: server
                 .db
@@ -102,7 +102,7 @@ pub async fn token(
                 .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
             transactions: v.proto.transactions,
             holders: back.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
-            tick: v.proto.tick,
+            tick: v.proto.tick.into(),
             genesis: v.genesis,
             supply: v.proto.supply,
             mint_percent: v.proto.mint_percent().to_string(),
@@ -133,7 +133,11 @@ pub async fn token_transfer_proof(
         .address_location_to_transfer
         .range(&from..&to, false)
         .map(|(_, TransferProtoDB { tick, amt, height })| {
-            anyhow::Ok(types::TokenTransferProof { amt, tick, height })
+            anyhow::Ok(types::TokenTransferProof {
+                amt,
+                tick: tick.into(),
+                height,
+            })
         })
         .try_collect()
         .track_with("")

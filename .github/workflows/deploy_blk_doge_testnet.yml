@@ -3,7 +3,7 @@ name: Deploy service BLK for Doge Testnet
 on:
   workflow_dispatch:
   repository_dispatch:
-    types: [Deploy]
+    types: [Deploy-BLK]
 
 jobs:
   deployment:

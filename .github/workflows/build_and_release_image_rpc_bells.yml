@@ -1,4 +1,4 @@
-name: Build and release Docker image RPC
+name: Build and release Docker image RPC for Bells
 
 on:
   workflow_dispatch:

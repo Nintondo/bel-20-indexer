@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - doge-indexer
-      - main
     paths:
       - 'src/**/*'
 
@@ -34,13 +33,13 @@ jobs:
         push: true
         no-cache: true
         tags: |
-          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME_2 }}:${{ github.sha }}
-          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME_2 }}:latest
+          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME_2 }}-bells:${{ github.sha }}
+          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME_2 }}-bells:latest
 
     - name: Trigger Deploy Workflow
       uses: peter-evans/repository-dispatch@v2
       with:
         token: ${{ secrets.GIT_ACCESS_TOKEN }}
         repository: ${{ github.repository }}
-        event-type: Deploy
+        event-type: Deploy-RPC-Bells
         client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'

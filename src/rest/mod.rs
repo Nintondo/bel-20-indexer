@@ -49,6 +49,10 @@ pub fn get_router(server: Arc<Server>) -> Router {
             "/token/proof/{address}/{outpoint}",
             get(tokens::token_transfer_proof),
         )
+        .route(
+            "/inscriptions/{outpoint}",
+            get(info::inscriptions_on_outpoint),
+        )
         .route("/holders", get(holders::holders))
         .route("/holders-stats", get(holders::holders_stats))
         .route("/events", post(history::subscribe))

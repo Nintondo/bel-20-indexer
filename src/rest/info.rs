@@ -73,3 +73,16 @@ pub async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRes
 
     Ok(Json(data))
 }
+
+pub async fn inscriptions_on_outpoint(
+    State(server): State<Arc<Server>>,
+    Path(outpoint): Path<Outpoint>,
+) -> ApiResult<impl IntoResponse> {
+    Ok(Json(
+        server
+            .db
+            .outpoint_to_inscription_offsets
+            .get(OutPoint::from(outpoint))
+            .unwrap_or_default(),
+    ))
+}

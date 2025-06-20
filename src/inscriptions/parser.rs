@@ -199,7 +199,15 @@ impl Parser<'_> {
                                 partials.inscription_index = inscription_index_in_tx;
                                 inscription_index_in_tx += 1;
                             }
-                            outpoint_to_partials.insert(txin.outpoint, partials);
+                            if tx.value.outputs.get(input_index).is_some() {
+                                outpoint_to_partials.insert(
+                                    OutPoint {
+                                        txid,
+                                        vout: input_index as u32,
+                                    },
+                                    partials,
+                                );
+                            }
                             continue;
                         }
                         ParsedInscriptionResult::Single(mut inscription_template) => {

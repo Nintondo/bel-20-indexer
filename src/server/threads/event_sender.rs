@@ -23,7 +23,7 @@ impl EventSender {
                                 break 'outer;
                             }
 
-                            std::thread::sleep(Duration::from_millis(100));
+                            std::thread::sleep(Duration::from_millis(50));
                             continue;
                         }
                         break;

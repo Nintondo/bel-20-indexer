@@ -63,8 +63,13 @@ impl Indexer {
 
         let mut prev_height: Option<u64> = None;
         while !self.server.token.is_cancelled() {
-            let Ok(data) = rx.recv() else {
-                break;
+            let data = match rx.try_recv() {
+                Ok(Some(data)) => data,
+                Ok(None) => {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                Err(_) => break,
             };
             if let Some(progress) = progress.as_mut() {
                 progress.update_len(data.tip.saturating_sub(REORG_CACHE_MAX_LEN as u64));

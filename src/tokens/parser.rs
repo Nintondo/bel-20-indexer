@@ -94,8 +94,12 @@ impl TokenCache {
                 let Ok(data) = String::from_utf8(content.to_vec()) else {
                     return Err(Brc4ParseErr::InvalidUtf8);
                 };
+                let data = serde_json::from_str::<serde_json::Value>(&data)
+                    .map_err(|_| Brc4ParseErr::WrongProtocol)?;
 
-                let brc4 = match serde_json::from_str::<Brc4>(&data) {
+                let brc4 = match serde_json::from_str::<Brc4>(
+                    &serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?,
+                ) {
                     Ok(b) => b,
                     Err(error) => match error.to_string().as_str() {
                         "Invalid decimal: empty" => return Err(Brc4ParseErr::DecimalEmpty),

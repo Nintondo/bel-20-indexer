@@ -90,32 +90,6 @@ async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl Into
     Ok(axum_streams::StreamBodyAs::json_array(stream))
 }
 
-async fn all_tokens(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
-    let (tx, rx) = tokio::sync::mpsc::channel(1000);
-    tokio::spawn(async move {
-        let iter = server.db.token_to_meta.iter().map(|(token, proto)| {
-            let tick = String::from_utf8_lossy(token.as_ref()).to_lowercase();
-            serde_json::json! ({
-                "genesis": proto.genesis.to_string(),
-                "tick": tick,
-                "max": proto.proto.max.to_string(),
-                "lim": proto.proto.lim.to_string(),
-                "dec": proto.proto.dec,
-                "transfer_count": proto.proto.transfer_count,
-                "mint_count": proto.proto.mint_count
-            })
-        });
-
-        for data in iter {
-            if tx.send(data).await.is_err() {
-                break;
-            }
-        }
-    });
-    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-    Ok(axum_streams::StreamBodyAs::json_array(stream))
-}
-
 async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
     let last_height = server
         .db

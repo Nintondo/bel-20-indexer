@@ -72,7 +72,6 @@ pub trait BlockchainRead: Read {
         let mut in_count = VarUint::read_from(self)?;
         if in_count.value == 0 {
             flags = self.read_u8()?;
-            // TODO: handle segwit data
             in_count = VarUint::read_from(self)?
         }
         let mut inputs = self.read_tx_inputs(in_count.value)?;
@@ -86,13 +85,6 @@ pub trait BlockchainRead: Read {
             for input in inputs.iter_mut() {
                 input.witness = Witness::consensus_decode(self)?;
             }
-            // for _ in 0..in_count.value {
-            //     let item_count = VarUint::read_from(self)?;
-            //     for _ in 0..item_count.value {
-            //         let witness_len = VarUint::read_from(self)?;
-            //         let _ = self.read_u8_vec(witness_len.value as u32)?;
-            //     }
-            // }
         }
         let locktime = self.read_u32::<LittleEndian>()?;
         let tx = RawTx {

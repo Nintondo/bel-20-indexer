@@ -248,8 +248,6 @@ fn is_block_index_record(data: &[u8]) -> bool {
     *data.first().unwrap() == b'b'
 }
 
-/// TODO: this is a wonky 1:1 translation from https://github.com/bitcoin/bitcoin
-/// It is NOT the same as CompactSize.
 fn read_varint(reader: &mut Cursor<&[u8]>) -> Result<u64> {
     let mut n = 0;
     loop {

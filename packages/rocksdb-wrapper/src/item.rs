@@ -29,7 +29,7 @@ impl Pebble for Cow<'_, [u8]> {
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        Ok(Cow::Owned(v.into_owned())) //todo: lifetime shit
+        Ok(Cow::Owned(v.into_owned()))
     }
 
     fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
@@ -143,7 +143,6 @@ macro_rules! impl_pebble {
 
     ($WRAPPER:ty = $INNER:ty) => {
         impl $crate::Pebble for $WRAPPER {
-            //todo: impl FIXED_SIZE
             type Inner = Self;
 
             fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {

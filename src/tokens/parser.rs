@@ -109,71 +109,67 @@ impl TokenCache {
     }
 
     fn try_parse(content_type: &str, content: &[u8]) -> Result<Brc4, Brc4ParseErr> {
-        match content_type.split(';').nth(0) {
-            Some("text/plain" | "application/json") => {
-                let Ok(data) = String::from_utf8(content.to_vec()) else {
-                    return Err(Brc4ParseErr::InvalidUtf8);
-                };
+        // Dogecoin wonky bugfix
+        if *BLOCKCHAIN == "doge" {
+            if !content_type.starts_with("text/plain")
+                && !content_type.starts_with("application/json")
+            {
+                return Err(Brc4ParseErr::WrongContentType);
+            }
+        } else {
+            let Some("text/plain" | "application/json") = content_type.split(';').nth(0) else {
+                return Err(Brc4ParseErr::WrongContentType);
+            };
+        }
 
-                let data = serde_json::from_str::<serde_json::Value>(&data)
-                    .map_err(|_| Brc4ParseErr::WrongProtocol)?;
+        let Ok(data) = String::from_utf8(content.to_vec()) else {
+            return Err(Brc4ParseErr::InvalidUtf8);
+        };
 
-                let brc4 = match serde_json::from_str::<Brc4>(
-                    &serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?,
-                ) {
-                    Ok(b) => b,
-                    Err(error) => match error.to_string().as_str() {
-                        "Invalid decimal: empty" => return Err(Brc4ParseErr::DecimalEmpty),
-                        "Invalid decimal: overflow from too many digits" => {
-                            return Err(Brc4ParseErr::DecimalOverflow)
-                        }
-                        "value cannot start from + or -" => {
-                            return Err(Brc4ParseErr::DecimalPlusMinus)
-                        }
-                        "value cannot start or end with ." => {
-                            return Err(Brc4ParseErr::DecimalDotStartEnd)
-                        }
-                        "value cannot contain spaces" => return Err(Brc4ParseErr::DecimalSpaces),
-                        "invalid digit found in string" => return Err(Brc4ParseErr::InvalidDigit),
-                        msg => {
-                            // eprintln!("ERR: {msg:?}");
-                            return Err(Brc4ParseErr::Unknown(msg.to_string()));
-                        }
-                    },
-                };
+        let data = serde_json::from_str::<serde_json::Value>(&data)
+            .map_err(|_| Brc4ParseErr::WrongProtocol)?;
 
-                //todo check match network and token
-                match &brc4 {
-                    Brc4::Mint { proto } => {
-                        let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                        if !v.amt.is_zero() {
-                            Ok(brc4)
-                        } else {
-                            Err(Brc4ParseErr::WrongProtocol)
-                        }
-                    }
-                    Brc4::Transfer { proto } => {
-                        let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                        if !v.amt.is_zero() {
-                            Ok(brc4)
-                        } else {
-                            Err(Brc4ParseErr::WrongProtocol)
-                        }
-                    }
-                    Brc4::Deploy { proto } => {
-                        let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                        if v.dec <= DeployProto::MAX_DEC
-                            && !v.lim.unwrap_or(v.max).is_zero()
-                            && !v.max.is_zero()
-                        {
-                            Ok(brc4)
-                        } else {
-                            Err(Brc4ParseErr::WrongContentType)
-                        }
-                    }
+        let brc4 = serde_json::from_str::<Brc4>(
+            &serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?,
+        )
+        .map_err(|error| match error.to_string().as_str() {
+            "Invalid decimal: empty" => Brc4ParseErr::DecimalEmpty,
+            "Invalid decimal: overflow from too many digits" => Brc4ParseErr::DecimalOverflow,
+            "value cannot start from + or -" => Brc4ParseErr::DecimalPlusMinus,
+            "value cannot start or end with ." => Brc4ParseErr::DecimalDotStartEnd,
+            "value cannot contain spaces" => Brc4ParseErr::DecimalSpaces,
+            "invalid digit found in string" => Brc4ParseErr::InvalidDigit,
+            msg => Brc4ParseErr::Unknown(msg.to_string()),
+        })?;
+
+        match &brc4 {
+            Brc4::Mint { proto } => {
+                let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
+                if !v.amt.is_zero() {
+                    Ok(brc4)
+                } else {
+                    Err(Brc4ParseErr::WrongProtocol)
                 }
             }
-            _ => Err(Brc4ParseErr::WrongContentType),
+            Brc4::Transfer { proto } => {
+                let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
+                if !v.amt.is_zero() {
+                    Ok(brc4)
+                } else {
+                    Err(Brc4ParseErr::WrongProtocol)
+                }
+            }
+            Brc4::Deploy { proto } => {
+                let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
+                if v.dec <= DeployProto::MAX_DEC
+                    && !v.lim.unwrap_or(v.max).is_zero()
+                    && !v.max.is_zero()
+                {
+                    Ok(brc4)
+                } else {
+                    Err(Brc4ParseErr::WrongProtocol)
+                }
+            }
         }
     }
 

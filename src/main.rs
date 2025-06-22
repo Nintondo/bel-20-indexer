@@ -177,13 +177,17 @@ fn spawn_runtime(name: String, priority: Option<u8>) -> tokio::runtime::Runtime 
 
 fn shutdown_handler(token: dutils::wait_token::WaitToken) {
     let _: std::thread::JoinHandle<Result<(), std::io::Error>> = std::thread::spawn(move || {
-        let term = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        signal_hook::flag::register(signal_hook::consts::SIGTERM, term.clone())?;
-        signal_hook::flag::register(signal_hook::consts::SIGINT, term.clone())?;
+        let mut signals = signal_hook::iterator::Signals::new([
+            signal_hook::consts::SIGTERM,
+            signal_hook::consts::SIGINT,
+        ])
+        .inspect_err(|_| {
+            token.cancel();
+        })?;
 
-        while !term.load(std::sync::atomic::Ordering::Relaxed) {}
-
-        token.cancel();
+        for _ in &mut signals {
+            token.cancel();
+        }
 
         Ok(())
     });

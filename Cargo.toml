@@ -44,5 +44,5 @@ thiserror = "2.0.12"
 derive_deref = "1.1.1"
 nint-blk = { path = "./packages/new-blk-parser" }
 bitcoin_hashes = "0.12.0"
-signal-hook = "0.3.18"
 kanal = "0.1.1"
+signal-hook = "0.3.18"

@@ -73,20 +73,22 @@ pub async fn holders_stats(
 
         let mut iter = data.iter().rev().map(|x| x.0);
 
-        let mut to_skip = 0;
+        let mut total_value = Fixed128::ZERO;
 
-        for limit in [100, 100, 200, 500, usize::MAX] {
-            let value = iter
-                .by_ref()
-                .skip(to_skip)
-                .take(limit)
-                .fold(Fixed128::ZERO, |prev, cur| prev + cur);
+        for limit in [100, 100, 200, 500] {
+            let mut value = Fixed128::ZERO;
+            for _ in 0..limit {
+                value += iter.next().unwrap_or_default();
+            }
 
-            to_skip += limit;
+            total_value += value;
 
             let percent = value / proto.supply * Fixed128::from(100);
             result.push(percent);
         }
+
+        let left = (proto.supply - total_value) / proto.supply * Fixed128::from(100);
+        result.push(left);
 
         result
     } else {

@@ -271,7 +271,7 @@ impl TokenAction {
 #[derive(Deserialize, Validate)]
 pub struct HoldersArgs {
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = utils::page_size_default(), max = 20))]
+    #[validate(range(min = 1, max = 20))]
     pub page_size: usize,
     #[validate(range(min = 1))]
     #[serde(default = "utils::first_page")]
@@ -346,7 +346,7 @@ pub enum TokenFilterBy {
 #[derive(Deserialize, Validate)]
 pub struct TokensArgs {
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = utils::page_size_default(), max = 20))]
+    #[validate(range(min = 1, max = 20))]
     pub page_size: usize,
     #[validate(range(min = 1))]
     #[serde(default = "utils::first_page")]
@@ -369,7 +369,7 @@ pub struct TokensResult {
 pub struct AddressTokenBalanceArgs {
     pub offset: Option<Outpoint>,
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = utils::page_size_default(), max = 100))]
+    #[validate(range(min = 1, max = 100))]
     pub limit: usize,
 }
 
@@ -377,7 +377,7 @@ pub struct AddressTokenBalanceArgs {
 pub struct AddressTokensArgs {
     pub offset: Option<OriginalTokenTickRest>,
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = utils::page_size_default(), max = 100))]
+    #[validate(range(min = 1, max = 100))]
     pub limit: usize,
     pub search: Option<String>,
 }

@@ -119,8 +119,6 @@ pub async fn address_tokens(
         .map(LowerCaseTokenTick::from)
         .and_then(|x| state.db.token_to_meta.get(&x).map(|x| x.proto.tick));
 
-    let search = params.search.map(|x| x.to_lowercase());
-
     let data = state
         .db
         .address_token_to_balance
@@ -135,9 +133,11 @@ pub async fn address_tokens(
             false,
         )
         .filter(|(k, _)| {
-            search
+            params
+                .search
                 .as_ref()
-                .map(|x| k.token.to_string().to_lowercase().starts_with(x))
+                .map(|x| x.to_lowercase())
+                .map(|x| k.token.to_string().to_lowercase().starts_with(&x))
                 .unwrap_or(true)
         })
         .skip(params.offset.is_some() as usize)

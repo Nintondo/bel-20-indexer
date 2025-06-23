@@ -7,7 +7,6 @@ pub async fn tokens(
     Query(args): Query<types::TokensArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_PARAMS)?;
-    let search = args.search.map(|x| x.to_lowercase().as_bytes().to_vec());
 
     let iter = server
         .db
@@ -18,9 +17,11 @@ pub async fn tokens(
             types::TokenFilterBy::Completed => x.1.is_completed(),
             types::TokenFilterBy::InProgress => !x.1.is_completed(),
         })
-        .filter(|x| match &search {
-            Some(tick) => x.0.starts_with(tick),
-            _ => true,
+        .filter(|x| {
+            args.search
+                .as_ref()
+                .map(|tick| x.0.starts_with(tick))
+                .unwrap_or(true)
         });
 
     let stats = server.holders.stats();
@@ -60,11 +61,10 @@ pub async fn tokens(
             mint_percent: v.proto.mint_percent().to_string(),
             tick: v.proto.tick.into(),
             genesis: v.genesis,
-            deployer: server
-                .db
-                .fullhash_to_address
-                .get(v.proto.deployer)
-                .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
+            deployer: fullhash_to_address_str(
+                &v.proto.deployer,
+                server.db.fullhash_to_address.get(v.proto.deployer),
+            ),
             transactions: v.proto.transactions,
             holders: server.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
             supply: v.proto.supply,
@@ -83,25 +83,24 @@ pub async fn tokens(
 }
 
 pub async fn token(
-    State(back): State<Arc<Server>>,
+    State(server): State<Arc<Server>>,
     Query(args): Query<types::TokenArgs>,
 ) -> ApiResult<impl IntoResponse> {
     args.validate().bad_request(BAD_REQUEST)?;
     let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
-    let token = back
+    let token = server
         .db
         .token_to_meta
         .get(lower_case_token_tick.clone())
         .map(|v| types::Token {
             height: v.proto.height,
             created: v.proto.created,
-            deployer: back
-                .db
-                .fullhash_to_address
-                .get(v.proto.deployer)
-                .unwrap_or(NON_STANDARD_ADDRESS.to_string()),
+            deployer: fullhash_to_address_str(
+                &v.proto.deployer,
+                server.db.fullhash_to_address.get(v.proto.deployer),
+            ),
             transactions: v.proto.transactions,
-            holders: back.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
+            holders: server.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
             tick: v.proto.tick.into(),
             genesis: v.genesis,
             supply: v.proto.supply,

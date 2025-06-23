@@ -9,14 +9,7 @@ impl AddressesFullHash {
     }
 
     pub fn get(&self, hash: &FullHash) -> String {
-        if hash.is_op_return_hash() {
-            return OP_RETURN_ADDRESS.to_string();
-        }
-
-        self.0
-            .get(hash)
-            .cloned()
-            .unwrap_or(NON_STANDARD_ADDRESS.to_string())
+        fullhash_to_address_str(hash, self.0.get(hash).cloned())
     }
 
     pub fn iter(&'_ self) -> impl Iterator<Item = String> + use<'_> {
@@ -27,5 +20,17 @@ impl AddressesFullHash {
 impl From<HashMap<FullHash, String>> for AddressesFullHash {
     fn from(value: HashMap<FullHash, String>) -> Self {
         Self(value)
+    }
+}
+
+pub fn fullhash_to_address_str(hash: &FullHash, value: Option<String>) -> String {
+    if let Some(value) = value {
+        return value;
+    }
+
+    if hash.is_op_return_hash() {
+        OP_RETURN_ADDRESS.to_string()
+    } else {
+        NON_STANDARD_ADDRESS.to_string()
     }
 }

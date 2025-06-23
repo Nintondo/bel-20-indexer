@@ -22,27 +22,26 @@ pub async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl 
     Ok(axum_streams::StreamBodyAs::json_array(stream))
 }
 
-pub async fn all_tokens(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
-    let (tx, rx) = tokio::sync::mpsc::channel(1000);
-    tokio::spawn(async move {
-        let iter = server.db.token_to_meta.iter().map(|(_, proto)| {
-            serde_json::json! ({
-                "tick": proto.proto.tick.to_string(),
-                "max": proto.proto.max.to_string(),
-                "lim": proto.proto.lim.to_string(),
-                "dec": proto.proto.dec,
-                "supply": proto.proto.supply.to_string()
-            })
-        });
+pub async fn all_tokens(
+    State(server): State<Arc<Server>>,
+    Query(params): Query<types::AddressTokensArgs>,
+) -> ApiResult<impl IntoResponse> {
+    let iter = server
+        .db
+        .token_to_meta
+        .iter()
+        .filter(|x| {
+            params
+                .search
+                .as_ref()
+                .map(|search| x.0.starts_with(search))
+                .unwrap_or(true)
+        })
+        .skip(params.offset.is_some() as usize)
+        .take(params.limit)
+        .map(|(_, proto)| types::AllTokenInfoRest::from(proto));
 
-        for data in iter {
-            if tx.send(data).await.is_err() {
-                break;
-            }
-        }
-    });
-    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
-    Ok(axum_streams::StreamBodyAs::json_array(stream))
+    Ok(Json(iter.collect_vec()))
 }
 
 pub async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {

@@ -369,7 +369,7 @@ pub struct TokensResult {
 pub struct AddressTokenBalanceArgs {
     pub offset: Option<Outpoint>,
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = utils::tokens_count_default(), max = 100))]
+    #[validate(range(min = utils::page_size_default(), max = 100))]
     pub limit: usize,
 }
 
@@ -377,7 +377,7 @@ pub struct AddressTokenBalanceArgs {
 pub struct AddressTokensArgs {
     pub offset: Option<OriginalTokenTickRest>,
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = utils::tokens_count_default(), max = 100))]
+    #[validate(range(min = utils::page_size_default(), max = 100))]
     pub limit: usize,
     pub search: Option<String>,
 }
@@ -397,4 +397,25 @@ pub struct TokenTransferProof {
     pub amt: Fixed128,
     pub tick: OriginalTokenTickRest,
     pub height: u32,
+}
+
+#[derive(Serialize)]
+pub struct AllTokenInfoRest {
+    tick: OriginalTokenTickRest,
+    max: Fixed128,
+    lim: Fixed128,
+    dec: u8,
+    supply: Fixed128,
+}
+
+impl From<TokenMetaDB> for AllTokenInfoRest {
+    fn from(value: TokenMetaDB) -> Self {
+        Self {
+            tick: value.proto.tick.into(),
+            dec: value.proto.dec,
+            lim: value.proto.lim,
+            max: value.proto.max,
+            supply: value.proto.supply,
+        }
+    }
 }

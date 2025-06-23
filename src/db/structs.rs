@@ -32,6 +32,12 @@ impl std::ops::DerefMut for LowerCaseTokenTick {
     }
 }
 
+impl LowerCaseTokenTick {
+    pub fn starts_with(&self, search: &str) -> bool {
+        self.0.starts_with(search.to_lowercase().as_bytes())
+    }
+}
+
 impl rocksdb_wrapper::Pebble for LowerCaseTokenTick {
     type Inner = Self;
 

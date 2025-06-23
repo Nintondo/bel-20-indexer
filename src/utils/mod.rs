@@ -5,7 +5,7 @@ mod fullhash;
 mod logging;
 mod progress;
 
-pub use address_fullhash::AddressesFullHash;
+pub use address_fullhash::{fullhash_to_address_str, AddressesFullHash};
 pub use fullhash::{ComputeScriptHash, FullHash, IsOpReturnHash};
 pub use logging::init_logger;
 pub use progress::Progress;

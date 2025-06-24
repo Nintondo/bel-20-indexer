@@ -22,7 +22,6 @@ pub struct ParseInscription<'a> {
 
 pub struct Parser<'a> {
     pub server: &'a Server,
-    pub reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>,
     pub token_cache: &'a mut TokenCache,
 }
 
@@ -274,20 +273,10 @@ impl Parser<'_> {
             to_write: outpoint_to_partials.into_iter().collect(),
         });
 
-        {
-            if let Some(reorg_cache) = self.reorg_cache.as_ref() {
-                let mut cache = reorg_cache.lock();
-                cache.add_inscription_offsets(
-                    prev_offsets.clone(),
-                    inscription_outpoint_to_offsets.keys().copied().collect(),
-                );
-            };
-
-            data_to_write.push(ProcessedData::InscriptionOffset {
-                to_remove: prev_offsets.iter().map(|x| x.0).collect(),
-                to_write: inscription_outpoint_to_offsets.into_iter().collect(),
-            });
-        }
+        data_to_write.push(ProcessedData::InscriptionOffset {
+            to_remove: prev_offsets.iter().map(|x| x.0).collect(),
+            to_write: inscription_outpoint_to_offsets.into_iter().collect(),
+        });
     }
 
     fn load_partials(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, Partials> {

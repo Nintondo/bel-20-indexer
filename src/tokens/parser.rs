@@ -348,11 +348,7 @@ impl TokenCache {
         (tickers, users)
     }
 
-    pub fn process_token_actions(
-        &mut self,
-        reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>,
-        holders: &Holders,
-    ) -> Vec<HistoryTokenAction> {
+    pub fn process_token_actions(&mut self, holders: &Holders) -> Vec<HistoryTokenAction> {
         let mut history = vec![];
 
         for action in self.token_actions.drain(..) {
@@ -383,10 +379,6 @@ impl TokenCache {
                             txid: genesis.txid,
                             vout: genesis.index,
                         });
-
-                        if let Some(x) = reorg_cache.as_ref() {
-                            x.lock().added_deployed_token(tick);
-                        }
                     }
                 }
                 TokenAction::Mint {
@@ -437,7 +429,7 @@ impl TokenCache {
                             .unwrap_or(&TokenBalance::default()),
                         amt,
                     );
-                    self.token_accounts.entry(key.clone()).or_default().balance += amt;
+                    self.token_accounts.entry(key).or_default().balance += amt;
                     *mint_count += 1;
 
                     history.push(HistoryTokenAction::Mint {
@@ -447,10 +439,6 @@ impl TokenCache {
                         txid,
                         vout,
                     });
-
-                    if let Some(x) = reorg_cache.as_ref() {
-                        x.lock().added_minted_token(key, amt);
-                    }
                 }
                 TokenAction::Transfer {
                     owner,
@@ -496,10 +484,6 @@ impl TokenCache {
                         continue;
                     }
 
-                    if let Some(x) = reorg_cache.as_ref() {
-                        x.lock().added_transfer_token(location, key.clone(), amt);
-                    }
-
                     account.balance -= amt;
                     account.transfers_count += 1;
                     account.transferable_balance += amt;
@@ -522,7 +506,7 @@ impl TokenCache {
                     txid,
                     vout,
                 } => {
-                    let Some((sender, TransferProtoDB { tick, amt, height })) =
+                    let Some((sender, TransferProtoDB { tick, amt, .. })) =
                         self.valid_transfers.remove(&transfer_location)
                     else {
                         // skip cause transfer has been already spent
@@ -578,21 +562,6 @@ impl TokenCache {
                         txid,
                         vout,
                     });
-
-                    if let Some(x) = reorg_cache.as_ref() {
-                        x.lock().removed_transfer_token(
-                            AddressLocation {
-                                address: sender,
-                                location: transfer_location,
-                            },
-                            TransferProtoDB {
-                                tick: *tick,
-                                amt,
-                                height,
-                            },
-                            recipient,
-                        );
-                    }
                 }
             }
         }

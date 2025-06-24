@@ -28,7 +28,7 @@ impl DB {
         self.address_token_to_balance
             .multi_get_kv(keys.iter(), false)
             .into_iter()
-            .map(|(k, v)| (k.clone(), v))
+            .map(|(k, v)| (*k, v))
             .collect()
     }
 

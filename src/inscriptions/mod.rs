@@ -53,7 +53,7 @@ impl Indexer {
     fn index(&self) -> anyhow::Result<()> {
         let rx = self.server.indexer.clone().parse_blocks();
 
-        let mut indexer = InscriptionIndexer::new(self.server.clone(), None);
+        let indexer = InscriptionIndexer::new(self.server.clone(), self.reorg_cache.clone());
 
         let mut progress: Option<Progress> = Some(Progress::begin(
             "Indexing",
@@ -82,8 +82,9 @@ impl Indexer {
                 reorg_len,
             } = data;
 
-            if id.height > tip - REORG_CACHE_MAX_LEN as u64 && indexer.reorg_cache.is_none() {
-                indexer.reorg_cache = Some(self.reorg_cache.clone());
+            let handle_reorgs = id.height > tip - REORG_CACHE_MAX_LEN as u64;
+
+            if handle_reorgs {
                 progress.take();
             }
 
@@ -102,7 +103,9 @@ impl Indexer {
                     .ok();
             }
 
-            indexer.handle(id.height as u32, block).track()?;
+            indexer
+                .handle(id.height as u32, block, handle_reorgs)
+                .track()?;
 
             prev_height = Some(id.height);
 

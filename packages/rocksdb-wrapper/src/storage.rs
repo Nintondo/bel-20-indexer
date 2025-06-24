@@ -311,7 +311,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         self.write(w);
     }
 
-    pub fn remove_batch(&self, k: impl Iterator<Item = impl Borrow<K::Inner>>) {
+    pub fn remove_batch(&self, k: impl IntoIterator<Item = impl Borrow<K::Inner>>) {
         let mut w = WriteBatchWithTransaction::<true>::default();
         let cf = self.cf();
         for k in k {

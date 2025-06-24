@@ -246,7 +246,7 @@ impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct AddressToken {
     pub address: FullHash,
     pub token: OriginalTokenTick,

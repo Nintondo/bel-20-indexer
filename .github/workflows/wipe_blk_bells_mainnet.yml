@@ -14,7 +14,6 @@ jobs:
       uses: appleboy/ssh-action@v1.0.0
       env:
         SERVICE_NAME: ${{ vars.SERVICE_NAME_1 }}
-        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE_1 }}
         SERVICE_DIR_1: ${{ vars.SERVICE_DIR_1 }}
         SERVICE_DIR_2: ${{ vars.SERVICE_DIR_2 }}
         COIN: bells
@@ -23,7 +22,7 @@ jobs:
         host: ${{ secrets.BELLS_MAINNET_HOST_1 }}
         username: ${{ secrets.BELLS_MAINNET_HOST_1_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        envs: SERVICE_NAME,DOCKER_COMPOSE_FILE,COIN,NETWORK,SERVICE_DIR_1,SERVICE_DIR_2
+        envs: SERVICE_NAME,COIN,NETWORK,SERVICE_DIR_1,SERVICE_DIR_2
         script: |
           cd /opt/${COIN}-${NETWORK}
           docker rm -f ${COIN}-${NETWORK}-${SERVICE_NAME}

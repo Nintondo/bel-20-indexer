@@ -92,17 +92,7 @@ fn main() {
     dotenv::dotenv().ok();
     utils::init_logger();
 
-    dbg!(
-        &*BLK_DIR,
-        &*URL,
-        &*USER,
-        &*PASS,
-        &*BLOCKCHAIN,
-        *NETWORK,
-        *JUBILEE_HEIGHT,
-        *START_HEIGHT,
-        &*SERVER_URL,
-    );
+    dbg!(&*BLK_DIR, &*URL, &*USER, &*PASS, &*BLOCKCHAIN, *NETWORK, *JUBILEE_HEIGHT, *START_HEIGHT, &*SERVER_URL,);
 
     let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).unwrap();
 
@@ -166,22 +156,14 @@ fn spawn_runtime(name: String, priority: Option<u8>) -> tokio::runtime::Runtime 
         };
     }
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .thread_name(&name)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread().thread_name(&name).enable_all().build().unwrap();
 
     runtime
 }
 
 fn shutdown_handler(token: dutils::wait_token::WaitToken) {
     let _: std::thread::JoinHandle<Result<(), std::io::Error>> = std::thread::spawn(move || {
-        let mut signals = signal_hook::iterator::Signals::new([
-            signal_hook::consts::SIGTERM,
-            signal_hook::consts::SIGINT,
-        ])
-        .inspect_err(|_| {
+        let mut signals = signal_hook::iterator::Signals::new([signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT]).inspect_err(|_| {
             token.cancel();
         })?;
 

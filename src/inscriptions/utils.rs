@@ -3,32 +3,24 @@ use nint_blk::proto::block::Block;
 
 use super::{processe_data::ProcessedData, *};
 
-pub fn process_prevouts(
-    db: Arc<DB>,
-    block: &Block,
-    data_to_write: &mut Vec<ProcessedData>,
-) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
+pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
     let prevouts = block
         .txs
         .iter()
         .flat_map(|tx| {
             let txid = tx.hash;
-            tx.value
-                .outputs
-                .iter()
-                .enumerate()
-                .map(move |(vout, txout)| {
-                    (
-                        OutPoint {
-                            txid: txid.into(),
-                            vout: vout as u32,
-                        },
-                        TxOut {
-                            value: txout.out.value,
-                            script_pubkey: ScriptBuf::from_bytes(txout.out.script_pubkey.clone()),
-                        },
-                    )
-                })
+            tx.value.outputs.iter().enumerate().map(move |(vout, txout)| {
+                (
+                    OutPoint {
+                        txid: txid.into(),
+                        vout: vout as u32,
+                    },
+                    TxOut {
+                        value: txout.out.value,
+                        script_pubkey: ScriptBuf::from_bytes(txout.out.script_pubkey.clone()),
+                    },
+                )
+            })
         })
         .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
         .collect::<HashMap<_, _>>();

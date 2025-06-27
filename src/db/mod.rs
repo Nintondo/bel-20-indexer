@@ -21,28 +21,15 @@ rocksdb_wrapper::generate_db_code! {
 }
 
 impl DB {
-    pub fn load_token_accounts(
-        &self,
-        keys: Vec<AddressToken>,
-    ) -> HashMap<AddressToken, TokenBalance> {
-        self.address_token_to_balance
-            .multi_get_kv(keys.iter(), false)
-            .into_iter()
-            .map(|(k, v)| (*k, v))
-            .collect()
+    pub fn load_token_accounts(&self, keys: Vec<AddressToken>) -> HashMap<AddressToken, TokenBalance> {
+        self.address_token_to_balance.multi_get_kv(keys.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect()
     }
 
-    pub fn load_transfers(
-        &self,
-        keys: &HashSet<AddressOutPoint>,
-    ) -> Vec<(Location, (FullHash, TransferProtoDB))> {
+    pub fn load_transfers(&self, keys: &HashSet<AddressOutPoint>) -> Vec<(Location, (FullHash, TransferProtoDB))> {
         keys.iter()
             .flat_map(|x| {
-                let (from, to) =
-                    AddressLocation::search_with_offset(x.address, x.outpoint).into_inner();
-                self.address_location_to_transfer
-                    .range(&from..=&to, false)
-                    .collect_vec()
+                let (from, to) = AddressLocation::search_with_offset(x.address, x.outpoint).into_inner();
+                self.address_location_to_transfer.range(&from..=&to, false).collect_vec()
             })
             .map(|(key, value)| (key.location, (key.address, value)))
             .collect()

@@ -52,9 +52,7 @@ impl TryFrom<&[u8]> for FullHash {
     type Error = anyhow::Error;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let result: [u8; 32] = value
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Failed to convert &[u8] to FullHash"))?;
+        let result: [u8; 32] = value.try_into().map_err(|_| anyhow::anyhow!("Failed to convert &[u8] to FullHash"))?;
 
         Ok(Self(result))
     }
@@ -64,9 +62,7 @@ impl TryFrom<Vec<u8>> for FullHash {
     type Error = anyhow::Error;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        let result: [u8; 32] = value
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Failed to convert Vec<u8> to FullHash"))?;
+        let result: [u8; 32] = value.try_into().map_err(|_| anyhow::anyhow!("Failed to convert Vec<u8> to FullHash"))?;
 
         Ok(Self(result))
     }

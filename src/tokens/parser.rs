@@ -95,15 +95,9 @@ impl TokenCache {
             })
             .collect();
 
-        token_cache
-            .valid_transfers
-            .extend(db.load_transfers(&transfers_to_remove));
+        token_cache.valid_transfers.extend(db.load_transfers(&transfers_to_remove));
 
-        token_cache.all_transfers = token_cache
-            .valid_transfers
-            .iter()
-            .map(|(location, (_, proto))| (*location, proto.clone()))
-            .collect();
+        token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
 
         token_cache
     }
@@ -111,9 +105,7 @@ impl TokenCache {
     fn try_parse(content_type: &str, content: &[u8]) -> Result<Brc4, Brc4ParseErr> {
         // Dogecoin wonky bugfix
         if *BLOCKCHAIN == "doge" {
-            if !content_type.starts_with("text/plain")
-                && !content_type.starts_with("application/json")
-            {
+            if !content_type.starts_with("text/plain") && !content_type.starts_with("application/json") {
                 return Err(Brc4ParseErr::WrongContentType);
             }
         } else {
@@ -126,13 +118,9 @@ impl TokenCache {
             return Err(Brc4ParseErr::InvalidUtf8);
         };
 
-        let data = serde_json::from_str::<serde_json::Value>(&data)
-            .map_err(|_| Brc4ParseErr::WrongProtocol)?;
+        let data = serde_json::from_str::<serde_json::Value>(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?;
 
-        let brc4 = serde_json::from_str::<Brc4>(
-            &serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?,
-        )
-        .map_err(|error| match error.to_string().as_str() {
+        let brc4 = serde_json::from_str::<Brc4>(&serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?).map_err(|error| match error.to_string().as_str() {
             "Invalid decimal: empty" => Brc4ParseErr::DecimalEmpty,
             "Invalid decimal: overflow from too many digits" => Brc4ParseErr::DecimalOverflow,
             "value cannot start from + or -" => Brc4ParseErr::DecimalPlusMinus,
@@ -161,10 +149,7 @@ impl TokenCache {
             }
             Brc4::Deploy { proto } => {
                 let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                if v.dec <= DeployProto::MAX_DEC
-                    && !v.lim.unwrap_or(v.max).is_zero()
-                    && !v.max.is_zero()
-                {
+                if v.dec <= DeployProto::MAX_DEC && !v.lim.unwrap_or(v.max).is_zero() && !v.max.is_zero() {
                     Ok(brc4)
                 } else {
                     Err(Brc4ParseErr::WrongProtocol)
@@ -174,12 +159,7 @@ impl TokenCache {
     }
 
     /// Parses token action from the InscriptionTemplate.
-    pub fn parse_token_action(
-        &mut self,
-        inc: &InscriptionTemplate,
-        height: u32,
-        created: u32,
-    ) -> Option<TransferProto> {
+    pub fn parse_token_action(&mut self, inc: &InscriptionTemplate, height: u32, created: u32) -> Option<TransferProto> {
         // skip to not add invalid token creation in token_cache
         if inc.owner.is_op_return_hash() || inc.leaked {
             return None;
@@ -230,10 +210,7 @@ impl TokenCache {
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
                 });
-                self.all_transfers.insert(
-                    inc.location,
-                    TransferProtoDB::from_proto(proto.clone(), height).ok()?,
-                );
+                self.all_transfers.insert(inc.location, TransferProtoDB::from_proto(proto.clone(), height).ok()?);
                 return Some(proto);
             }
         };
@@ -241,13 +218,7 @@ impl TokenCache {
         None
     }
 
-    pub fn transferred(
-        &mut self,
-        transfer_location: Location,
-        recipient: FullHash,
-        txid: Txid,
-        vout: u32,
-    ) {
+    pub fn transferred(&mut self, transfer_location: Location, recipient: FullHash, txid: Txid, vout: u32) {
         self.token_actions.push(TokenAction::Transferred {
             transfer_location,
             recipient,
@@ -319,19 +290,13 @@ impl TokenCache {
                     tickers.insert((*tick).into());
                     users.insert((*owner, *tick));
                 }
-                TokenAction::Transferred {
-                    transfer_location,
-                    recipient,
-                    ..
-                } => {
+                TokenAction::Transferred { transfer_location, recipient, .. } => {
                     let valid_transfer = self.valid_transfers.get(transfer_location);
                     let proto = self
                         .all_transfers
                         .get(transfer_location)
                         .map(|x| Some(x.clone()))
-                        .unwrap_or_else(|| {
-                            valid_transfer.map(|x| Some(x.1.clone())).unwrap_or(None)
-                        });
+                        .unwrap_or_else(|| valid_transfer.map(|x| Some(x.1.clone())).unwrap_or(None));
                     if let Some(TransferProtoDB { tick, .. }) = proto {
                         if !recipient.is_op_return_hash() {
                             users.insert((*recipient, tick));
@@ -353,21 +318,9 @@ impl TokenCache {
 
         for action in self.token_actions.drain(..) {
             match action {
-                TokenAction::Deploy {
-                    genesis,
-                    proto,
-                    owner,
-                } => {
-                    let DeployProtoDB {
-                        tick,
-                        max,
-                        lim,
-                        dec,
-                        ..
-                    } = proto.clone();
-                    if let std::collections::hash_map::Entry::Vacant(e) =
-                        self.tokens.entry(tick.into())
-                    {
+                TokenAction::Deploy { genesis, proto, owner } => {
+                    let DeployProtoDB { tick, max, lim, dec, .. } = proto.clone();
+                    if let std::collections::hash_map::Entry::Vacant(e) = self.tokens.entry(tick.into()) {
                         e.insert(TokenMeta { genesis, proto });
 
                         history.push(HistoryTokenAction::Deploy {
@@ -381,12 +334,7 @@ impl TokenCache {
                         });
                     }
                 }
-                TokenAction::Mint {
-                    owner,
-                    proto,
-                    txid,
-                    vout,
-                } => {
+                TokenAction::Mint { owner, proto, txid, vout } => {
                     let MintProtoWrapper { tick, amt } = proto;
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;
@@ -417,18 +365,9 @@ impl TokenCache {
                     *supply += amt;
                     *transactions += 1;
 
-                    let key = AddressToken {
-                        address: owner,
-                        token: *tick,
-                    };
+                    let key = AddressToken { address: owner, token: *tick };
 
-                    holders.increase(
-                        &key,
-                        self.token_accounts
-                            .get(&key)
-                            .unwrap_or(&TokenBalance::default()),
-                        amt,
-                    );
+                    holders.increase(&key, self.token_accounts.get(&key).unwrap_or(&TokenBalance::default()), amt);
                     self.token_accounts.entry(key).or_default().balance += amt;
                     *mint_count += 1;
 
@@ -472,10 +411,7 @@ impl TokenCache {
                         continue;
                     }
 
-                    let key = AddressToken {
-                        address: owner,
-                        token: *tick,
-                    };
+                    let key = AddressToken { address: owner, token: *tick };
                     let Some(account) = self.token_accounts.get_mut(&key) else {
                         continue;
                     };
@@ -506,23 +442,16 @@ impl TokenCache {
                     txid,
                     vout,
                 } => {
-                    let Some((sender, TransferProtoDB { tick, amt, .. })) =
-                        self.valid_transfers.remove(&transfer_location)
-                    else {
+                    let Some((sender, TransferProtoDB { tick, amt, .. })) = self.valid_transfers.remove(&transfer_location) else {
                         // skip cause transfer has been already spent
                         continue;
                     };
 
                     let token = self.tokens.get_mut(&tick.into()).expect("Tick must exist");
 
-                    let DeployProtoDB {
-                        transactions, tick, ..
-                    } = &mut token.proto;
+                    let DeployProtoDB { transactions, tick, .. } = &mut token.proto;
 
-                    let old_key = AddressToken {
-                        address: sender,
-                        token: *tick,
-                    };
+                    let old_key = AddressToken { address: sender, token: *tick };
 
                     let old_account = self.token_accounts.get_mut(&old_key).unwrap();
                     if old_account.transfers_count == 0 || old_account.transferable_balance < amt {
@@ -535,23 +464,11 @@ impl TokenCache {
                     *transactions += 1;
 
                     if !recipient.is_op_return_hash() {
-                        let recipient_key = AddressToken {
-                            address: recipient,
-                            token: *tick,
-                        };
+                        let recipient_key = AddressToken { address: recipient, token: *tick };
 
-                        holders.increase(
-                            &recipient_key,
-                            self.token_accounts
-                                .get(&recipient_key)
-                                .unwrap_or(&TokenBalance::default()),
-                            amt,
-                        );
+                        holders.increase(&recipient_key, self.token_accounts.get(&recipient_key).unwrap_or(&TokenBalance::default()), amt);
 
-                        self.token_accounts
-                            .entry(recipient_key)
-                            .or_default()
-                            .balance += amt;
+                        self.token_accounts.entry(recipient_key).or_default().balance += amt;
                     }
 
                     history.push(HistoryTokenAction::Send {

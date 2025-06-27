@@ -87,15 +87,8 @@ pub struct History {
 }
 
 impl History {
-    pub fn new(
-        height: u32,
-        action: TokenHistoryDB,
-        address_token: AddressTokenIdDB,
-        server: &Server,
-    ) -> anyhow::Result<Self> {
-        let keys = [action.address().copied(), Some(address_token.address)]
-            .into_iter()
-            .flatten();
+    pub fn new(height: u32, action: TokenHistoryDB, address_token: AddressTokenIdDB, server: &Server) -> anyhow::Result<Self> {
+        let keys = [action.address().copied(), Some(address_token.address)].into_iter().flatten();
 
         let addresses = server.load_addresses(keys)?;
 
@@ -119,12 +112,7 @@ pub struct AddressHistory {
 }
 
 impl AddressHistory {
-    pub fn new(
-        height: u32,
-        action: TokenHistoryDB,
-        address_token: AddressTokenIdDB,
-        server: &Server,
-    ) -> anyhow::Result<Self> {
+    pub fn new(height: u32, action: TokenHistoryDB, address_token: AddressTokenIdDB, server: &Server) -> anyhow::Result<Self> {
         let history = History::new(height, action, address_token, server)?;
         let created = server.db.block_info.get(height).anyhow()?.created;
         Ok(Self { history, created })
@@ -134,87 +122,23 @@ impl AddressHistory {
 #[derive(Serialize)]
 #[serde(tag = "type")]
 pub enum TokenAction {
-    Deploy {
-        max: Fixed128,
-        lim: Fixed128,
-        dec: u8,
-        txid: Txid,
-        vout: u32,
-    },
-    Mint {
-        amt: Fixed128,
-        txid: Txid,
-        vout: u32,
-    },
-    DeployTransfer {
-        amt: Fixed128,
-        txid: Txid,
-        vout: u32,
-    },
-    Send {
-        amt: Fixed128,
-        recipient: String,
-        txid: Txid,
-        vout: u32,
-    },
-    Receive {
-        amt: Fixed128,
-        sender: String,
-        txid: Txid,
-        vout: u32,
-    },
-    SendReceive {
-        amt: Fixed128,
-        txid: Txid,
-        vout: u32,
-    },
+    Deploy { max: Fixed128, lim: Fixed128, dec: u8, txid: Txid, vout: u32 },
+    Mint { amt: Fixed128, txid: Txid, vout: u32 },
+    DeployTransfer { amt: Fixed128, txid: Txid, vout: u32 },
+    Send { amt: Fixed128, recipient: String, txid: Txid, vout: u32 },
+    Receive { amt: Fixed128, sender: String, txid: Txid, vout: u32 },
+    SendReceive { amt: Fixed128, txid: Txid, vout: u32 },
 }
 
 impl From<server::HistoryValueEvent> for TokenAction {
     fn from(value: server::HistoryValueEvent) -> Self {
         match value.action {
-            server::TokenHistoryEvent::Deploy {
-                max,
-                lim,
-                dec,
-                txid,
-                vout,
-            } => Self::Deploy {
-                max,
-                lim,
-                dec,
-                txid,
-                vout,
-            },
-            server::TokenHistoryEvent::DeployTransfer { amt, txid, vout } => {
-                Self::DeployTransfer { amt, txid, vout }
-            }
+            server::TokenHistoryEvent::Deploy { max, lim, dec, txid, vout } => Self::Deploy { max, lim, dec, txid, vout },
+            server::TokenHistoryEvent::DeployTransfer { amt, txid, vout } => Self::DeployTransfer { amt, txid, vout },
             server::TokenHistoryEvent::Mint { amt, txid, vout } => Self::Mint { amt, txid, vout },
-            server::TokenHistoryEvent::Send {
-                amt,
-                recipient,
-                txid,
-                vout,
-            } => Self::Send {
-                amt,
-                recipient,
-                txid,
-                vout,
-            },
-            server::TokenHistoryEvent::Receive {
-                amt,
-                sender,
-                txid,
-                vout,
-            } => Self::Receive {
-                amt,
-                sender,
-                txid,
-                vout,
-            },
-            server::TokenHistoryEvent::SendReceive { amt, txid, vout } => {
-                Self::SendReceive { amt, txid, vout }
-            }
+            server::TokenHistoryEvent::Send { amt, recipient, txid, vout } => Self::Send { amt, recipient, txid, vout },
+            server::TokenHistoryEvent::Receive { amt, sender, txid, vout } => Self::Receive { amt, sender, txid, vout },
+            server::TokenHistoryEvent::SendReceive { amt, txid, vout } => Self::SendReceive { amt, txid, vout },
         }
     }
 }
@@ -222,48 +146,22 @@ impl From<server::HistoryValueEvent> for TokenAction {
 impl TokenAction {
     pub fn from_with_addresses(value: TokenHistoryDB, addresses: &AddressesFullHash) -> Self {
         match value {
-            TokenHistoryDB::Deploy {
-                max,
-                lim,
-                dec,
-                txid,
-                vout,
-            } => TokenAction::Deploy {
-                max,
-                lim,
-                dec,
-                txid,
-                vout,
-            },
+            TokenHistoryDB::Deploy { max, lim, dec, txid, vout } => TokenAction::Deploy { max, lim, dec, txid, vout },
             TokenHistoryDB::Mint { amt, txid, vout } => TokenAction::Mint { amt, txid, vout },
-            TokenHistoryDB::DeployTransfer { amt, txid, vout } => {
-                TokenAction::DeployTransfer { amt, txid, vout }
-            }
-            TokenHistoryDB::Send {
-                amt,
-                recipient,
-                txid,
-                vout,
-            } => TokenAction::Send {
+            TokenHistoryDB::DeployTransfer { amt, txid, vout } => TokenAction::DeployTransfer { amt, txid, vout },
+            TokenHistoryDB::Send { amt, recipient, txid, vout } => TokenAction::Send {
                 amt,
                 recipient: addresses.get(&recipient),
                 txid,
                 vout,
             },
-            TokenHistoryDB::Receive {
-                amt,
-                sender,
-                txid,
-                vout,
-            } => TokenAction::Receive {
+            TokenHistoryDB::Receive { amt, sender, txid, vout } => TokenAction::Receive {
                 amt,
                 sender: addresses.get(&sender),
                 txid,
                 vout,
             },
-            TokenHistoryDB::SendReceive { amt, txid, vout } => {
-                TokenAction::SendReceive { amt, txid, vout }
-            }
+            TokenHistoryDB::SendReceive { amt, txid, vout } => TokenAction::SendReceive { amt, txid, vout },
         }
     }
 }

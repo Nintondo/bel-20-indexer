@@ -10,12 +10,7 @@ pub async fn subscribe(
 
     let addresses = payload.addresses.unwrap_or_default();
 
-    let tokens = payload
-        .tokens
-        .unwrap_or_default()
-        .into_iter()
-        .map(LowerCaseTokenTick::from)
-        .collect::<HashSet<_>>();
+    let tokens = payload.tokens.unwrap_or_default().into_iter().map(LowerCaseTokenTick::from).collect::<HashSet<_>>();
 
     {
         let mut rx = server.event_sender.subscribe();
@@ -26,15 +21,11 @@ pub async fn subscribe(
                     Ok(event) => {
                         match event {
                             ServerEvent::NewHistory(address_token, action) => {
-                                if !addresses.is_empty()
-                                    && !addresses.contains(&address_token.address)
-                                {
+                                if !addresses.is_empty() && !addresses.contains(&address_token.address) {
                                     continue;
                                 }
 
-                                if !tokens.is_empty()
-                                    && !tokens.contains(&address_token.token.into())
-                                {
+                                if !tokens.is_empty() && !tokens.contains(&address_token.token.into()) {
                                     continue;
                                 }
 
@@ -106,11 +97,7 @@ pub async fn address_token_history(
     Path(script_str): Path<String>,
     Query(query): Query<types::AddressTokenHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
-    let scripthash: FullHash = server
-        .indexer
-        .to_scripthash(&script_str, ScriptType::Address)
-        .bad_request("Invalid address")?
-        .into();
+    let scripthash: FullHash = server.indexer.to_scripthash(&script_str, ScriptType::Address).bad_request("Invalid address")?.into();
 
     if let Some(limit) = query.limit {
         if limit > 100 {
@@ -119,11 +106,7 @@ pub async fn address_token_history(
     }
     let token: LowerCaseTokenTick = query.tick.into();
 
-    let deploy_proto = server
-        .db
-        .token_to_meta
-        .get(&token)
-        .not_found("Token not found")?;
+    let deploy_proto = server.db.token_to_meta.get(&token).not_found("Token not found")?;
 
     let token = deploy_proto.proto.tick;
 
@@ -151,10 +134,7 @@ pub async fn address_token_history(
     Ok(Json(res))
 }
 
-pub async fn events_by_height(
-    State(server): State<Arc<Server>>,
-    Path(height): Path<u32>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn events_by_height(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<impl IntoResponse> {
     let keys = server.db.block_events.get(height).unwrap_or_default();
 
     let res = server
@@ -169,10 +149,7 @@ pub async fn events_by_height(
     Ok(Json(res))
 }
 
-pub async fn proof_of_history(
-    State(server): State<Arc<Server>>,
-    Query(query): Query<types::ProofHistoryArgs>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn proof_of_history(State(server): State<Arc<Server>>, Query(query): Query<types::ProofHistoryArgs>) -> ApiResult<impl IntoResponse> {
     if let Some(limit) = query.limit {
         if limit > 100 {
             return Err("").bad_request("Limit exceeded");
@@ -183,30 +160,18 @@ pub async fn proof_of_history(
         .db
         .proof_of_history
         .range(..&query.offset.unwrap_or(u32::MAX), true)
-        .map(|(height, hash)| types::ProofOfHistory {
-            hash: hash.to_string(),
-            height,
-        })
+        .map(|(height, hash)| types::ProofOfHistory { hash: hash.to_string(), height })
         .take(query.limit.unwrap_or(100))
         .collect_vec();
 
     Ok(Json(res))
 }
 
-pub async fn txid_events(
-    State(server): State<Arc<Server>>,
-    Path(txid): Path<Txid>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn txid_events(State(server): State<Arc<Server>>, Path(txid): Path<Txid>) -> ApiResult<impl IntoResponse> {
     let keys = server
         .db
         .outpoint_to_event
-        .range(
-            &OutPoint { txid, vout: 0 }..&OutPoint {
-                txid,
-                vout: u32::MAX,
-            },
-            false,
-        )
+        .range(&OutPoint { txid, vout: 0 }..&OutPoint { txid, vout: u32::MAX }, false)
         .map(|(_, v)| v)
         .collect_vec();
 

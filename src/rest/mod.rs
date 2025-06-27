@@ -30,29 +30,14 @@ pub fn get_router(server: Arc<Server>) -> Router {
     Router::new()
         .route("/address/{address}", get(address::address_tokens))
         .route("/address/{address}/tokens", get(address::address_tokens))
-        .route(
-            "/address/{address}/history",
-            get(history::address_token_history),
-        )
-        .route(
-            "/address/{address}/tokens-tick",
-            get(address::address_tokens_tick),
-        )
-        .route(
-            "/address/{address}/{tick}/balance",
-            get(address::address_token_balance),
-        )
+        .route("/address/{address}/history", get(history::address_token_history))
+        .route("/address/{address}/tokens-tick", get(address::address_tokens_tick))
+        .route("/address/{address}/{tick}/balance", get(address::address_token_balance))
         .route("/tokens", get(tokens::tokens))
         .route("/token/all", get(info::all_tokens))
         .route("/token", get(tokens::token))
-        .route(
-            "/token/proof/{address}/{outpoint}",
-            get(tokens::token_transfer_proof),
-        )
-        .route(
-            "/inscriptions/{outpoint}",
-            get(info::inscriptions_on_outpoint),
-        )
+        .route("/token/proof/{address}/{outpoint}", get(tokens::token_transfer_proof))
+        .route("/inscriptions/{outpoint}", get(info::inscriptions_on_outpoint))
         .route("/holders", get(holders::holders))
         .route("/holders-stats", get(holders::holders_stats))
         .route("/events", post(history::subscribe))

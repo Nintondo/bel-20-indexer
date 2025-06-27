@@ -31,11 +31,7 @@ impl Inscription {
         if partials.len() == 1 && partials[0].is_tapscript {
             let script = Script::from_bytes(&partials[0].script_buffer);
             if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vin as usize) {
-                let data = v
-                    .into_iter()
-                    .map(ParsedEnvelope::from)
-                    .map(|x| x.payload)
-                    .collect();
+                let data = v.into_iter().map(ParsedEnvelope::from).map(|x| x.payload).collect();
 
                 return ParsedInscription::Many(data);
             }
@@ -260,10 +256,7 @@ impl InscriptionParser {
                 if bytes.len() < 5 {
                     return None;
                 }
-                let len = ((bytes[3] as usize) << 24)
-                    + ((bytes[2] as usize) << 16)
-                    + ((bytes[1] as usize) << 8)
-                    + (bytes[0] as usize);
+                let len = ((bytes[3] as usize) << 24) + ((bytes[2] as usize) << 16) + ((bytes[1] as usize) << 8) + (bytes[0] as usize);
                 if bytes.len() < 5 + len {
                     return None;
                 }
@@ -307,10 +300,7 @@ pub struct Location {
 
 impl Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!(
-            "{}i{}i{}",
-            self.outpoint.txid, self.outpoint.vout, self.offset
-        ))
+        f.write_str(&format!("{}i{}i{}", self.outpoint.txid, self.outpoint.vout, self.offset))
     }
 }
 
@@ -322,18 +312,9 @@ impl FromStr for Location {
 
         let error_msg = "Invalid location";
 
-        let txid =
-            Txid::from_str(items.next().anyhow_with(error_msg)?).anyhow_with("Invalid txid")?;
-        let vout: u32 = items
-            .next()
-            .anyhow_with(error_msg)?
-            .parse()
-            .anyhow_with("Invalid vout")?;
-        let offset: u64 = items
-            .next()
-            .anyhow_with(error_msg)?
-            .parse()
-            .anyhow_with("Invalid offset")?;
+        let txid = Txid::from_str(items.next().anyhow_with(error_msg)?).anyhow_with("Invalid txid")?;
+        let vout: u32 = items.next().anyhow_with(error_msg)?.parse().anyhow_with("Invalid vout")?;
+        let offset: u64 = items.next().anyhow_with(error_msg)?.parse().anyhow_with("Invalid offset")?;
 
         Ok(Self {
             offset,

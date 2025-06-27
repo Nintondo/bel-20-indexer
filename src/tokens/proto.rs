@@ -169,20 +169,9 @@ impl TransferProto {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Brc4Value {
-    Mint {
-        tick: OriginalTokenTick,
-        amt: Fixed128,
-    },
-    Transfer {
-        tick: OriginalTokenTick,
-        amt: Fixed128,
-    },
-    Deploy {
-        tick: OriginalTokenTick,
-        max: Fixed128,
-        lim: Fixed128,
-        dec: u8,
-    },
+    Mint { tick: OriginalTokenTick, amt: Fixed128 },
+    Transfer { tick: OriginalTokenTick, amt: Fixed128 },
+    Deploy { tick: OriginalTokenTick, max: Fixed128, lim: Fixed128, dec: u8 },
 }
 
 impl TryFrom<&DeployProto> for Brc4Value {
@@ -204,10 +193,7 @@ impl TryFrom<&MintProto> for Brc4Value {
 
     fn try_from(v: &MintProto) -> Result<Self, Self::Error> {
         let v = v.value()?;
-        Ok(Brc4Value::Mint {
-            tick: v.tick,
-            amt: v.amt,
-        })
+        Ok(Brc4Value::Mint { tick: v.tick, amt: v.amt })
     }
 }
 
@@ -216,9 +202,6 @@ impl TryFrom<&TransferProto> for Brc4Value {
 
     fn try_from(v: &TransferProto) -> Result<Self, Self::Error> {
         let v = v.value()?;
-        Ok(Brc4Value::Transfer {
-            tick: v.tick,
-            amt: v.amt,
-        })
+        Ok(Brc4Value::Transfer { tick: v.tick, amt: v.amt })
     }
 }

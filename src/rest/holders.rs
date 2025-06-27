@@ -1,27 +1,16 @@
 use super::*;
 
-pub async fn holders(
-    State(server): State<Arc<Server>>,
-    Query(query): Query<types::HoldersArgs>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn holders(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersArgs>) -> ApiResult<impl IntoResponse> {
     query.validate().bad_request(BAD_PARAMS)?;
 
     let tick: LowerCaseTokenTick = query.tick.into();
-    let proto = server
-        .db
-        .token_to_meta
-        .get(&tick)
-        .map(|x| x.proto)
-        .not_found("Tick not found")?;
+    let proto = server.db.token_to_meta.get(&tick).map(|x| x.proto).not_found("Tick not found")?;
 
     let result = if let Some(data) = server.holders.get_holders(&proto.tick) {
         let count = data.len();
         let pages = count.div_ceil(query.page_size);
         let mut holders = Vec::with_capacity(query.page_size);
-        let max_percent = data
-            .last()
-            .map(|x| x.0 / proto.supply * Fixed128::from(100))
-            .unwrap_or_default();
+        let max_percent = data.last().map(|x| x.0 / proto.supply * Fixed128::from(100)).unwrap_or_default();
 
         let keys = data
             .iter()
@@ -56,17 +45,9 @@ pub async fn holders(
     Ok(Json(result))
 }
 
-pub async fn holders_stats(
-    State(server): State<Arc<Server>>,
-    Query(query): Query<types::HoldersStatsArgs>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn holders_stats(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersStatsArgs>) -> ApiResult<impl IntoResponse> {
     let tick: LowerCaseTokenTick = query.tick.into();
-    let proto = server
-        .db
-        .token_to_meta
-        .get(&tick)
-        .map(|x| x.proto)
-        .not_found("Tick not found")?;
+    let proto = server.db.token_to_meta.get(&tick).map(|x| x.proto).not_found("Tick not found")?;
 
     let result = if let Some(data) = server.holders.get_holders(&proto.tick) {
         let mut result = Vec::with_capacity(5);

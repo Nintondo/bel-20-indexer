@@ -30,14 +30,7 @@ impl LeakedInscriptions {
         }
     }
 
-    pub fn add(
-        &mut self,
-        input_idx: usize,
-        tx: &Hashed<EvaluatedTx>,
-        input_offset: u64,
-        tx_outs: &HashMap<OutPoint, TxOut>,
-        inscription: LeakedInscription,
-    ) {
+    pub fn add(&mut self, input_idx: usize, tx: &Hashed<EvaluatedTx>, input_offset: u64, tx_outs: &HashMap<OutPoint, TxOut>, inscription: LeakedInscription) {
         let fee_result = Self::find_fee(tx, input_idx, input_offset, tx_outs);
 
         let diff = fee_result.fee - fee_result.fee_offset;
@@ -51,12 +44,7 @@ impl LeakedInscriptions {
     }
 
     pub fn add_tx_fee(&mut self, tx: &Hashed<EvaluatedTx>, txos: &HashMap<OutPoint, TxOut>) -> u64 {
-        let inputs_sum = tx
-            .value
-            .inputs
-            .iter()
-            .map(|x| txos.get(&x.outpoint).unwrap().value)
-            .sum::<u64>();
+        let inputs_sum = tx.value.inputs.iter().map(|x| txos.get(&x.outpoint).unwrap().value).sum::<u64>();
 
         let outputs_sum = tx.value.outputs.iter().map(|x| x.out.value).sum::<u64>();
 
@@ -66,15 +54,7 @@ impl LeakedInscriptions {
     }
 
     fn update_reward(&mut self) {
-        self.coinbase_reward = Some(
-            self.coinbase_tx
-                .value
-                .outputs
-                .iter()
-                .map(|x| x.out.value)
-                .sum::<u64>()
-                - self.total_amount,
-        );
+        self.coinbase_reward = Some(self.coinbase_tx.value.outputs.iter().map(|x| x.out.value).sum::<u64>() - self.total_amount);
     }
 
     pub fn get_leaked_inscriptions(mut self) -> impl Iterator<Item = Location> {
@@ -85,14 +65,13 @@ impl LeakedInscriptions {
             .into_iter()
             .flat_map(|(offset, x)| x.into_iter().map(move |x| (offset, x)))
             .filter_map(move |(offset, _)| {
-                self.find_inscription_vout(offset)
-                    .map(|(vout, offset)| Location {
-                        offset,
-                        outpoint: OutPoint {
-                            txid: self.coinbase_tx.hash.into(),
-                            vout,
-                        },
-                    })
+                self.find_inscription_vout(offset).map(|(vout, offset)| Location {
+                    offset,
+                    outpoint: OutPoint {
+                        txid: self.coinbase_tx.hash.into(),
+                        vout,
+                    },
+                })
             })
     }
 
@@ -108,12 +87,7 @@ impl LeakedInscriptions {
         None
     }
 
-    fn find_fee(
-        tx: &Hashed<EvaluatedTx>,
-        input_idx: usize,
-        input_offset: u64,
-        tx_outs: &HashMap<OutPoint, TxOut>,
-    ) -> FeeResult {
+    fn find_fee(tx: &Hashed<EvaluatedTx>, input_idx: usize, input_offset: u64, tx_outs: &HashMap<OutPoint, TxOut>) -> FeeResult {
         let inputs_cum = {
             let mut last_value = 0;
 
@@ -130,10 +104,7 @@ impl LeakedInscriptions {
         let output_sum = tx.value.outputs.iter().map(|x| x.out.value).sum::<u64>();
         let input_sum = *inputs_cum.last().unwrap();
 
-        let prev_out_value = tx_outs
-            .get(&tx.value.inputs.get(input_idx).unwrap().outpoint)
-            .map(|x| x.value)
-            .unwrap();
+        let prev_out_value = tx_outs.get(&tx.value.inputs.get(input_idx).unwrap().outpoint).map(|x| x.value).unwrap();
 
         let offset = inputs_cum[input_idx] - prev_out_value + input_offset - output_sum;
 

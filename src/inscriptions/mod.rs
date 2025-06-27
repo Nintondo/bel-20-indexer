@@ -39,11 +39,7 @@ impl Indexer {
     pub fn run(self) -> anyhow::Result<()> {
         self.index()?;
 
-        self.reorg_cache
-            .lock()
-            .restore_all(&self.server)
-            .track()
-            .ok();
+        self.reorg_cache.lock().restore_all(&self.server).track().ok();
 
         self.server.db.flush_all();
 
@@ -55,11 +51,7 @@ impl Indexer {
 
         let indexer = InscriptionIndexer::new(self.server.clone(), self.reorg_cache.clone());
 
-        let mut progress: Option<Progress> = Some(Progress::begin(
-            "Indexing",
-            self.server.indexer.last_height as u64,
-            self.server.indexer.last_height as u64,
-        ));
+        let mut progress: Option<Progress> = Some(Progress::begin("Indexing", self.server.indexer.last_height as u64, self.server.indexer.last_height as u64));
 
         let mut prev_height: Option<u64> = None;
         while !self.server.token.is_cancelled() {
@@ -75,12 +67,7 @@ impl Indexer {
                 progress.update_len(data.tip.saturating_sub(REORG_CACHE_MAX_LEN as u64));
             }
 
-            let BlockEvent {
-                block,
-                id,
-                tip,
-                reorg_len,
-            } = data;
+            let BlockEvent { block, id, tip, reorg_len } = data;
 
             let handle_reorgs = id.height > tip - REORG_CACHE_MAX_LEN as u64;
 
@@ -90,22 +77,13 @@ impl Indexer {
 
             if reorg_len > 0 {
                 warn!("Reorg detected: {} blocks", reorg_len);
-                let restore_height = prev_height
-                    .unwrap_or_default()
-                    .saturating_sub(reorg_len as u64);
+                let restore_height = prev_height.unwrap_or_default().saturating_sub(reorg_len as u64);
 
-                self.reorg_cache
-                    .lock()
-                    .restore(&self.server, restore_height as u32)?;
-                self.server
-                    .event_sender
-                    .send(ServerEvent::Reorg(reorg_len as u32, id.height as u32))
-                    .ok();
+                self.reorg_cache.lock().restore(&self.server, restore_height as u32)?;
+                self.server.event_sender.send(ServerEvent::Reorg(reorg_len as u32, id.height as u32)).ok();
             }
 
-            indexer
-                .handle(id.height as u32, block, handle_reorgs)
-                .track()?;
+            indexer.handle(id.height as u32, block, handle_reorgs).track()?;
 
             prev_height = Some(id.height);
 

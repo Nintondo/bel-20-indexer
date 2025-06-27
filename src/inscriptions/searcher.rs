@@ -8,16 +8,8 @@ use super::*;
 pub struct InscriptionSearcher {}
 
 impl InscriptionSearcher {
-    pub fn calc_offsets(
-        tx: &Hashed<EvaluatedTx>,
-        tx_outs: &HashMap<OutPoint, TxOut>,
-    ) -> Option<Vec<u64>> {
-        let mut input_values = tx
-            .value
-            .inputs
-            .iter()
-            .map(|x| tx_outs.get(&x.outpoint).map(|x| x.value))
-            .collect::<Option<Vec<u64>>>()?;
+    pub fn calc_offsets(tx: &Hashed<EvaluatedTx>, tx_outs: &HashMap<OutPoint, TxOut>) -> Option<Vec<u64>> {
+        let mut input_values = tx.value.inputs.iter().map(|x| tx_outs.get(&x.outpoint).map(|x| x.value)).collect::<Option<Vec<u64>>>()?;
 
         let spend: u64 = input_values.iter().sum();
 
@@ -40,21 +32,14 @@ impl InscriptionSearcher {
         Some(inputs_offsets)
     }
 
-    pub fn get_output_index_by_input(
-        offset: Option<u64>,
-        tx_outs: &[EvaluatedTxOut],
-    ) -> anyhow::Result<(u32, u64)> {
+    pub fn get_output_index_by_input(offset: Option<u64>, tx_outs: &[EvaluatedTxOut]) -> anyhow::Result<(u32, u64)> {
         let Some(mut offset) = offset else {
             return Err(anyhow::anyhow!("leaked: offset is None"));
         };
 
         let total_output: u64 = tx_outs.iter().map(|x| x.out.value).sum();
         if offset >= total_output {
-            return Err(anyhow::anyhow!(
-                "leaked: offset={} is too large for total_output={}",
-                offset,
-                total_output
-            ));
+            return Err(anyhow::anyhow!("leaked: offset={} is too large for total_output={}", offset, total_output));
         }
 
         for (idx, vout) in tx_outs.iter().enumerate() {

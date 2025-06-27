@@ -14,13 +14,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(
-        db_path: &str,
-    ) -> anyhow::Result<(
-        kanal::Receiver<RawServerEvent>,
-        tokio::sync::broadcast::Sender<ServerEvent>,
-        Self,
-    )> {
+    pub fn new(db_path: &str) -> anyhow::Result<(kanal::Receiver<RawServerEvent>, tokio::sync::broadcast::Sender<ServerEvent>, Self)> {
         let (raw_tx, raw_rx) = kanal::unbounded();
         let (tx, _) = tokio::sync::broadcast::channel(30_000);
         let token = WaitToken::default();
@@ -58,27 +52,15 @@ impl Server {
         Ok((raw_rx, tx, server))
     }
 
-    pub fn load_addresses(
-        &self,
-        keys: impl IntoIterator<Item = FullHash>,
-    ) -> anyhow::Result<AddressesFullHash> {
+    pub fn load_addresses(&self, keys: impl IntoIterator<Item = FullHash>) -> anyhow::Result<AddressesFullHash> {
         let keys = keys.into_iter().collect::<HashSet<_>>();
 
         Ok(AddressesFullHash::new(
-            self.db
-                .fullhash_to_address
-                .multi_get_kv(keys.iter(), false)
-                .into_iter()
-                .map(|(k, v)| (*k, v))
-                .collect(),
+            self.db.fullhash_to_address.multi_get_kv(keys.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect(),
         ))
     }
 
-    pub fn generate_history_hash(
-        prev_history_hash: sha256::Hash,
-        history: &[(AddressTokenIdDB, HistoryValue)],
-        addresses: &AddressesFullHash,
-    ) -> anyhow::Result<sha256::Hash> {
+    pub fn generate_history_hash(prev_history_hash: sha256::Hash, history: &[(AddressTokenIdDB, HistoryValue)], addresses: &AddressesFullHash) -> anyhow::Result<sha256::Hash> {
         let current_hash = if history.is_empty() {
             *DEFAULT_HASH
         } else {
@@ -87,10 +69,7 @@ impl Server {
             for (address_token, action) in history {
                 let rest = rest::types::History {
                     height: action.height,
-                    action: rest::types::TokenAction::from_with_addresses(
-                        action.action.clone(),
-                        addresses,
-                    ),
+                    action: rest::types::TokenAction::from_with_addresses(action.action.clone(), addresses),
                     address_token: rest::types::AddressTokenId {
                         address: addresses.get(&address_token.address),
                         id: address_token.id,

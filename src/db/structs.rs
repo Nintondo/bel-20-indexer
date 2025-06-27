@@ -9,12 +9,7 @@ pub struct LowerCaseTokenTick(pub Vec<u8>);
 
 impl<T: AsRef<[u8]>> From<T> for LowerCaseTokenTick {
     fn from(value: T) -> Self {
-        LowerCaseTokenTick(
-            String::from_utf8_lossy(value.as_ref())
-                .to_lowercase()
-                .as_bytes()
-                .to_vec(),
-        )
+        LowerCaseTokenTick(String::from_utf8_lossy(value.as_ref()).to_lowercase().as_bytes().to_vec())
     }
 }
 
@@ -90,17 +85,11 @@ impl AddressLocation {
     pub fn search_with_offset(address: FullHash, outpoint: OutPoint) -> RangeInclusive<Self> {
         let start = Self {
             address,
-            location: Location {
-                outpoint,
-                offset: 0,
-            },
+            location: Location { outpoint, offset: 0 },
         };
         let end = Self {
             address,
-            location: Location {
-                outpoint,
-                offset: u64::MAX,
-            },
+            location: Location { outpoint, offset: u64::MAX },
         };
 
         start..=end
@@ -114,10 +103,7 @@ impl AddressLocation {
         let start = Self {
             address,
             location: Location {
-                outpoint: OutPoint {
-                    txid: Txid::all_zeros(),
-                    vout: 0,
-                },
+                outpoint: OutPoint { txid: Txid::all_zeros(), vout: 0 },
                 offset: 0,
             },
         };
@@ -138,10 +124,7 @@ impl AddressLocation {
     fn search_offset(address: FullHash, offset: OutPoint) -> RangeInclusive<Self> {
         let start = Self {
             address,
-            location: Location {
-                outpoint: offset,
-                offset: 0,
-            },
+            location: Location { outpoint: offset, offset: 0 },
         };
         let end = Self {
             address,
@@ -201,13 +184,7 @@ impl rocksdb_wrapper::Pebble for BlockInfo {
     type Inner = Self;
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
-        Cow::Owned(
-            [
-                v.hash.to_byte_array().as_slice(),
-                v.created.to_be_bytes().as_slice(),
-            ]
-            .concat(),
-        )
+        Cow::Owned([v.hash.to_byte_array().as_slice(), v.created.to_be_bytes().as_slice()].concat())
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
@@ -254,10 +231,7 @@ pub struct AddressToken {
 
 impl AddressToken {
     pub fn search(address: FullHash) -> RangeInclusive<AddressToken> {
-        let start = AddressToken {
-            address,
-            token: [0; 4].into(),
-        };
+        let start = AddressToken { address, token: [0; 4].into() };
         let end = AddressToken {
             address,
             token: [u8::MAX; 4].into(),
@@ -304,26 +278,16 @@ pub struct TransferProtoDB {
 impl TransferProtoDB {
     pub fn from_proto(value: TransferProto, height: u32) -> anyhow::Result<Self> {
         let v = value.value()?;
-        Ok(Self {
-            amt: v.amt,
-            height,
-            tick: v.tick,
-        })
+        Ok(Self { amt: v.amt, height, tick: v.tick })
     }
 }
 
 impl From<TransferProtoDB> for TransferProto {
     fn from(v: TransferProtoDB) -> Self {
         if *BLOCKCHAIN == "bells" {
-            TransferProto::Bel20(MintProtoWrapper {
-                tick: v.tick,
-                amt: v.amt,
-            })
+            TransferProto::Bel20(MintProtoWrapper { tick: v.tick, amt: v.amt })
         } else {
-            TransferProto::Drc20(MintProtoWrapper {
-                tick: v.tick,
-                amt: v.amt,
-            })
+            TransferProto::Drc20(MintProtoWrapper { tick: v.tick, amt: v.amt })
         }
     }
 }
@@ -348,9 +312,7 @@ impl DeployProtoDB {
         self.supply == Fixed128::from(self.max)
     }
     pub fn mint_percent(&self) -> Fixed128 {
-        (rust_decimal::Decimal::from_u64(100).unwrap() * self.supply.into_decimal()
-            / self.max.into_decimal())
-        .into()
+        (rust_decimal::Decimal::from_u64(100).unwrap() * self.supply.into_decimal() / self.max.into_decimal()).into()
     }
 }
 
@@ -363,40 +325,12 @@ pub struct TokenBalance {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum TokenHistoryDB {
-    Deploy {
-        max: Fixed128,
-        lim: Fixed128,
-        dec: u8,
-        txid: Txid,
-        vout: u32,
-    },
-    Mint {
-        amt: Fixed128,
-        txid: Txid,
-        vout: u32,
-    },
-    DeployTransfer {
-        amt: Fixed128,
-        txid: Txid,
-        vout: u32,
-    },
-    Send {
-        amt: Fixed128,
-        recipient: FullHash,
-        txid: Txid,
-        vout: u32,
-    },
-    Receive {
-        amt: Fixed128,
-        sender: FullHash,
-        txid: Txid,
-        vout: u32,
-    },
-    SendReceive {
-        amt: Fixed128,
-        txid: Txid,
-        vout: u32,
-    },
+    Deploy { max: Fixed128, lim: Fixed128, dec: u8, txid: Txid, vout: u32 },
+    Mint { amt: Fixed128, txid: Txid, vout: u32 },
+    DeployTransfer { amt: Fixed128, txid: Txid, vout: u32 },
+    Send { amt: Fixed128, recipient: FullHash, txid: Txid, vout: u32 },
+    Receive { amt: Fixed128, sender: FullHash, txid: Txid, vout: u32 },
+    SendReceive { amt: Fixed128, txid: Txid, vout: u32 },
 }
 
 #[derive(Serialize, Debug, Clone, Deserialize)]
@@ -408,26 +342,9 @@ pub struct HistoryValue {
 impl TokenHistoryDB {
     pub fn from_token_history(token_history: HistoryTokenAction) -> Self {
         match token_history {
-            HistoryTokenAction::Deploy {
-                max,
-                lim,
-                dec,
-                txid,
-                vout,
-                ..
-            } => TokenHistoryDB::Deploy {
-                max,
-                lim,
-                dec,
-                txid,
-                vout,
-            },
-            HistoryTokenAction::Mint {
-                amt, txid, vout, ..
-            } => TokenHistoryDB::Mint { amt, txid, vout },
-            HistoryTokenAction::DeployTransfer {
-                amt, txid, vout, ..
-            } => TokenHistoryDB::DeployTransfer { amt, txid, vout },
+            HistoryTokenAction::Deploy { max, lim, dec, txid, vout, .. } => TokenHistoryDB::Deploy { max, lim, dec, txid, vout },
+            HistoryTokenAction::Mint { amt, txid, vout, .. } => TokenHistoryDB::Mint { amt, txid, vout },
+            HistoryTokenAction::DeployTransfer { amt, txid, vout, .. } => TokenHistoryDB::DeployTransfer { amt, txid, vout },
             HistoryTokenAction::Send {
                 amt,
                 recipient,
@@ -439,12 +356,7 @@ impl TokenHistoryDB {
                 if sender == recipient {
                     TokenHistoryDB::SendReceive { amt, txid, vout }
                 } else {
-                    TokenHistoryDB::Send {
-                        amt,
-                        recipient,
-                        txid,
-                        vout,
-                    }
+                    TokenHistoryDB::Send { amt, recipient, txid, vout }
                 }
             }
         }
@@ -465,10 +377,7 @@ impl TokenHistoryDB {
             | TokenHistoryDB::DeployTransfer { txid, vout, .. }
             | TokenHistoryDB::Send { txid, vout, .. }
             | TokenHistoryDB::Receive { txid, vout, .. }
-            | TokenHistoryDB::SendReceive { txid, vout, .. } => OutPoint {
-                txid: *txid,
-                vout: *vout,
-            },
+            | TokenHistoryDB::SendReceive { txid, vout, .. } => OutPoint { txid: *txid, vout: *vout },
         }
     }
 }

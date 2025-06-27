@@ -54,7 +54,7 @@ impl ProcessedData {
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
-                    let prevouts = server.db.prevouts.multi_get_kv(to_remove.iter(), true).into_iter().map(|(k, v)| (*k, v)).collect_vec();
+                    let prevouts = server.db.prevouts.multi_get_kv(to_remove.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect_vec();
                     reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
                 }
 

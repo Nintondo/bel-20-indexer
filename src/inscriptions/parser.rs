@@ -26,31 +26,18 @@ pub struct Parser<'a> {
 }
 
 impl Parser<'_> {
-    pub fn parse_block(
-        &mut self,
-        height: u32,
-        block: nint_blk::proto::block::Block,
-        prevouts: &HashMap<OutPoint, TxOut>,
-        data_to_write: &mut Vec<ProcessedData>,
-    ) {
+    pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxOut>, data_to_write: &mut Vec<ProcessedData>) {
         let is_jubilee_height = height as usize >= *JUBILEE_HEIGHT;
 
         // Hold inscription's partials from db and new in the block
-        let mut outpoint_to_partials =
-            Self::load_partials(self.server, prevouts.keys().cloned().collect());
+        let mut outpoint_to_partials = Self::load_partials(self.server, prevouts.keys().cloned().collect());
 
         // Hold inscription's partials to remove from db
         let partials_to_remove: Vec<_> = outpoint_to_partials.keys().copied().collect();
 
-        let mut inscription_outpoint_to_offsets = Self::load_inscription_outpoint_to_offsets(
-            self.server,
-            prevouts.keys().cloned().collect(),
-        );
+        let mut inscription_outpoint_to_offsets = Self::load_inscription_outpoint_to_offsets(self.server, prevouts.keys().cloned().collect());
 
-        let prev_offsets = inscription_outpoint_to_offsets
-            .iter()
-            .map(|(k, v)| (*k, v.clone()))
-            .collect_vec();
+        let prev_offsets = inscription_outpoint_to_offsets.iter().map(|(k, v)| (*k, v.clone())).collect_vec();
 
         let mut leaked: Option<LeakedInscriptions> = None;
 
@@ -69,64 +56,33 @@ impl Parser<'_> {
             let mut inscription_index_in_tx = 0;
             let txid: Txid = tx.hash.into();
 
-            let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts)
-                .expect("failed to find all txos to calculate offsets");
+            let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
-                if let Some(inscription_offsets) =
-                    inscription_outpoint_to_offsets.remove(&txin.outpoint)
-                {
+                if let Some(inscription_offsets) = inscription_outpoint_to_offsets.remove(&txin.outpoint) {
                     for inscription_offset in inscription_offsets {
                         let old_location = Location {
                             outpoint: txin.outpoint,
                             offset: inscription_offset,
                         };
 
-                        let is_token_transfer_move =
-                            self.token_cache.all_transfers.contains_key(&old_location);
+                        let is_token_transfer_move = self.token_cache.all_transfers.contains_key(&old_location);
 
                         let offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
-                        match InscriptionSearcher::get_output_index_by_input(
-                            offset,
-                            &tx.value.outputs,
-                        ) {
+                        match InscriptionSearcher::get_output_index_by_input(offset, &tx.value.outputs) {
                             Ok((new_vout, new_offset)) => {
-                                let new_outpoint = OutPoint {
-                                    txid,
-                                    vout: new_vout,
-                                };
+                                let new_outpoint = OutPoint { txid, vout: new_vout };
 
-                                inscription_outpoint_to_offsets
-                                    .entry(new_outpoint)
-                                    .or_default()
-                                    .insert(new_offset);
+                                inscription_outpoint_to_offsets.entry(new_outpoint).or_default().insert(new_offset);
 
                                 // handle move of token transfer
                                 if is_token_transfer_move {
-                                    if ScriptBuf::from_bytes(
-                                        tx.value.outputs[new_vout as usize]
-                                            .out
-                                            .script_pubkey
-                                            .clone(),
-                                    )
-                                    .is_op_return()
-                                    {
-                                        self.token_cache.burned_transfer(
-                                            old_location,
-                                            txid,
-                                            new_vout,
-                                        );
+                                    if ScriptBuf::from_bytes(tx.value.outputs[new_vout as usize].out.script_pubkey.clone()).is_op_return() {
+                                        self.token_cache.burned_transfer(old_location, txid, new_vout);
                                     } else {
-                                        let owner = bellscoin::hashes::sha256d::Hash::hash(
-                                            &tx.value.outputs[new_vout as usize].out.script_pubkey,
-                                        );
-                                        self.token_cache.transferred(
-                                            old_location,
-                                            owner.into(),
-                                            txid,
-                                            new_vout,
-                                        );
+                                        let owner = bellscoin::hashes::sha256d::Hash::hash(&tx.value.outputs[new_vout as usize].out.script_pubkey);
+                                        self.token_cache.transferred(old_location, owner.into(), txid, new_vout);
                                     };
                                 }
                             }
@@ -140,16 +96,9 @@ impl Parser<'_> {
                                         .expect("Owner of token transfer must exist")
                                         .script_pubkey
                                         .compute_script_hash();
-                                    self.token_cache
-                                        .transferred(old_location, recipient, txid, 0);
+                                    self.token_cache.transferred(old_location, recipient, txid, 0);
                                 }
-                                leaked.as_mut().unwrap().add(
-                                    input_index,
-                                    tx,
-                                    inscription_offset,
-                                    prevouts,
-                                    LeakedInscription::Move,
-                                );
+                                leaked.as_mut().unwrap().add(input_index, tx, inscription_offset, prevouts, LeakedInscription::Move);
                             }
                         }
                     }
@@ -157,14 +106,11 @@ impl Parser<'_> {
 
                 // handle inscription creation
                 if is_jubilee_height || input_index == 0 {
-                    let mut partials =
-                        outpoint_to_partials
-                            .remove(&txin.outpoint)
-                            .unwrap_or(Partials {
-                                genesis_txid: txid,
-                                inscription_index: 0,
-                                parts: vec![],
-                            });
+                    let mut partials = outpoint_to_partials.remove(&txin.outpoint).unwrap_or(Partials {
+                        genesis_txid: txid,
+                        inscription_index: 0,
+                        parts: vec![],
+                    });
 
                     let part = if let Some(tapscript) = txin.witness.tapscript() {
                         Part {
@@ -199,13 +145,7 @@ impl Parser<'_> {
                                 inscription_index_in_tx += 1;
                             }
                             if tx.value.outputs.get(input_index).is_some() {
-                                outpoint_to_partials.insert(
-                                    OutPoint {
-                                        txid,
-                                        vout: input_index as u32,
-                                    },
-                                    partials,
-                                );
+                                outpoint_to_partials.insert(OutPoint { txid, vout: input_index as u32 }, partials);
                             }
                             continue;
                         }
@@ -218,13 +158,10 @@ impl Parser<'_> {
                         }
                         ParsedInscriptionResult::Many(mut inscription_templates) => {
                             if partials.genesis_txid == txid {
-                                inscription_templates
-                                    .iter_mut()
-                                    .for_each(|inscription_template| {
-                                        inscription_template.genesis.index =
-                                            inscription_index_in_tx;
-                                        inscription_index_in_tx += 1;
-                                    });
+                                inscription_templates.iter_mut().for_each(|inscription_template| {
+                                    inscription_template.genesis.index = inscription_index_in_tx;
+                                    inscription_index_in_tx += 1;
+                                });
                             }
 
                             inscription_templates
@@ -248,25 +185,15 @@ impl Parser<'_> {
                         }
 
                         // handle token deploy|mint|transfer creation
-                        self.token_cache.parse_token_action(
-                            &inscription_template,
-                            height,
-                            block.header.value.timestamp,
-                        );
+                        self.token_cache.parse_token_action(&inscription_template, height, block.header.value.timestamp);
                     }
                 }
             }
         }
 
-        leaked
-            .unwrap()
-            .get_leaked_inscriptions()
-            .for_each(|location| {
-                inscription_outpoint_to_offsets
-                    .entry(location.outpoint)
-                    .or_default()
-                    .insert(location.offset);
-            });
+        leaked.unwrap().get_leaked_inscriptions().for_each(|location| {
+            inscription_outpoint_to_offsets.entry(location.outpoint).or_default().insert(location.offset);
+        });
 
         data_to_write.push(ProcessedData::InscriptionPartials {
             to_remove: partials_to_remove,
@@ -289,10 +216,7 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn load_inscription_outpoint_to_offsets(
-        server: &Server,
-        outpoints: Vec<OutPoint>,
-    ) -> HashMap<OutPoint, HashSet<u64>> {
+    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, HashSet<u64>> {
         server
             .db
             .outpoint_to_inscription_offsets
@@ -302,36 +226,25 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn parse_inscription(
-        payload: ParseInscription,
-        leaked: &mut LeakedInscriptions,
-    ) -> ParsedInscriptionResult {
+    fn parse_inscription(payload: ParseInscription, leaked: &mut LeakedInscriptions) -> ParsedInscriptionResult {
         let parsed = Inscription::from_parts(&payload.partials.parts, payload.input_index);
 
         match parsed {
             ParsedInscription::None => ParsedInscriptionResult::None,
             ParsedInscription::Partial => ParsedInscriptionResult::Partials,
-            ParsedInscription::Single(inscription) => {
-                Self::convert_to_template(&payload, inscription, leaked)
-                    .map(ParsedInscriptionResult::Single)
-                    .unwrap_or(ParsedInscriptionResult::None)
-            }
+            ParsedInscription::Single(inscription) => Self::convert_to_template(&payload, inscription, leaked)
+                .map(ParsedInscriptionResult::Single)
+                .unwrap_or(ParsedInscriptionResult::None),
             ParsedInscription::Many(inscriptions) => ParsedInscriptionResult::Many(
                 inscriptions
                     .into_iter()
-                    .filter_map(|inscription| {
-                        Self::convert_to_template(&payload, inscription, leaked)
-                    })
+                    .filter_map(|inscription| Self::convert_to_template(&payload, inscription, leaked))
                     .collect(),
             ),
         }
     }
 
-    fn convert_to_template(
-        payload: &ParseInscription,
-        inscription: Inscription,
-        leaked: &mut LeakedInscriptions,
-    ) -> Option<InscriptionTemplate> {
+    fn convert_to_template(payload: &ParseInscription, inscription: Inscription, leaked: &mut LeakedInscriptions) -> Option<InscriptionTemplate> {
         let genesis = {
             InscriptionId {
                 txid: payload.partials.genesis_txid,
@@ -359,26 +272,13 @@ impl Parser<'_> {
             leaked: false,
         };
 
-        let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(
-            payload
-                .inputs_cum
-                .get(payload.input_index as usize)
-                .copied(),
-            &payload.tx.value.outputs,
-        ) else {
-            leaked.add(
-                payload.input_index as usize,
-                payload.tx,
-                0,
-                payload.prevouts,
-                LeakedInscription::Creation,
-            );
+        let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)
+        else {
+            leaked.add(payload.input_index as usize, payload.tx, 0, payload.prevouts, LeakedInscription::Creation);
             return None;
         };
 
-        if let Ok((new_vout, new_offset)) =
-            InscriptionSearcher::get_output_index_by_input(pointer, &payload.tx.value.outputs)
-        {
+        if let Ok((new_vout, new_offset)) = InscriptionSearcher::get_output_index_by_input(pointer, &payload.tx.value.outputs) {
             vout = new_vout;
             offset = new_offset;
         }

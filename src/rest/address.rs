@@ -1,17 +1,10 @@
 use super::*;
 
-pub async fn address_tokens_tick(
-    url: Uri,
-    State(state): State<Arc<Server>>,
-    Path(script_str): Path<String>,
-) -> ApiResult<impl IntoResponse> {
+pub async fn address_tokens_tick(url: Uri, State(state): State<Arc<Server>>, Path(script_str): Path<String>) -> ApiResult<impl IntoResponse> {
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
-        .to_scripthash(
-            &script_str,
-            script_type.parse().bad_request("Invalid script type")?,
-        )
+        .to_scripthash(&script_str, script_type.parse().bad_request("Invalid script type")?)
         .bad_request("Invalid address")?
         .into();
 
@@ -19,15 +12,7 @@ pub async fn address_tokens_tick(
     let data = state
         .db
         .token_to_meta
-        .multi_get(
-            state
-                .db
-                .address_token_to_balance
-                .range(&from..&to, false)
-                .map(|(k, _)| k.token.into())
-                .collect_vec()
-                .iter(),
-        )
+        .multi_get(state.db.address_token_to_balance.range(&from..&to, false).map(|(k, _)| k.token.into()).collect_vec().iter())
         .into_iter()
         .flatten()
         .map(|x| x.proto.tick.to_string())
@@ -44,34 +29,19 @@ pub async fn address_token_balance(
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
-        .to_scripthash(
-            &script_str,
-            script_type.parse().bad_request("Invalid script type")?,
-        )
+        .to_scripthash(&script_str, script_type.parse().bad_request("Invalid script type")?)
         .bad_request("Invalid address")?
         .into();
 
     let token: LowerCaseTokenTick = tick.into();
 
-    let deploy_proto = state
-        .db
-        .token_to_meta
-        .get(&token)
-        .not_found("Token not found")?;
+    let deploy_proto = state.db.token_to_meta.get(&token).not_found("Token not found")?;
 
     let tick = deploy_proto.proto.tick;
 
-    let balance = state
-        .db
-        .address_token_to_balance
-        .get(AddressToken {
-            address: scripthash,
-            token: tick,
-        })
-        .unwrap_or_default();
+    let balance = state.db.address_token_to_balance.get(AddressToken { address: scripthash, token: tick }).unwrap_or_default();
 
-    let (from, to) =
-        AddressLocation::search(scripthash, params.offset.map(|x| x.into())).into_inner();
+    let (from, to) = AddressLocation::search(scripthash, params.offset.map(|x| x.into())).into_inner();
 
     let transfers = state
         .db
@@ -106,10 +76,7 @@ pub async fn address_tokens(
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
-        .to_scripthash(
-            &script_str,
-            script_type.parse().bad_request("Invalid script type")?,
-        )
+        .to_scripthash(&script_str, script_type.parse().bad_request("Invalid script type")?)
         .bad_request("Invalid address")?
         .into();
 

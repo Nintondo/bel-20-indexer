@@ -110,10 +110,7 @@ impl TryFrom<Vec<u8>> for OriginalTokenTick {
     type Error = anyhow::Error;
 
     fn try_from(v: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self(
-            v.try_into()
-                .map_err(|_| anyhow::Error::msg("Invalid byte length"))?,
-        ))
+        Ok(Self(v.try_into().map_err(|_| anyhow::Error::msg("Invalid byte length"))?))
     }
 }
 
@@ -189,10 +186,7 @@ impl Display for InscriptionId {
 
 impl From<InscriptionId> for OutPoint {
     fn from(val: InscriptionId) -> Self {
-        OutPoint {
-            txid: val.txid,
-            vout: val.index,
-        }
+        OutPoint { txid: val.txid, vout: val.index }
     }
 }
 
@@ -208,18 +202,9 @@ impl From<OutPoint> for InscriptionId {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum TokenAction {
     /// Deploy new token action.
-    Deploy {
-        genesis: InscriptionId,
-        proto: DeployProtoDB,
-        owner: FullHash,
-    },
+    Deploy { genesis: InscriptionId, proto: DeployProtoDB, owner: FullHash },
     /// Mint new token action.
-    Mint {
-        owner: FullHash,
-        proto: MintProtoWrapper,
-        txid: Txid,
-        vout: u32,
-    },
+    Mint { owner: FullHash, proto: MintProtoWrapper, txid: Txid, vout: u32 },
     /// Transfer token action.
     Transfer {
         location: Location,
@@ -273,10 +258,7 @@ where
     where
         D: Deserializer<'de>,
     {
-        Ok(Self(
-            FromStr::from_str(&String::deserialize(deserializer)?)
-                .map_err(serde::de::Error::custom)?,
-        ))
+        Ok(Self(FromStr::from_str(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)?))
     }
 }
 

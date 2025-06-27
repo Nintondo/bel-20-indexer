@@ -36,11 +36,7 @@ impl EventSender {
                 }
             }
 
-            let keys = events
-                .iter()
-                .flat_map(|(k, v)| [Some(k.address), v.action.address().copied()])
-                .flatten()
-                .collect_vec();
+            let keys = events.iter().flat_map(|(k, v)| [Some(k.address), v.action.address().copied()]).flatten().collect_vec();
 
             let addresses = self.server.load_addresses(keys)?;
 

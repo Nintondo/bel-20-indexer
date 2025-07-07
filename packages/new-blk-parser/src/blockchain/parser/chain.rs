@@ -11,7 +11,7 @@ use proto::block::Block;
 pub struct ChainStorage {
     pub chain_index: ChainIndex,
     coin: CoinType,
-    blk_files: HashMap<u64, BlkFile>, // maps blk_index to BlkFile
+    blk_files: Option<HashMap<u64, BlkFile>>, // maps blk_index to BlkFile
 }
 
 impl ChainStorage {
@@ -19,7 +19,7 @@ impl ChainStorage {
         Ok(Self {
             coin: options.coin,
             chain_index: ChainIndex::new(options)?,
-            blk_files: BlkFile::from_path(options.blockchain_dir.as_path())?,
+            blk_files: options.blockchain_dir.as_ref().map(|x| BlkFile::from_path(x.as_path())).transpose()?,
         })
     }
 
@@ -31,13 +31,10 @@ impl ChainStorage {
             None => return Ok(None),
         };
 
-        let blk_file = self
-            .blk_files
-            .get_mut(&block_meta.blk_index)
-            .anyhow_with("Block file for block not found")?;
-        let block = blk_file
-            .read_block(block_meta.data_offset, self.coin)
-            .anyhow_with("Unable to read block")?;
+        let Some(blk_files) = &mut self.blk_files else { return Ok(None) };
+
+        let blk_file = blk_files.get_mut(&block_meta.blk_index).anyhow_with("Block file for block not found")?;
+        let block = blk_file.read_block(block_meta.data_offset, self.coin).anyhow_with("Unable to read block")?;
 
         // Check if blk file can be closed
         if height >= self.chain_index.max_height_by_blk(block_meta.blk_index) {
@@ -58,10 +55,7 @@ impl ChainStorage {
             .block_index
             .into_iter()
             .sorted_unstable_by_key(|x| x.0)
-            .map(|(k, v)| BlockId {
-                hash: v.block_hash,
-                height: k,
-            });
+            .map(|(k, v)| BlockId { hash: v.block_hash, height: k });
 
         CheckPoint::from_block_ids(iterator).ok()
     }

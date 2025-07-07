@@ -15,11 +15,7 @@ const BLOCK_VALID_CHAIN: u64 = 4;
 const BLOCK_VALID_TRANSACTIONS: u64 = 3;
 const BLOCK_VALID_SCRIPTS: u64 = 5;
 
-const BLOCK_VALID_MASK: u64 = BLOCK_VALID_RESERVED
-    | BLOCK_VALID_TREE
-    | BLOCK_VALID_TRANSACTIONS
-    | BLOCK_VALID_CHAIN
-    | BLOCK_VALID_SCRIPTS;
+const BLOCK_VALID_MASK: u64 = BLOCK_VALID_RESERVED | BLOCK_VALID_TREE | BLOCK_VALID_TRANSACTIONS | BLOCK_VALID_CHAIN | BLOCK_VALID_SCRIPTS;
 
 const BLOCK_FAILED_VALID: u64 = 32;
 const BLOCK_FAILED_CHILD: u64 = 64;
@@ -36,11 +32,8 @@ impl ChainIndex {
     pub fn new(options: &ChainOptions) -> Result<Self> {
         let path = &options.index_dir_path;
         let start = Instant::now();
-        let block_index = get_block_index(&path, options.range)?;
-        tracing::trace!(
-            "Loaded block indexes from LevelDB in {}s",
-            start.elapsed().as_secs_f64()
-        );
+        let block_index = path.as_ref().map(|path| get_block_index(path, options.range)).transpose()?.unwrap_or_default();
+        tracing::trace!("Loaded block indexes from LevelDB in {}s", start.elapsed().as_secs_f64());
         let mut max_height_blk_index = HashMap::new();
 
         for (height, index_record) in &block_index {
@@ -167,10 +160,7 @@ impl fmt::Debug for BlockIndexRecord {
     }
 }
 
-pub fn get_block_index(
-    path: &Path,
-    range: crate::utils::BlockHeightRange,
-) -> Result<HashMap<u64, BlockIndexRecordSmall>> {
+pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Result<HashMap<u64, BlockIndexRecordSmall>> {
     let mut block_index = IndexMap::<u64, Vec<BlockIndexRecord>>::with_capacity(900_000);
     let mut db_iter = DB::open(path, Options::default())?.new_iter()?;
     let (mut key, mut value) = (vec![], vec![]);
@@ -189,9 +179,7 @@ pub fn get_block_index(
             continue;
         };
 
-        if record.height < range.start.saturating_sub(1)
-            || record.height > range.end.unwrap_or(u64::MAX)
-        {
+        if record.height < range.start.saturating_sub(1) || record.height > range.end.unwrap_or(u64::MAX) {
             continue;
         }
 
@@ -203,10 +191,7 @@ pub fn get_block_index(
             continue;
         }
 
-        block_index
-            .entry(record.height)
-            .or_insert_with(Vec::new)
-            .push(record);
+        block_index.entry(record.height).or_insert_with(Vec::new).push(record);
     }
 
     block_index.sort_unstable_keys();
@@ -231,11 +216,7 @@ pub fn get_block_index(
 
             it.peek().map(|prev| {
                 last_pos = prev.iter().position(|x| x.block_hash == prev_hash);
-                vec![
-                    prev[last_pos
-                        .expect("Failed to find previous block hash. -reindex-chainstate is required to proceed")]
-                    .clone(),
-                ]
+                vec![prev[last_pos.expect("Failed to find previous block hash. -reindex-chainstate is required to proceed")].clone()]
             })
         })
         .flatten()

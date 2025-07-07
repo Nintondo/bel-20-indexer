@@ -5,10 +5,9 @@ use axum::{
     response::{sse::Event, Sse},
     routing::post,
 };
-use futures::Stream;
 use nintypes::common::inscriptions::Outpoint;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tower_http::compression::CompressionLayer;
 use validator::Validate;
 
@@ -22,9 +21,6 @@ mod utils;
 
 type ApiResult<T> = core::result::Result<T, Response<String>>;
 const INTERNAL: &str = "Internal server error";
-const BAD_REQUEST: &str = "Bad request";
-const BAD_PARAMS: &str = "Invalid request params";
-const NOT_FOUND: &str = "Not found";
 
 pub fn get_router(server: Arc<Server>) -> Router {
     Router::new()
@@ -34,7 +30,6 @@ pub fn get_router(server: Arc<Server>) -> Router {
         .route("/address/{address}/tokens-tick", get(address::address_tokens_tick))
         .route("/address/{address}/{tick}/balance", get(address::address_token_balance))
         .route("/tokens", get(tokens::tokens))
-        .route("/token/all", get(info::all_tokens))
         .route("/token", get(tokens::token))
         .route("/token/proof/{address}/{outpoint}", get(tokens::token_transfer_proof))
         .route("/inscriptions/{outpoint}", get(info::inscriptions_on_outpoint))

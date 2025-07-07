@@ -3,7 +3,7 @@ use nint_blk::ScriptType;
 use super::*;
 
 pub async fn tokens(State(server): State<Arc<Server>>, Query(args): Query<types::TokensArgs>) -> ApiResult<impl IntoResponse> {
-    args.validate().bad_request(BAD_PARAMS)?;
+    args.validate().bad_request_from_error()?;
 
     let iter = server
         .db
@@ -53,7 +53,8 @@ pub async fn tokens(State(server): State<Arc<Server>>, Query(args): Query<types:
 }
 
 pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::TokenArgs>) -> ApiResult<impl IntoResponse> {
-    args.validate().bad_request(BAD_REQUEST)?;
+    args.validate().bad_request_from_error()?;
+
     let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
     let token = server
         .db
@@ -74,13 +75,13 @@ pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::
             lim: v.proto.lim,
             dec: v.proto.dec,
         })
-        .not_found(NOT_FOUND)?;
+        .not_found(format!("Tick {} not found", args.tick))?;
 
     Ok(Json(token))
 }
 
 pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((address, outpoint)): Path<(String, Outpoint)>) -> ApiResult<impl IntoResponse> {
-    let scripthash = state.indexer.to_scripthash(&address, ScriptType::Address).bad_request("Invalid address")?;
+    let scripthash = state.indexer.to_scripthash(&address, ScriptType::Address).bad_request_from_error()?;
 
     let (from, to) = AddressLocation::search_with_offset(scripthash.into(), outpoint.into()).into_inner();
 

@@ -11,10 +11,12 @@ pub struct AddressTokenBalance {
     pub transfers_count: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct AddressTokenHistoryArgs {
     pub offset: Option<u64>,
-    pub limit: Option<usize>,
+    #[serde(default = "utils::page_size_default")]
+    #[validate(range(min = 1, max = 20))]
+    pub limit: usize,
     pub tick: OriginalTokenTickRest,
 }
 
@@ -39,10 +41,12 @@ pub struct ProofOfHistory {
     pub hash: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct ProofHistoryArgs {
     pub offset: Option<u32>,
-    pub limit: Option<usize>,
+    #[serde(default = "utils::page_size_default")]
+    #[validate(range(min = 1, max = 100))]
+    pub limit: usize,
 }
 
 #[derive(Serialize)]
@@ -244,7 +248,7 @@ pub enum TokenFilterBy {
 #[derive(Deserialize, Validate)]
 pub struct TokensArgs {
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = 1, max = 20))]
+    #[validate(range(min = 1, max = 100))]
     pub page_size: usize,
     #[validate(range(min = 1))]
     #[serde(default = "utils::first_page")]

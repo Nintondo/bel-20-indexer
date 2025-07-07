@@ -268,15 +268,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "base64-compat"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a8d4d2746f89841e49230dd26917df1876050f95abafafbe34f47cb534b88d7"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
 name = "bech32"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -292,31 +283,24 @@ dependencies = [
  "bellscoin",
  "bellscoincore-rpc",
  "bitcoin_hashes",
- "bytemuck",
- "derive_deref",
  "dotenv",
  "dutils",
- "futures",
  "indicatif",
  "itertools 0.14.0",
- "jsonrpc-async",
  "kanal",
  "nint-blk",
  "nintondo-dogecoin",
  "nintypes",
  "num-traits",
  "parking_lot",
- "postcard",
  "rayon",
  "rocksdb-wrapper",
  "rust_decimal",
  "serde",
  "serde_json",
  "serde_with",
- "sha2",
  "signal-hook",
  "thiserror",
- "thread-priority",
  "tokio",
  "tokio-stream",
  "tower-http",
@@ -823,17 +807,6 @@ checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
  "serde",
-]
-
-[[package]]
-name = "derive_deref"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcdbcee2d9941369faba772587a565f4f534e42cb8d17e5295871de730163b2b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -1604,20 +1577,6 @@ dependencies = [
  "base64 0.13.1",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "jsonrpc-async"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a20e8e4ed08ee58717113cbf277b1ecef5cd9554d3e48c114de338289727d466"
-dependencies = [
- "async-trait",
- "base64-compat",
- "serde",
- "serde_derive",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -2821,20 +2780,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
-]
-
-[[package]]
-name = "thread-priority"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfe075d7053dae61ac5413a34ea7d4913b6e6207844fd726bdd858b37ff72bf5"
-dependencies = [
- "bitflags",
- "cfg-if",
- "libc",
- "log",
- "rustversion",
- "winapi",
 ]
 
 [[package]]

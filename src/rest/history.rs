@@ -97,13 +97,10 @@ pub async fn address_token_history(
     Path(script_str): Path<String>,
     Query(query): Query<types::AddressTokenHistoryArgs>,
 ) -> ApiResult<impl IntoResponse> {
-    let scripthash: FullHash = server.indexer.to_scripthash(&script_str, ScriptType::Address).bad_request("Invalid address")?.into();
+    query.validate().bad_request_from_error()?;
 
-    if let Some(limit) = query.limit {
-        if limit > 100 {
-            return Err("").bad_request("Limit exceeded");
-        }
-    }
+    let scripthash: FullHash = server.indexer.to_scripthash(&script_str, ScriptType::Address).bad_request_from_error()?.into();
+
     let token: LowerCaseTokenTick = query.tick.into();
 
     let deploy_proto = server.db.token_to_meta.get(&token).not_found("Token not found")?;
@@ -126,7 +123,7 @@ pub async fn address_token_history(
         .db
         .address_token_to_history
         .range(&from..&to, true)
-        .take(query.limit.unwrap_or(100))
+        .take(query.limit)
         .map(|(k, v)| types::AddressHistory::new(v.height, v.action, k, &server))
         .collect::<anyhow::Result<Vec<_>>>()
         .internal("Failed to load addresses")?;
@@ -150,18 +147,14 @@ pub async fn events_by_height(State(server): State<Arc<Server>>, Path(height): P
 }
 
 pub async fn proof_of_history(State(server): State<Arc<Server>>, Query(query): Query<types::ProofHistoryArgs>) -> ApiResult<impl IntoResponse> {
-    if let Some(limit) = query.limit {
-        if limit > 100 {
-            return Err("").bad_request("Limit exceeded");
-        }
-    }
+    query.validate().bad_request_from_error()?;
 
     let res = server
         .db
         .proof_of_history
         .range(..&query.offset.unwrap_or(u32::MAX), true)
         .map(|(height, hash)| types::ProofOfHistory { hash: hash.to_string(), height })
-        .take(query.limit.unwrap_or(100))
+        .take(query.limit)
         .collect_vec();
 
     Ok(Json(res))

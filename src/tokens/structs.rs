@@ -85,9 +85,15 @@ impl<'de> Deserialize<'de> for OriginalTokenTickRest {
     }
 }
 
+impl Display for OriginalTokenTickRest {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}", String::from_utf8_lossy(&self.0))
+    }
+}
+
 impl std::fmt::Debug for OriginalTokenTickRest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.collect_str(&String::from_utf8_lossy(&self.0))
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        Display::fmt(self, f)
     }
 }
 

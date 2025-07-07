@@ -17,19 +17,6 @@ pub async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl 
     Ok(axum_streams::StreamBodyAs::json_array(stream))
 }
 
-pub async fn all_tokens(State(server): State<Arc<Server>>, Query(params): Query<types::AddressTokensArgs>) -> ApiResult<impl IntoResponse> {
-    let iter = server
-        .db
-        .token_to_meta
-        .iter()
-        .filter(|x| params.search.as_ref().map(|search| x.0.starts_with(search)).unwrap_or(true))
-        .skip(params.offset.is_some() as usize)
-        .take(params.limit)
-        .map(|(_, proto)| types::AllTokenInfoRest::from(proto));
-
-    Ok(Json(iter.collect_vec()))
-}
-
 pub async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
     let last_height = server.db.last_block.get(()).internal("Failed to get last height")?;
 

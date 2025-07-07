@@ -19,12 +19,9 @@ bellscoin = "0.30.8"
 nintondo-dogecoin = "0.30.6"
 
 rocksdb-wrapper = { path = "./packages/rocksdb-wrapper" }
-postcard = "1.0.10"
-bytemuck = { version = "1.19.0", features = ["derive"] }
 tokio = { version = "1.43.1", features = ["full"] }
 tower-http = {version = "0.6.5", features = ["compression-full"]}
 itertools = "0.14.0"
-futures = "0.3.31"
 rayon = "1.10.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 axum = "0.8.1"
@@ -35,13 +32,9 @@ parking_lot = "0.12.3"
 dotenv = "0.15.0"
 tokio-stream = "0.1.16"
 axum-streams = { version = "0.20.0", features = ["json"] }
-jsonrpc-async = "2.0.2"
-sha2 = "0.10.8"
 nintypes = { version = "0.1.14", features = ["bellscoin"] }
 validator = { version = "0.20.0", features = ["derive"] }
-thread-priority = "1.2.0"
 thiserror = "2.0.12"
-derive_deref = "1.1.1"
 nint-blk = { path = "./packages/new-blk-parser" }
 bitcoin_hashes = "0.12.0"
 kanal = "0.1.1"

@@ -5,7 +5,7 @@ pub async fn address_tokens_tick(url: Uri, State(state): State<Arc<Server>>, Pat
     let scripthash: FullHash = state
         .indexer
         .to_scripthash(&script_str, script_type.parse().bad_request("Invalid script type")?)
-        .bad_request("Invalid address")?
+        .bad_request_from_error()?
         .into();
 
     let (from, to) = AddressToken::search(scripthash).into_inner();
@@ -26,11 +26,13 @@ pub async fn address_token_balance(
     Path((script_str, tick)): Path<(String, OriginalTokenTickRest)>,
     Query(params): Query<types::AddressTokenBalanceArgs>,
 ) -> ApiResult<impl IntoResponse> {
+    params.validate().bad_request_from_error()?;
+
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
         .to_scripthash(&script_str, script_type.parse().bad_request("Invalid script type")?)
-        .bad_request("Invalid address")?
+        .bad_request_from_error()?
         .into();
 
     let token: LowerCaseTokenTick = tick.into();
@@ -73,11 +75,13 @@ pub async fn address_tokens(
     Path(script_str): Path<String>,
     Query(params): Query<types::AddressTokensArgs>,
 ) -> ApiResult<impl IntoResponse> {
+    params.validate().bad_request_from_error()?;
+
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
         .to_scripthash(&script_str, script_type.parse().bad_request("Invalid script type")?)
-        .bad_request("Invalid address")?
+        .bad_request_from_error()?
         .into();
 
     let token = params

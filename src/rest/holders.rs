@@ -1,7 +1,7 @@
 use super::*;
 
 pub async fn holders(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersArgs>) -> ApiResult<impl IntoResponse> {
-    query.validate().bad_request(BAD_PARAMS)?;
+    query.validate().bad_request_from_error()?;
 
     let tick: LowerCaseTokenTick = query.tick.into();
     let proto = server.db.token_to_meta.get(&tick).map(|x| x.proto).not_found("Tick not found")?;

@@ -60,12 +60,12 @@ const NON_STANDARD_ADDRESS: &str = "non-standard";
 
 define_static! {
     OP_RETURN_HASH: FullHash = OP_RETURN_ADDRESS.compute_script_hash();
-    BLK_DIR: String = load_env!("BLK_DIR");
+    BLK_DIR: Option<String> = load_opt_env!("BLK_DIR");
     URL: String = load_env!("RPC_URL");
     USER: String = load_env!("RPC_USER");
     PASS: String = load_env!("RPC_PASS");
     BLOCKCHAIN: String = load_env!("BLOCKCHAIN").to_lowercase();
-    INDEX_DIR: String = load_env!("INDEX_DIR");
+    INDEX_DIR: Option<String> = load_opt_env!("INDEX_DIR");
     NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);
@@ -102,8 +102,8 @@ fn main() {
 
     let rest_server = server.clone();
     std::thread::spawn(move || {
-        let rest_runtime = spawn_runtime("rest".to_string(), Some(20));
-        rest_runtime.block_on(run_rest(rest_server))
+        let runtime = tokio::runtime::Builder::new_multi_thread().thread_name("rest").enable_all().build().unwrap();
+        runtime.block_on(run_rest(rest_server))
     });
 
     let event_sender = EventSender {
@@ -147,18 +147,6 @@ async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             Ok(())
         }
     }
-}
-
-fn spawn_runtime(name: String, priority: Option<u8>) -> tokio::runtime::Runtime {
-    if let Some(priority) = priority {
-        if let Err(e) = thread_priority::set_current_thread_priority(priority.try_into().unwrap()) {
-            warn!("can't set priority {priority:?}, error {e:?}");
-        };
-    }
-
-    let runtime = tokio::runtime::Builder::new_multi_thread().thread_name(&name).enable_all().build().unwrap();
-
-    runtime
 }
 
 fn shutdown_handler(token: dutils::wait_token::WaitToken) {

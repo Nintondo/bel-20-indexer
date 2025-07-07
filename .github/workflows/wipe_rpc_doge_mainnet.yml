@@ -28,3 +28,5 @@ jobs:
           docker rm -f ${COIN}-${NETWORK}-${SERVICE_NAME}
           cd /opt/${COIN}-${NETWORK}/services/${SERVICE_NAME}
           rm -rf ${SERVICE_DIR_1}/* ${SERVICE_DIR_2}/*
+          cd ../../
+          docker compose up -d --force-recreate ${COIN}-${NETWORK}-${SERVICE_NAME}

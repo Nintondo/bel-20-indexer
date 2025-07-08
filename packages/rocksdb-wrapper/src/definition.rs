@@ -30,7 +30,7 @@ pub trait RocksDbTablesDef: Sized {
                 );
             }
             if db_info.version < Self::VERSION {
-                warn!(
+                tracing::warn!(
                     "Db '{}' version is outdated. Trying to upgrade from {} to {}",
                     std::any::type_name::<Self>(),
                     db_info.version,

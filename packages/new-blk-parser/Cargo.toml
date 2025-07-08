@@ -1,0 +1,22 @@
+[package]
+name = "nint-blk"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+bellscoin = { version = "0.30.8", features = ["serde"] }
+byteorder = "1.5.0"
+dutils = "0.1.12"
+hex = "0.4.3"
+indexmap = "2.9.0"
+itertools = "0.14.0"
+jsonrpc = { version = "0.18.0" }
+num-traits = "0.2.19"
+rayon = "1.10.0"
+rusty-leveldb = "3.0.3"
+serde = "1.0.219"
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+kanal = "0.1.1"

@@ -1,10 +1,10 @@
 use super::*;
 
+use bellscoin::blockdata::script::Instruction::{Op, PushBytes};
+
 pub type RawEnvelope = Envelope<Vec<Vec<u8>>>;
 pub type ParsedEnvelope = Envelope<Inscription>;
 type Result<T> = std::result::Result<T, script::Error>;
-
-use bellscoin::blockdata::script::Instruction::{Op, PushBytes};
 
 #[derive(Default, PartialEq, Clone, Serialize, Deserialize, Debug, Eq)]
 pub struct Envelope<T> {
@@ -17,11 +17,7 @@ pub struct Envelope<T> {
 
 impl From<RawEnvelope> for ParsedEnvelope {
     fn from(envelope: RawEnvelope) -> Self {
-        let body = envelope
-            .payload
-            .iter()
-            .enumerate()
-            .position(|(i, push)| i % 2 == 0 && push.is_empty());
+        let body = envelope.payload.iter().enumerate().position(|(i, push)| i % 2 == 0 && push.is_empty());
 
         let mut fields: BTreeMap<&[u8], Vec<&[u8]>> = BTreeMap::new();
 
@@ -45,19 +41,11 @@ impl From<RawEnvelope> for ParsedEnvelope {
         let pointer = Tag::Pointer.take(&mut fields);
         let rune = Tag::Rune.take(&mut fields);
 
-        let unrecognized_even_field = fields
-            .keys()
-            .any(|tag| tag.first().map(|lsb| lsb % 2 == 0).unwrap_or_default());
+        let unrecognized_even_field = fields.keys().any(|tag| tag.first().map(|lsb| lsb % 2 == 0).unwrap_or_default());
 
         Self {
             payload: Inscription {
-                body: body.map(|i| {
-                    envelope.payload[i + 1..]
-                        .iter()
-                        .flatten()
-                        .cloned()
-                        .collect()
-                }),
+                body: body.map(|i| envelope.payload[i + 1..].iter().flatten().cloned().collect()),
                 content_encoding,
                 content_type,
                 delegate,
@@ -87,8 +75,7 @@ impl RawEnvelope {
         let mut stuttered = false;
         while let Some(instruction) = instructions.next().transpose()? {
             if instruction == PushBytes((&[]).into()) {
-                let (stutter, envelope) =
-                    Self::from_instructions(&mut instructions, input, envelopes.len(), stuttered)?;
+                let (stutter, envelope) = Self::from_instructions(&mut instructions, input, envelopes.len(), stuttered)?;
                 if let Some(envelope) = envelope {
                     envelopes.push(envelope);
                 } else {
@@ -100,10 +87,7 @@ impl RawEnvelope {
         Ok(envelopes)
     }
 
-    fn accept(
-        instructions: &mut Peekable<script::Instructions>,
-        instruction: script::Instruction,
-    ) -> Result<bool> {
+    fn accept(instructions: &mut Peekable<script::Instructions>, instruction: script::Instruction) -> Result<bool> {
         if instructions.peek() == Some(&Ok(instruction)) {
             instructions.next().transpose()?;
             Ok(true)
@@ -112,12 +96,7 @@ impl RawEnvelope {
         }
     }
 
-    fn from_instructions(
-        instructions: &mut Peekable<script::Instructions>,
-        input: usize,
-        offset: usize,
-        stutter: bool,
-    ) -> Result<(bool, Option<Self>)> {
+    fn from_instructions(instructions: &mut Peekable<script::Instructions>, input: usize, offset: usize, stutter: bool) -> Result<(bool, Option<Self>)> {
         if !Self::accept(instructions, Op(opcodes::all::OP_IF))? {
             let stutter = instructions.peek() == Some(&Ok(PushBytes((&[]).into())));
             return Ok((stutter, None));

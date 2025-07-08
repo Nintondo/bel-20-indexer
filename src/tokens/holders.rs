@@ -19,22 +19,14 @@ impl Holders {
             db.address_token_to_balance
                 .iter()
                 .filter(|(_, v)| !v.balance.is_zero() || !v.transferable_balance.is_zero())
-                .map(|(k, v)| {
-                    (
-                        k.token,
-                        SortedByBalance(v.balance + v.transferable_balance, k.address),
-                    )
-                })
+                .map(|(k, v)| (k.token, SortedByBalance(v.balance + v.transferable_balance, k.address)))
                 .sorted_unstable_by_key(|(tick, _)| *tick)
                 .chunk_by(|(tick, _)| *tick)
                 .into_iter()
                 .map(|(k, v)| (k, v.map(|(_, v)| v).collect::<BTreeSet<_>>())),
         );
 
-        let stats = holders
-            .iter()
-            .map(|(tick, holders)| (*tick, holders.len()))
-            .collect();
+        let stats = holders.iter().map(|(tick, holders)| (*tick, holders.len())).collect();
 
         Self {
             balances: parking_lot::RwLock::new(holders),
@@ -76,11 +68,7 @@ impl Holders {
         match action {
             Action::Increase => {
                 if !existed {
-                    self.stats
-                        .write()
-                        .entry(key.token)
-                        .and_modify(|x| *x += 1)
-                        .or_insert(1);
+                    self.stats.write().entry(key.token).and_modify(|x| *x += 1).or_insert(1);
                 }
 
                 v.insert(SortedByBalance(old_balance + amt, key.address));

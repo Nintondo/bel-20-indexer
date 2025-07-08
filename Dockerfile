@@ -16,6 +16,7 @@ RUN apt update -y && \
 
 COPY Cargo.toml ./
 COPY src src
+COPY packages packages
 
 RUN cargo fetch && cargo build --release
 
@@ -27,7 +28,7 @@ FROM debian:bookworm-slim AS runner
 WORKDIR /app
 
 RUN apt update -y && \
-    apt install -y curl openssl libc6 libgcc-s1 librocksdb-dev && \
+    apt install -y curl openssl libc6 libgcc-s1 librocksdb-dev rsync && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -35,4 +36,4 @@ COPY --from=builder /usr/src/app/target/release/bel_20_node .
 
 EXPOSE 8000
 
-ENTRYPOINT ["./bel_20_node"]
+CMD ["./bel_20_node"]

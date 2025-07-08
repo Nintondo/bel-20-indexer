@@ -71,7 +71,10 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         &'a self,
         keys: impl IntoIterator<Item = &'a K::Inner>,
     ) -> Vec<Option<V::Inner>> {
-        let keys = keys.into_iter().map(|x| K::get_bytes(x)).collect_vec();
+        let keys = keys
+            .into_iter()
+            .map(|x| K::get_bytes(x))
+            .collect::<Vec<_>>();
         self.db
             .db
             .batched_multi_get_cf(&self.cf(), keys.iter(), false)
@@ -81,6 +84,40 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
                     V::from_bytes(Cow::Owned((*x).to_vec()))
                         .unwrap_or_else(|e| _panic("multi_get", &self.cf, e))
                 })
+            })
+            .collect()
+    }
+
+    pub fn multi_get_kv<'a>(
+        &'a self,
+        keys: impl IntoIterator<Item = &'a K::Inner>,
+        panic_if_not_exists: bool,
+    ) -> Vec<(&'a K::Inner, V::Inner)> {
+        let keys_bytes = keys
+            .into_iter()
+            .map(|x| (x, K::get_bytes(x)))
+            .collect::<Vec<_>>();
+
+        self.db
+            .db
+            .batched_multi_get_cf(&self.cf(), keys_bytes.iter().map(|x| &x.1), false)
+            .into_iter()
+            .map(|x| {
+                x.unwrap().map(|x| {
+                    V::from_bytes(Cow::Owned((*x).to_vec()))
+                        .unwrap_or_else(|e| _panic("multi_get", &self.cf, e))
+                })
+            })
+            .zip(keys_bytes.into_iter().map(|x| x.0))
+            .filter_map(|(v, k)| {
+                if panic_if_not_exists {
+                    Some((
+                        k,
+                        v.unwrap_or_else(|| _panic("multi_get", &self.cf, anyhow::Error::msg(""))),
+                    ))
+                } else {
+                    Some((k, v?))
+                }
             })
             .collect()
     }
@@ -274,7 +311,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         self.write(w);
     }
 
-    pub fn remove_batch(&self, k: impl Iterator<Item = impl Borrow<K::Inner>>) {
+    pub fn remove_batch(&self, k: impl IntoIterator<Item = impl Borrow<K::Inner>>) {
         let mut w = WriteBatchWithTransaction::<true>::default();
         let cf = self.cf();
         for k in k {

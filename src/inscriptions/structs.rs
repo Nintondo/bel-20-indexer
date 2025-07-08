@@ -1,3 +1,5 @@
+use bellscoin::Script;
+
 use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,29 +22,27 @@ pub struct Inscription {
 pub enum ParsedInscription {
     None,
     Partial,
-    Complete(Box<Inscription>),
+    Single(Inscription),
+    Many(Vec<Inscription>),
 }
 
 impl Inscription {
-    pub fn from_transaction(tx: &Transaction, input_idx: usize) -> Vec<ParsedInscription> {
-        if tx.input.is_empty() {
-            return vec![ParsedInscription::None];
-        }
+    pub fn from_parts(partials: &[Part], vin: u32) -> ParsedInscription {
+        if partials.len() == 1 && partials[0].is_tapscript {
+            let script = Script::from_bytes(&partials[0].script_buffer);
+            if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vin as usize) {
+                let data = v.into_iter().map(ParsedEnvelope::from).map(|x| x.payload).collect();
 
-        if let Some(v) = tx.input[input_idx].witness.tapscript() {
-            if let Result::Ok(v) = RawEnvelope::from_tapscript(v, input_idx) {
-                return v
-                    .into_iter()
-                    .map(ParsedEnvelope::from)
-                    .map(|x| ParsedInscription::Complete(Box::new(x.payload)))
-                    .collect();
+                return ParsedInscription::Many(data);
             }
-            return vec![ParsedInscription::None];
         }
 
-        vec![InscriptionParser::parse(vec![tx.input[input_idx]
-            .script_sig
-            .as_script()])]
+        let mut sig_scripts = Vec::with_capacity(partials.len());
+        for partial in partials {
+            sig_scripts.push(Script::from_bytes(&partial.script_buffer));
+        }
+
+        InscriptionParser::parse(sig_scripts)
     }
 
     pub fn into_body(self) -> Option<Vec<u8>> {
@@ -143,7 +143,7 @@ impl InscriptionParser {
                         unrecognized_even_field: false,
                     };
 
-                    return ParsedInscription::Complete(Box::new(inscription));
+                    return ParsedInscription::Single(inscription);
                 }
 
                 if push_datas.len() < 2 {
@@ -256,10 +256,7 @@ impl InscriptionParser {
                 if bytes.len() < 5 {
                     return None;
                 }
-                let len = ((bytes[3] as usize) << 24)
-                    + ((bytes[2] as usize) << 16)
-                    + ((bytes[1] as usize) << 8)
-                    + (bytes[0] as usize);
+                let len = ((bytes[3] as usize) << 24) + ((bytes[2] as usize) << 16) + ((bytes[1] as usize) << 8) + (bytes[0] as usize);
                 if bytes.len() < 5 + len {
                     return None;
                 }
@@ -301,24 +298,9 @@ pub struct Location {
     pub offset: u64,
 }
 
-impl Location {
-    pub fn zero() -> Self {
-        Self {
-            offset: 0,
-            outpoint: OutPoint {
-                txid: Txid::all_zeros(),
-                vout: 0,
-            },
-        }
-    }
-}
-
 impl Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!(
-            "{}i{}i{}",
-            self.outpoint.txid, self.outpoint.vout, self.offset
-        ))
+        f.write_str(&format!("{}i{}i{}", self.outpoint.txid, self.outpoint.vout, self.offset))
     }
 }
 
@@ -330,22 +312,19 @@ impl FromStr for Location {
 
         let error_msg = "Invalid location";
 
-        let txid =
-            Txid::from_str(items.next().anyhow_with(error_msg)?).anyhow_with("Invalid txid")?;
-        let vout: u32 = items
-            .next()
-            .anyhow_with(error_msg)?
-            .parse()
-            .anyhow_with("Invalid vout")?;
-        let offset: u64 = items
-            .next()
-            .anyhow_with(error_msg)?
-            .parse()
-            .anyhow_with("Invalid offset")?;
+        let txid = Txid::from_str(items.next().anyhow_with(error_msg)?).anyhow_with("Invalid txid")?;
+        let vout: u32 = items.next().anyhow_with(error_msg)?.parse().anyhow_with("Invalid vout")?;
+        let offset: u64 = items.next().anyhow_with(error_msg)?.parse().anyhow_with("Invalid offset")?;
 
         Ok(Self {
             offset,
             outpoint: OutPoint { txid, vout },
         })
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Part {
+    pub is_tapscript: bool,
+    pub script_buffer: Vec<u8>,
 }

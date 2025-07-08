@@ -1,52 +1,63 @@
-use super::*;
+use bellscoin::ScriptBuf;
+use nint_blk::proto::block::Block;
 
-pub trait ScriptToAddr {
-    fn to_address_str(&self, network: Network) -> Option<String>;
-}
+use super::{processe_data::ProcessedData, *};
 
-impl ScriptToAddr for bellscoin::ScriptBuf {
-    fn to_address_str(&self, network: Network) -> Option<String> {
-        bellscoin::Address::from_script(self, network)
-            .map(|s| s.to_string())
-            .ok()
-    }
-}
-
-impl ScriptToAddr for &bellscoin::ScriptBuf {
-    fn to_address_str(&self, network: Network) -> Option<String> {
-        bellscoin::Address::from_script(self, network)
-            .map(|s| s.to_string())
-            .ok()
-    }
-}
-
-pub fn load_prevouts_for_block(
-    db: Arc<DB>,
-    txs: &[Transaction],
-) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
-    let txids_keys = txs
+pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
+    let prevouts = block
+        .txs
         .iter()
-        .skip(1)
-        .flat_map(|x| x.input.iter().map(|x| x.previous_output))
+        .flat_map(|tx| {
+            let txid = tx.hash;
+            tx.value.outputs.iter().enumerate().map(move |(vout, txout)| {
+                (
+                    OutPoint {
+                        txid: txid.into(),
+                        vout: vout as u32,
+                    },
+                    TxOut {
+                        value: txout.out.value,
+                        script_pubkey: ScriptBuf::from_bytes(txout.out.script_pubkey.clone()),
+                    },
+                )
+            })
+        })
+        .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
+        .collect::<HashMap<_, _>>();
+
+    let txids_keys = block
+        .txs
+        .iter()
+        .filter(|tx| !tx.value.is_coinbase())
+        .flat_map(|tx| tx.value.inputs.iter().map(|x| x.outpoint))
         .unique()
         .collect_vec();
 
-    if txids_keys.is_empty() {
-        return Ok(HashMap::new());
+    let mut result = HashMap::new();
+
+    if !txids_keys.is_empty() {
+        let from_db = db.prevouts.multi_get(txids_keys.iter());
+
+        for (key, maybe_val) in txids_keys.iter().zip(from_db) {
+            match maybe_val {
+                Some(val) => {
+                    result.insert(*key, val);
+                }
+                None => {
+                    if let Some(value) = prevouts.get(key) {
+                        result.insert(*key, value.clone());
+                    } else {
+                        return Err(anyhow::anyhow!("Missing prevout for key {}", key));
+                    }
+                }
+            }
+        }
     }
 
-    let prevouts = db
-        .prevouts
-        .multi_get(txids_keys.iter())
-        .into_iter()
-        .zip(txids_keys.clone())
-        .map(|(v, k)| v.map(|x| (k, x)))
-        .collect::<Option<HashMap<_, _>>>()
-        .anyhow_with("Some prevouts are missing")?;
-
-    std::thread::spawn(move || {
-        db.prevouts.remove_batch(txids_keys.iter());
+    data_to_write.push(ProcessedData::Prevouts {
+        to_write: prevouts,
+        to_remove: txids_keys,
     });
 
-    Ok(prevouts)
+    Ok(result)
 }

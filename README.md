@@ -9,6 +9,33 @@
 cargo r -r
 ```
 
+### Steps to index using blk files (faster in 5-20 times)
+
+1. __BLK_DIR__: Set this to the path containing your Dogecoin/Bellscoin blockchain data files (blk*.dat files), typically found at `/home/<user>/.dogecoin/blocks` or `/home/<user>/.bells/blocks`.
+2. __INDEX_DIR__: This requires a copy of the LevelDB index from your Dogecoin node.
+
+⚠️ __Before copying the index__:
+- Shut down your Dogecoin node completely to prevent data corruption
+- Use rsync to create a copy of the index directory
+
+Example of safely copying the index:
+```
+# First, stop the Dogecoin node
+dogecoin-cli stop
+# or if using systemd
+sudo systemctl stop dogecoind
+
+# Wait a moment to ensure the node is fully stopped
+sleep 5
+
+# Copy the index to your project directory
+rsync -av --delete /home/<user>/.dogecoin/blocks/index/ /path/to/your/project/index/
+
+# After copying is complete, you can restart your Dogecoin node if needed
+# dogecoin-cli -daemon
+# or
+# sudo systemctl start dogecoind
+```
 
 ## API Documentation
 

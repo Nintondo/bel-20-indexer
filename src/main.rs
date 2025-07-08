@@ -3,19 +3,33 @@ extern crate serde;
 extern crate tracing;
 
 use {
-    crate::server::threads::EventSender, axum::{
+    crate::server::threads::EventSender,
+    axum::{
         extract::{Path, Query, State},
         http::Response,
         response::IntoResponse,
         routing::get,
         Json, Router,
-    }, bellscoin::{
+    },
+    bellscoin::{
         hashes::{sha256, Hash},
         opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
-    }, blockchain::Blockchain, db::*, dutils::{
+    },
+    blockchain::Blockchain,
+    db::*,
+    dutils::{
         error::{ApiError, ContextWrapper},
         wait_token::WaitToken,
-    }, inscriptions::{Indexer, Location}, itertools::Itertools, num_traits::{FromPrimitive, Zero}, reorg::{ReorgCache, REORG_CACHE_MAX_LEN}, rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde}, serde::{Deserialize, Deserializer, Serialize, Serializer}, serde_with::{serde_as, DisplayFromStr}, server::{Server, ServerEvent}, std::{
+    },
+    inscriptions::{Indexer, Location},
+    itertools::Itertools,
+    num_traits::{FromPrimitive, Zero},
+    reorg::{ReorgCache, REORG_CACHE_MAX_LEN},
+    rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
+    serde_with::{serde_as, DisplayFromStr},
+    server::{Server, ServerEvent},
+    std::{
         borrow::Cow,
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
         fmt::{Display, Formatter},
@@ -25,7 +39,11 @@ use {
         str::FromStr,
         sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
-    }, tokens::*, tracing::info, tracing_indicatif::span_ext::IndicatifSpanExt, utils::*
+    },
+    tokens::*,
+    tracing::info,
+    tracing_indicatif::span_ext::IndicatifSpanExt,
+    utils::*,
 };
 
 mod inscriptions;

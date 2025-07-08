@@ -7,11 +7,7 @@ on:
       - feature/blk-doge
     paths:
       - 'src/**/*'
-<<<<<<< HEAD
       - 'packages/**/*'
-||||||| 0bf48f1
-=======
->>>>>>> main
 
 jobs:
   build:

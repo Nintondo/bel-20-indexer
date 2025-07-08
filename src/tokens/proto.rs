@@ -99,8 +99,8 @@ pub enum MintProto {
 impl MintProto {
     pub fn value(&self) -> anyhow::Result<MintProtoWrapper> {
         match self {
-            MintProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
-            MintProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
+            MintProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
+            MintProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
         }
     }
@@ -132,8 +132,8 @@ pub enum DeployProto {
 impl DeployProto {
     pub fn value(&self) -> anyhow::Result<DeployProtoWrapper> {
         match self {
-            DeployProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
-            DeployProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
+            DeployProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
+            DeployProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
         }
     }
@@ -160,8 +160,8 @@ pub enum TransferProto {
 impl TransferProto {
     pub fn value(&self) -> anyhow::Result<MintProtoWrapper> {
         match self {
-            TransferProto::Bel20(v) if *BLOCKCHAIN == "bells" => Ok(*v),
-            TransferProto::Drc20(v) if *BLOCKCHAIN == "doge" => Ok(*v),
+            TransferProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
+            TransferProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
         }
     }

@@ -284,7 +284,7 @@ impl TransferProtoDB {
 
 impl From<TransferProtoDB> for TransferProto {
     fn from(v: TransferProtoDB) -> Self {
-        if *BLOCKCHAIN == "bells" {
+        if *BLOCKCHAIN == Blockchain::Bellscoin {
             TransferProto::Bel20(MintProtoWrapper { tick: v.tick, amt: v.amt })
         } else {
             TransferProto::Drc20(MintProtoWrapper { tick: v.tick, amt: v.amt })

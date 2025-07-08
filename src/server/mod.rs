@@ -20,11 +20,11 @@ impl Server {
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
 
-        let coin = match (BLOCKCHAIN.as_str(), *NETWORK) {
-            ("bells", Network::Bellscoin) => "bellscoin",
-            ("bells", Network::Testnet) => "bellscoin-testnet",
-            ("doge", Network::Bellscoin) => "dogecoin",
-            ("doge", Network::Testnet) => "dogecoin-testnet",
+        let coin = match (*BLOCKCHAIN, *NETWORK) {
+            (Blockchain::Bellscoin, Network::Bellscoin) => "bellscoin",
+            (Blockchain::Bellscoin, Network::Testnet) => "bellscoin-testnet",
+            (Blockchain::Dogecoin, Network::Bellscoin) => "dogecoin",
+            (Blockchain::Dogecoin, Network::Testnet) => "dogecoin-testnet",
             _ => "bellscoin",
         }
         .to_string();

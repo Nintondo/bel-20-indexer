@@ -3,32 +3,19 @@ extern crate serde;
 extern crate tracing;
 
 use {
-    crate::server::threads::EventSender,
-    axum::{
+    crate::server::threads::EventSender, axum::{
         extract::{Path, Query, State},
         http::Response,
         response::IntoResponse,
         routing::get,
         Json, Router,
-    },
-    bellscoin::{
+    }, bellscoin::{
         hashes::{sha256, Hash},
         opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
-    },
-    db::*,
-    dutils::{
+    }, blockchain::Blockchain, db::*, dutils::{
         error::{ApiError, ContextWrapper},
         wait_token::WaitToken,
-    },
-    inscriptions::{Indexer, Location},
-    itertools::Itertools,
-    num_traits::{FromPrimitive, Zero},
-    reorg::{ReorgCache, REORG_CACHE_MAX_LEN},
-    rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
-    serde::{Deserialize, Deserializer, Serialize, Serializer},
-    serde_with::{serde_as, DisplayFromStr},
-    server::{Server, ServerEvent},
-    std::{
+    }, inscriptions::{Indexer, Location}, itertools::Itertools, num_traits::{FromPrimitive, Zero}, reorg::{ReorgCache, REORG_CACHE_MAX_LEN}, rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde}, serde::{Deserialize, Deserializer, Serialize, Serializer}, serde_with::{serde_as, DisplayFromStr}, server::{Server, ServerEvent}, std::{
         borrow::Cow,
         collections::{BTreeMap, BTreeSet, HashMap, HashSet},
         fmt::{Display, Formatter},
@@ -38,11 +25,7 @@ use {
         str::FromStr,
         sync::{atomic::AtomicU64, Arc},
         time::{Duration, Instant},
-    },
-    tokens::*,
-    tracing::info,
-    tracing_indicatif::span_ext::IndicatifSpanExt,
-    utils::*,
+    }, tokens::*, tracing::info, tracing_indicatif::span_ext::IndicatifSpanExt, utils::*
 };
 
 mod inscriptions;
@@ -51,6 +34,7 @@ mod rest;
 mod tokens;
 #[macro_use]
 mod utils;
+mod blockchain;
 mod db;
 mod server;
 
@@ -64,22 +48,22 @@ define_static! {
     URL: String = load_env!("RPC_URL");
     USER: String = load_env!("RPC_USER");
     PASS: String = load_env!("RPC_PASS");
-    BLOCKCHAIN: String = load_env!("BLOCKCHAIN").to_lowercase();
+    BLOCKCHAIN: Blockchain = Blockchain::from_str(&load_env!("BLOCKCHAIN")).unwrap();
     INDEX_DIR: Option<String> = load_opt_env!("INDEX_DIR");
     NETWORK: Network = load_opt_env!("NETWORK")
         .map(|x| Network::from_str(&x).unwrap())
         .unwrap_or(Network::Bellscoin);
     // multiple input inscription scan activation
-    JUBILEE_HEIGHT: usize = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
-        (Network::Bellscoin, "bells") => 133_000,
-        (_, "doge") => usize::MAX,
+    JUBILEE_HEIGHT: usize = match (*NETWORK, *BLOCKCHAIN) {
+        (Network::Bellscoin, Blockchain::Bellscoin) => 133_000,
+        (_, Blockchain::Dogecoin) => usize::MAX,
         _ => 0,
     };
     // first token block height
-    START_HEIGHT: u32 = match (*NETWORK, (*BLOCKCHAIN).as_ref()) {
-        (Network::Bellscoin, "bells") => 26_371,
-        (Network::Bellscoin, "doge") => 4_609_001,
-        (Network::Testnet, "doge") => 4_260_001,
+    START_HEIGHT: u32 = match (*NETWORK, *BLOCKCHAIN) {
+        (Network::Bellscoin, Blockchain::Bellscoin) => 26_371,
+        (Network::Bellscoin, Blockchain::Dogecoin) => 4_609_001,
+        (Network::Testnet, Blockchain::Dogecoin) => 4_260_001,
         _ => 0,
     };
     SERVER_URL: String =

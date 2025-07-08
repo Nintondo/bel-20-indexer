@@ -104,7 +104,7 @@ impl TokenCache {
 
     fn try_parse(content_type: &str, content: &[u8]) -> Result<Brc4, Brc4ParseErr> {
         // Dogecoin wonky bugfix
-        if *BLOCKCHAIN == "doge" {
+        if *BLOCKCHAIN == Blockchain::Dogecoin {
             if !content_type.starts_with("text/plain") && !content_type.starts_with("application/json") {
                 return Err(Brc4ParseErr::WrongContentType);
             }

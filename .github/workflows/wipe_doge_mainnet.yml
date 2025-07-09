@@ -1,4 +1,4 @@
-name: Wipe RPC service for Doge Mainnet
+name: Wipe service for Doge Mainnet
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
     - name: Wipe
       uses: appleboy/ssh-action@v1.0.0
       env:
-        SERVICE_NAME: ${{ vars.SERVICE_NAME_2 }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_DIR_1: ${{ vars.SERVICE_DIR_1 }}
         SERVICE_DIR_2: ${{ vars.SERVICE_DIR_2 }}
         COIN: doge

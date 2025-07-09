@@ -1,4 +1,4 @@
-name: Deploy service RPC for Doge Mainnet
+name: Deploy service for Doge Mainnet
 
 on:
   workflow_dispatch:
@@ -21,11 +21,10 @@ jobs:
       env:
         CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
         CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-        SERVICE_NAME: ${{ vars.SERVICE_NAME_2 }}
-        COIN: doge
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_TAG: ${{ github.sha }}
       run: |
-        if docker manifest inspect ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:${SERVICE_TAG} > /dev/null; then
+        if docker manifest inspect ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG} > /dev/null; then
           echo "Image exists"
         else
           echo "Image does not exist"
@@ -37,9 +36,9 @@ jobs:
       env:
         CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
         CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-        SERVICE_NAME: ${{ vars.SERVICE_NAME_2 }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_TAG: ${{ github.sha }}
-        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE_2 }}
+        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
         COIN: doge
         NETWORK: mainnet
       with:
@@ -49,6 +48,6 @@ jobs:
         envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
         script: |
           cd /opt/${COIN}-${NETWORK}/services/${SERVICE_NAME}
-          sed -i "s|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:.*|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}-${COIN}:${SERVICE_TAG}|" ${DOCKER_COMPOSE_FILE}
+          sed -i "s|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:.*|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}|" ${DOCKER_COMPOSE_FILE}
           cd ../../
           docker compose up -d --force-recreate ${COIN}-${NETWORK}-${SERVICE_NAME}

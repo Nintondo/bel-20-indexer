@@ -1,4 +1,4 @@
-name: Deploy service BLK for Doge Mainnet
+name: Deploy service for Bells Mainnet
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
       env:
         CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
         CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-        SERVICE_NAME: ${{ vars.SERVICE_NAME_1 }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_TAG: ${{ github.sha }}
       run: |
         if docker manifest inspect ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG} > /dev/null; then
@@ -36,14 +36,14 @@ jobs:
       env:
         CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
         CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-        SERVICE_NAME: ${{ vars.SERVICE_NAME_1 }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_TAG: ${{ github.sha }}
-        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE_1 }}
-        COIN: doge
+        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
+        COIN: bells
         NETWORK: mainnet
       with:
-        host: ${{ secrets.DOGE_MAINNET_HOST_1 }}
-        username: ${{ secrets.DOGE_MAINNET_HOST_1_USERNAME }}
+        host: ${{ secrets.BELLS_MAINNET_HOST_1 }}
+        username: ${{ secrets.BELLS_MAINNET_HOST_1_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
         script: |

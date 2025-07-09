@@ -1,4 +1,4 @@
-name: Wipe RPC service for Bells Testnet
+name: Wipe service for Bells Mainnet
 
 on:
   workflow_dispatch:
@@ -13,14 +13,14 @@ jobs:
     - name: Wipe
       uses: appleboy/ssh-action@v1.0.0
       env:
-        SERVICE_NAME: ${{ vars.SERVICE_NAME_2 }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_DIR_1: ${{ vars.SERVICE_DIR_1 }}
         SERVICE_DIR_2: ${{ vars.SERVICE_DIR_2 }}
         COIN: bells
-        NETWORK: testnet
+        NETWORK: mainnet
       with:
-        host: ${{ secrets.BELLS_TESTNET_HOST_1 }}
-        username: ${{ secrets.BELLS_TESTNET_HOST_1_USERNAME }}
+        host: ${{ secrets.BELLS_MAINNET_HOST_1 }}
+        username: ${{ secrets.BELLS_MAINNET_HOST_1_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: SERVICE_NAME,COIN,NETWORK,SERVICE_DIR_1,SERVICE_DIR_2
         script: |

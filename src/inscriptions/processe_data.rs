@@ -6,6 +6,7 @@ pub enum ProcessedData {
     Info {
         block_number: u32,
         block_info: BlockInfo,
+        block_proof: sha256::Hash,
     },
     Prevouts {
         to_write: HashMap<OutPoint, TxOut>,
@@ -13,10 +14,6 @@ pub enum ProcessedData {
     },
     FullHash {
         addresses: Vec<(FullHash, String)>,
-    },
-    Proof {
-        block_number: u32,
-        block_proof: sha256::Hash,
     },
     History {
         block_number: u32,
@@ -44,9 +41,14 @@ impl ProcessedData {
         let mut reorg_cache = reorg_cache.as_ref().map(|x| x.lock());
 
         match self {
-            ProcessedData::Info { block_number, block_info } => {
+            ProcessedData::Info {
+                block_number,
+                block_info,
+                block_proof,
+            } => {
                 server.db.last_block.set((), block_number);
                 server.db.block_info.set(block_number, block_info);
+                server.db.proof_of_history.set(block_number, block_proof);
 
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
                     reorg_cache.new_block(block_number);
@@ -65,9 +67,6 @@ impl ProcessedData {
             }
             ProcessedData::FullHash { addresses } => {
                 server.db.fullhash_to_address.extend(addresses);
-            }
-            ProcessedData::Proof { block_number, block_proof } => {
-                server.db.proof_of_history.set(block_number, block_proof);
             }
             ProcessedData::History {
                 block_number,

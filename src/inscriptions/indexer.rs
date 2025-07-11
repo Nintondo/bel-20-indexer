@@ -69,11 +69,6 @@ impl InscriptionIndexer {
             })
             .collect::<HashMap<_, _>>();
 
-        to_write.processed.push(ProcessedData::Info {
-            block_number: block_height,
-            block_info,
-        });
-
         let prevouts = utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed)?;
 
         to_write.processed.push(ProcessedData::FullHash {
@@ -87,8 +82,9 @@ impl InscriptionIndexer {
         if block.txs.len() == 1 {
             let new_proof = Server::generate_history_hash(prev_block_proof, &[], &Default::default())?;
 
-            to_write.processed.push(ProcessedData::Proof {
+            to_write.processed.push(ProcessedData::Info {
                 block_number: block_height,
+                block_info,
                 block_proof: new_proof,
             });
 
@@ -182,11 +178,6 @@ impl InscriptionIndexer {
 
         let new_proof = Server::generate_history_hash(prev_block_proof, &to_write.history, &rest_addresses)?;
 
-        to_write.processed.push(ProcessedData::Proof {
-            block_number: block_height,
-            block_proof: new_proof,
-        });
-
         to_write.processed.push(ProcessedData::History {
             block_number: block_height,
             last_history_id,
@@ -205,6 +196,12 @@ impl InscriptionIndexer {
         });
 
         to_write.block_events.push(ServerEvent::NewBlock(block_height, new_proof, current_hash.into()));
+
+        to_write.processed.push(ProcessedData::Info {
+            block_number: block_height,
+            block_info,
+            block_proof: new_proof,
+        });
 
         Ok(())
     }

@@ -23,7 +23,7 @@ use {
     },
     inscriptions::{Indexer, Location},
     itertools::Itertools,
-    num_traits::{FromPrimitive, Zero},
+    num_traits::Zero,
     reorg::{ReorgCache, REORG_CACHE_MAX_LEN},
     rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     serde::{Deserialize, Deserializer, Serialize, Serializer},

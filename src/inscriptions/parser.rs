@@ -33,7 +33,7 @@ impl Parser<'_> {
         let mut outpoint_to_partials = Self::load_partials(self.server, prevouts.keys().cloned().collect());
 
         // Hold inscription's partials to remove from db
-        let partials_to_remove: Vec<_> = outpoint_to_partials.keys().copied().collect();
+        let partials_to_remove: Vec<_> = outpoint_to_partials.iter().map(|x| (*x.0, x.1.clone())).collect();
 
         let mut inscription_outpoint_to_offsets = Self::load_inscription_outpoint_to_offsets(self.server, prevouts.keys().cloned().collect());
 
@@ -201,7 +201,7 @@ impl Parser<'_> {
         });
 
         data_to_write.push(ProcessedData::InscriptionOffset {
-            to_remove: prev_offsets.iter().map(|x| x.0).collect(),
+            to_remove: prev_offsets,
             to_write: inscription_outpoint_to_offsets.into_iter().collect(),
         });
     }

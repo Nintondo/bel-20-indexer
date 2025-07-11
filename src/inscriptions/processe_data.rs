@@ -30,11 +30,11 @@ pub enum ProcessedData {
         transfers_to_remove: Vec<AddressLocation>,
     },
     InscriptionPartials {
-        to_remove: Vec<OutPoint>,
+        to_remove: Vec<(OutPoint, Partials)>,
         to_write: Vec<(OutPoint, Partials)>,
     },
     InscriptionOffset {
-        to_remove: Vec<OutPoint>,
+        to_remove: Vec<(OutPoint, HashSet<u64>)>,
         to_write: Vec<(OutPoint, HashSet<u64>)>,
     },
 }
@@ -59,7 +59,7 @@ impl ProcessedData {
                     reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
                 }
 
-                // to_remove should be handled first (read commend below for explanation)
+                // to_remove should be handled first (read commend above for explanation)
                 server.db.prevouts.remove_batch(to_remove);
                 server.db.prevouts.extend(to_write);
             }
@@ -111,14 +111,13 @@ impl ProcessedData {
                         let deploys = server
                             .db
                             .token_to_meta
-                            .multi_get_kv(metas.iter().map(|x| &x.0), true)
+                            .multi_get_kv(metas.iter().map(|x| &x.0), false)
                             .into_iter()
                             .map(|x| (x.0.clone(), x.1))
                             .collect::<HashMap<_, _>>();
 
                         let new_deploys = metas.iter().filter(|x| !deploys.contains_key(&x.0)).map(|x| x.0.clone()).collect_vec();
 
-                        reorg_cache.push_token_entry(TokenHistoryEntry::DeploysBefore(deploys.into_iter().map(|x| x.1).collect()));
                         reorg_cache.push_token_entry(TokenHistoryEntry::DeploysToRemove(new_deploys));
                     }
 
@@ -161,38 +160,20 @@ impl ProcessedData {
             }
             ProcessedData::InscriptionPartials { to_remove, to_write } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
-                    let to_restore = server
-                        .db
-                        .outpoint_to_partials
-                        .multi_get_kv(to_remove.iter(), true)
-                        .into_iter()
-                        .map(|x| (*x.0, x.1))
-                        .collect_vec();
-                    let to_remove = to_write.iter().map(|x| x.0).collect_vec();
-
-                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePartial(to_restore));
-                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RemovePartials(to_remove));
+                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePartial(to_remove.clone()));
+                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RemovePartials(to_write.iter().map(|x| x.0).collect_vec()));
                 }
 
-                server.db.outpoint_to_partials.remove_batch(to_remove);
+                server.db.outpoint_to_partials.remove_batch(to_remove.iter().map(|x| x.0));
                 server.db.outpoint_to_partials.extend(to_write);
             }
             ProcessedData::InscriptionOffset { to_remove, to_write } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
-                    let to_restore = server
-                        .db
-                        .outpoint_to_inscription_offsets
-                        .multi_get_kv(to_remove.iter(), true)
-                        .into_iter()
-                        .map(|x| (*x.0, x.1))
-                        .collect_vec();
-                    let to_remove = to_write.iter().map(|x| x.0).collect_vec();
-
-                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RestoreOffsets(to_restore));
-                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RemoveOffsets(to_remove));
+                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RestoreOffsets(to_remove.clone()));
+                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RemoveOffsets(to_write.iter().map(|x| x.0).collect_vec()));
                 }
 
-                server.db.outpoint_to_inscription_offsets.remove_batch(to_remove);
+                server.db.outpoint_to_inscription_offsets.remove_batch(to_remove.iter().map(|x| x.0));
                 server.db.outpoint_to_inscription_offsets.extend(to_write);
             }
         }

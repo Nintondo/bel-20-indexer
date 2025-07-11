@@ -295,7 +295,6 @@ dependencies = [
  "parking_lot",
  "rayon",
  "rocksdb-wrapper",
- "rust_decimal",
  "serde",
  "serde_json",
  "serde_with",

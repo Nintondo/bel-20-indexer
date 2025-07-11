@@ -5,7 +5,6 @@ pub const REORG_CACHE_MAX_LEN: usize = 30;
 pub enum TokenHistoryEntry {
     BalancesBefore(Vec<(AddressToken, TokenBalance)>),
     BalancesToRemove(Vec<AddressToken>),
-    DeploysBefore(Vec<TokenMetaDB>),
     DeploysToRemove(Vec<LowerCaseTokenTick>),
     RestoreTransfers(Vec<(AddressLocation, TransferProtoDB)>),
     RemoveTransfers(Vec<AddressLocation>),
@@ -17,44 +16,38 @@ pub enum TokenHistoryEntry {
     },
 }
 
-trait ProceedReorg: Sized + IntoIterator {
+trait ProceedReorg: Sized {
     fn proceed(self, server: &Server) -> anyhow::Result<()>;
 }
 
-impl ProceedReorg for Vec<TokenHistoryEntry> {
+impl ProceedReorg for TokenHistoryEntry {
     fn proceed(self, server: &Server) -> anyhow::Result<()> {
-        for entry in self.into_iter().rev() {
-            match entry {
-                TokenHistoryEntry::DeploysBefore(deploys_before) => {
-                    let to_write = deploys_before.into_iter().map(|x| (LowerCaseTokenTick::from(x.proto.tick), x));
-                    server.db.token_to_meta.extend(to_write);
-                }
-                TokenHistoryEntry::DeploysToRemove(to_remove) => {
-                    server.db.token_to_meta.remove_batch(to_remove);
-                }
-                TokenHistoryEntry::BalancesBefore(items) => {
-                    server.db.address_token_to_balance.extend(items);
-                }
-                TokenHistoryEntry::BalancesToRemove(address_tokens) => {
-                    server.db.address_token_to_balance.remove_batch(address_tokens);
-                }
-                TokenHistoryEntry::RestoreTransfers(items) => {
-                    server.db.address_location_to_transfer.extend(items);
-                }
-                TokenHistoryEntry::RemoveTransfers(address_locations) => {
-                    server.db.address_location_to_transfer.remove_batch(address_locations);
-                }
-                TokenHistoryEntry::RemoveHistory {
-                    to_remove,
-                    last_history_id,
-                    outpoint_to_event,
-                    height,
-                } => {
-                    server.db.last_history_id.set((), last_history_id);
-                    server.db.block_events.remove(height);
-                    server.db.address_token_to_history.remove_batch(to_remove);
-                    server.db.outpoint_to_event.remove_batch(outpoint_to_event);
-                }
+        match self {
+            TokenHistoryEntry::DeploysToRemove(to_remove) => {
+                server.db.token_to_meta.remove_batch(to_remove);
+            }
+            TokenHistoryEntry::BalancesBefore(items) => {
+                server.db.address_token_to_balance.extend(items);
+            }
+            TokenHistoryEntry::BalancesToRemove(address_tokens) => {
+                server.db.address_token_to_balance.remove_batch(address_tokens);
+            }
+            TokenHistoryEntry::RestoreTransfers(items) => {
+                server.db.address_location_to_transfer.extend(items);
+            }
+            TokenHistoryEntry::RemoveTransfers(address_locations) => {
+                server.db.address_location_to_transfer.remove_batch(address_locations);
+            }
+            TokenHistoryEntry::RemoveHistory {
+                to_remove,
+                last_history_id,
+                outpoint_to_event,
+                height,
+            } => {
+                server.db.last_history_id.set((), last_history_id);
+                server.db.block_events.remove(height);
+                server.db.address_token_to_history.remove_batch(to_remove);
+                server.db.outpoint_to_event.remove_batch(outpoint_to_event);
             }
         }
 
@@ -70,27 +63,26 @@ pub enum OrdinalsEntry {
     RemovePartials(Vec<OutPoint>),
 }
 
-impl ProceedReorg for Vec<OrdinalsEntry> {
+impl ProceedReorg for OrdinalsEntry {
     fn proceed(self, server: &Server) -> anyhow::Result<()> {
-        for entry in self.into_iter().rev() {
-            match entry {
-                OrdinalsEntry::RestoreOffsets(items) => {
-                    server.db.outpoint_to_inscription_offsets.extend(items);
-                }
-                OrdinalsEntry::RemoveOffsets(outpoints) => {
-                    server.db.outpoint_to_inscription_offsets.remove_batch(outpoints);
-                }
-                OrdinalsEntry::RestorePrevouts(items) => {
-                    server.db.prevouts.extend(items);
-                }
-                OrdinalsEntry::RestorePartial(items) => {
-                    server.db.outpoint_to_partials.extend(items);
-                }
-                OrdinalsEntry::RemovePartials(outpoints) => {
-                    server.db.outpoint_to_partials.remove_batch(outpoints);
-                }
+        match self {
+            OrdinalsEntry::RestoreOffsets(items) => {
+                server.db.outpoint_to_inscription_offsets.extend(items);
+            }
+            OrdinalsEntry::RemoveOffsets(outpoints) => {
+                server.db.outpoint_to_inscription_offsets.remove_batch(outpoints);
+            }
+            OrdinalsEntry::RestorePrevouts(items) => {
+                server.db.prevouts.extend(items);
+            }
+            OrdinalsEntry::RestorePartial(items) => {
+                server.db.outpoint_to_partials.extend(items);
+            }
+            OrdinalsEntry::RemovePartials(outpoints) => {
+                server.db.outpoint_to_partials.remove_batch(outpoints);
             }
         }
+
         Ok(())
     }
 }
@@ -142,8 +134,12 @@ impl ReorgCache {
             server.db.last_block.set((), height - 1);
             server.db.block_info.remove(height);
 
-            data.token_history.proceed(server)?;
-            data.ordinals_history.proceed(server)?;
+            for entry in data.token_history.into_iter().rev() {
+                entry.proceed(server)?;
+            }
+            for entry in data.ordinals_history.into_iter().rev() {
+                entry.proceed(server)?;
+            }
         }
 
         Ok(())

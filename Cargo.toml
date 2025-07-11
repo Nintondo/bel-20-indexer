@@ -7,10 +7,6 @@ edition = "2021"
 anyhow = "1.0.91"
 bellscoincore-rpc = "0.17.3"
 num-traits = "0.2.19"
-rust_decimal = { version = "1.36.0", features = [
-    "serde-bincode",
-    "serde-with-float",
-] }
 serde = { version = "1.0.213", features = ["derive"] }
 serde_with = "3.11.0"
 tracing = "0.1.40"

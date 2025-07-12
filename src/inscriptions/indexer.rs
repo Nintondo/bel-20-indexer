@@ -24,6 +24,10 @@ impl InscriptionIndexer {
 
         self.handle_block(&mut to_write, block_height, block, handle_reorgs)?;
 
+        if handle_reorgs {
+            self.reorg_cache.lock().new_block(block_height);
+        }
+
         // write/remove data from block
         for data in to_write.processed {
             data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()));

@@ -49,10 +49,6 @@ impl ProcessedData {
                 server.db.last_block.set((), block_number);
                 server.db.block_info.set(block_number, block_info);
                 server.db.proof_of_history.set(block_number, block_proof);
-
-                if let Some(reorg_cache) = reorg_cache.as_mut() {
-                    reorg_cache.new_block(block_number);
-                }
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {

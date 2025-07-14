@@ -28,7 +28,8 @@ jobs:
         SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_TAG: ${{ github.event.client_payload.sha }}
       run: |
-        if docker manifest inspect ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG} > /dev/null; then
+        IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
+        if docker manifest inspect $IMAGE > /dev/null; then
           echo "Image exists"
         else
           echo "Image does not exist"
@@ -51,7 +52,28 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
         script: |
-          cd /opt/${COIN}-${NETWORK}/services/${SERVICE_NAME}
-          sed -i "s|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:.*|image: ${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}|" ${DOCKER_COMPOSE_FILE}
-          cd ../../
-          docker compose up -d --force-recreate ${COIN}-${NETWORK}-${SERVICE_NAME}
+          for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE COIN NETWORK; do
+            if [ -z "${!var}" ]; then
+              echo "Error: Environment variable ${var} is not set."
+              exit 1
+            fi
+          done
+
+          BASE_PATH="/opt/${COIN}-${NETWORK}"
+          SERVICE_PATH="${BASE_PATH}/services/${SERVICE_NAME}"
+          IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
+          CONTAINER="${COIN}-${NETWORK}-${SERVICE_NAME}"
+
+          update_docker_compose() {
+            local image="$1"
+            local compose_file="$2"
+            sed -i "s|image: .*/${SERVICE_NAME}:.*|image: ${image}|" "${compose_file}"
+          }
+          
+          cd "${SERVICE_PATH}" || exit 1
+          
+          update_docker_compose "${IMAGE}" "${DOCKER_COMPOSE_FILE}"
+
+          cd "${BASE_PATH}" || exit 1
+          
+          docker compose up -d --force-recreate "${CONTAINER}"

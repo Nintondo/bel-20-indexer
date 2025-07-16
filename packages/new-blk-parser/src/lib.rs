@@ -134,11 +134,13 @@ impl Indexer {
                             Ok(v) if v.confirmations < 0 => {
                                 reorg_counter += 1;
                                 checkpoint = checkpoint.prev().unwrap();
+                                last_sent_hash = Some(checkpoint.hash());
                                 continue;
                             }
                             Err(_) => {
                                 reorg_counter += 1;
                                 checkpoint = checkpoint.prev().unwrap();
+                                last_sent_hash = Some(checkpoint.hash());
                                 continue;
                             }
                             _ => {}
@@ -196,7 +198,7 @@ impl Indexer {
             let _ = last_sent_hash.insert(block.header.hash);
         } else {
             if last_sent_hash.unwrap() != block.header.value.prev_hash {
-                panic!("Invalid blocks order");
+                panic!("Invalid blocks order. Expected {:?} got {}", last_sent_hash, block.header.value.prev_hash);
             }
             let _ = last_sent_hash.insert(block.header.hash);
         }

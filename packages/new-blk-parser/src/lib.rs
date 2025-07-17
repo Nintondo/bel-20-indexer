@@ -1,9 +1,10 @@
+#![allow(clippy::uninlined_format_args)]
+
 #[macro_use]
 extern crate tracing;
 
 use bellscoin::hashes::{Hash, sha256d};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
-use num_traits::Zero;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::BorrowMut,
@@ -23,7 +24,7 @@ use crate::{
         BlockId, CoinType,
         checkpoint::CheckPoint,
         parser::{ChainOptions, ChainStorage},
-        proto::address_to_fullhash,
+        proto::{Hashed, address_to_fullhash},
     },
     utils::BlockHeightRange,
 };
@@ -65,19 +66,11 @@ impl Indexer {
 
         std::thread::spawn(move || {
             let coin = CoinType::from_str(&self.coin).unwrap();
-            let mut last_height = self.last_height.is_zero().then_some(0).unwrap_or(self.last_height + 1) as u64;
+            let mut last_height = if self.last_height == 0 { 0 } else { self.last_height + 1 } as u64;
 
-            let mut chain = ChainStorage::new(&ChainOptions::new(
-                self.path.as_ref().map(|x| x.as_str()),
-                self.index_dir_path.as_ref().map(|x| x.as_str()),
-                coin,
-                self.last_height,
-            ))
-            .unwrap();
+            let mut chain = ChainStorage::new(&ChainOptions::new(self.path.as_deref(), self.index_dir_path.as_deref(), coin, self.last_height)).unwrap();
 
             let max_height = chain.max_height();
-
-            let mut last_sent_hash: Option<sha256d::Hash> = None;
 
             for height in last_height..=max_height {
                 if self.token.is_cancelled() {
@@ -88,7 +81,6 @@ impl Indexer {
                     break;
                 };
 
-                Self::check_order(&mut last_sent_hash, &block);
                 if tx
                     .send(BlockEvent {
                         id: BlockId { height, hash: block.header.hash },
@@ -113,7 +105,7 @@ impl Indexer {
                 }
             };
 
-            while checkpoint.height() < last_height {
+            while checkpoint.height() <= last_height {
                 let height = checkpoint.height() + 1;
                 let hash = client.get_block_hash(height).unwrap();
                 checkpoint = checkpoint.insert(BlockId { height, hash });
@@ -134,13 +126,11 @@ impl Indexer {
                             Ok(v) if v.confirmations < 0 => {
                                 reorg_counter += 1;
                                 checkpoint = checkpoint.prev().unwrap();
-                                last_sent_hash = Some(checkpoint.hash());
                                 continue;
                             }
                             Err(_) => {
                                 reorg_counter += 1;
                                 checkpoint = checkpoint.prev().unwrap();
-                                last_sent_hash = Some(checkpoint.hash());
                                 continue;
                             }
                             _ => {}
@@ -149,14 +139,16 @@ impl Indexer {
                         let best_height = client.get_block_info(&best_hash).unwrap().height as u64;
 
                         while checkpoint.height() < best_height {
-                            let next_height = checkpoint.height() - reorg_counter as u64 + 1;
+                            let next_height = checkpoint.height() + 1;
                             let next_hash = client.get_block_hash(next_height).unwrap();
+                            let block = client.get_block(&next_hash).unwrap();
+
+                            Self::check_order(checkpoint.hash(), &block.header);
                             checkpoint = checkpoint.insert(BlockId {
                                 height: next_height,
                                 hash: next_hash,
                             });
-                            let block = client.get_block(&next_hash).unwrap();
-                            Self::check_order(&mut last_sent_hash, &block);
+
                             if tx
                                 .send(BlockEvent {
                                     block,
@@ -193,14 +185,77 @@ impl Indexer {
     }
 
     #[inline]
-    fn check_order(last_sent_hash: &mut Option<sha256d::Hash>, block: &proto::block::Block) {
-        if last_sent_hash.is_none() {
-            let _ = last_sent_hash.insert(block.header.hash);
-        } else {
-            if last_sent_hash.unwrap() != block.header.value.prev_hash {
-                panic!("Invalid blocks order. Expected {:?} got {}", last_sent_hash, block.header.value.prev_hash);
-            }
-            let _ = last_sent_hash.insert(block.header.hash);
+    fn check_order(last_sent_hash: sha256d::Hash, header: &Hashed<proto::header::BlockHeader>) {
+        if last_sent_hash != header.value.prev_hash {
+            panic!("Invalid blocks order. Expected {} got {}", last_sent_hash, header.value.prev_hash);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::header::BlockHeader;
+
+    use super::*;
+
+    fn test_block_id(height: u64) -> BlockId {
+        BlockId {
+            height,
+            hash: sha256d::Hash::from_byte_array([height as u8; 32]),
+        }
+    }
+
+    #[test]
+    fn test_reorg() {
+        let blocks = [test_block_id(0), test_block_id(1), test_block_id(2), test_block_id(3), test_block_id(4), test_block_id(5)];
+        let mut checkpoint = CheckPoint::from_block_ids(blocks).unwrap();
+
+        let best_block_id = BlockId {
+            height: 3,
+            hash: sha256d::Hash::from_byte_array([6; 32]),
+        };
+
+        let mut reorg_counter = 0;
+
+        if best_block_id.hash != checkpoint.hash() {
+            while checkpoint.height() >= best_block_id.height {
+                reorg_counter += 1;
+                checkpoint = checkpoint.prev().unwrap();
+                continue;
+            }
+
+            let best_height = checkpoint.height();
+
+            while checkpoint.height() < best_height {
+                let next_height = checkpoint.height() + 1;
+                let next_hash = blocks.get(next_height as usize - 1).unwrap().hash;
+                checkpoint = checkpoint.insert(BlockId {
+                    height: next_height,
+                    hash: next_hash,
+                });
+
+                Indexer::check_order(
+                    checkpoint.hash(),
+                    &Hashed {
+                        hash: blocks.get(checkpoint.height() as usize - 1).map(|x| x.hash).unwrap_or(sha256d::Hash::all_zeros()),
+                        value: BlockHeader {
+                            bits: 0,
+                            merkle_root: sha256d::Hash::all_zeros(),
+                            nonce: 0,
+                            prev_hash: checkpoint.hash(),
+                            timestamp: 0,
+                            version: 0,
+                        },
+                    },
+                );
+
+                reorg_counter = 0;
+            }
+        }
+
+        assert_eq!(reorg_counter, 3);
+        assert_eq!(checkpoint.height(), best_block_id.height - 1);
+        let next_height = checkpoint.height() + 1;
+        assert_eq!(next_height, best_block_id.height);
     }
 }

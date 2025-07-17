@@ -165,7 +165,7 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Re
     let mut db_iter = DB::open(path, Options::default())?.new_iter()?;
     let (mut key, mut value) = (vec![], vec![]);
 
-    db_iter.seek(&[b'b']);
+    db_iter.seek(b"b");
     db_iter.prev();
 
     while db_iter.advance() {
@@ -191,7 +191,7 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Re
             continue;
         }
 
-        block_index.entry(record.height).or_insert_with(Vec::new).push(record);
+        block_index.entry(record.height).or_default().push(record);
     }
 
     block_index.sort_unstable_keys();
@@ -204,9 +204,7 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Re
         .rev()
         .peekable()
         .batching(|it| {
-            let Some(cur) = it.next() else {
-                return None;
-            };
+            let cur = it.next()?;
 
             if last_pos.is_none() && cur.len() != 1 {
                 return Some(vec![]);

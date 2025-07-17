@@ -3,6 +3,9 @@ name = "bel_20_node"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [".", "packages/*"]
+
 [dependencies]
 anyhow = "1.0.91"
 bellscoincore-rpc = "0.17.3"

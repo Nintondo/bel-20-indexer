@@ -218,13 +218,16 @@ mod tests {
         let mut reorg_counter = 0;
 
         if best_block_id.hash != checkpoint.hash() {
+            let best_height = best_block_id.height;
+
             while checkpoint.height() >= best_block_id.height {
                 reorg_counter += 1;
                 checkpoint = checkpoint.prev().unwrap();
                 continue;
             }
 
-            let best_height = checkpoint.height();
+            assert_eq!(reorg_counter, 3);
+            assert_eq!(checkpoint.height(), best_height - 1);
 
             while checkpoint.height() < best_height {
                 let next_height = checkpoint.height() + 1;
@@ -248,14 +251,9 @@ mod tests {
                         },
                     },
                 );
-
-                reorg_counter = 0;
             }
         }
 
-        assert_eq!(reorg_counter, 3);
-        assert_eq!(checkpoint.height(), best_block_id.height - 1);
-        let next_height = checkpoint.height() + 1;
-        assert_eq!(next_height, best_block_id.height);
+        assert_eq!(checkpoint.height(), best_block_id.height);
     }
 }

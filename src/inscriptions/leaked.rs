@@ -30,7 +30,7 @@ impl LeakedInscriptions {
         }
     }
 
-    pub fn add(&mut self, input_idx: usize, tx: &Hashed<EvaluatedTx>, input_offset: u64, tx_outs: &HashMap<OutPoint, TxOut>, inscription: LeakedInscription) {
+    pub fn add(&mut self, input_idx: usize, tx: &Hashed<EvaluatedTx>, input_offset: u64, tx_outs: &HashMap<OutPoint, TxPrevout>, inscription: LeakedInscription) {
         let fee_result = Self::find_fee(tx, input_idx, input_offset, tx_outs);
 
         let diff = fee_result.fee - fee_result.fee_offset;
@@ -43,7 +43,7 @@ impl LeakedInscriptions {
             .or_insert(vec![inscription]);
     }
 
-    pub fn add_tx_fee(&mut self, tx: &Hashed<EvaluatedTx>, txos: &HashMap<OutPoint, TxOut>) -> u64 {
+    pub fn add_tx_fee(&mut self, tx: &Hashed<EvaluatedTx>, txos: &HashMap<OutPoint, TxPrevout>) -> u64 {
         let inputs_sum = tx.value.inputs.iter().map(|x| txos.get(&x.outpoint).unwrap().value).sum::<u64>();
 
         let outputs_sum = tx.value.outputs.iter().map(|x| x.out.value).sum::<u64>();
@@ -87,7 +87,7 @@ impl LeakedInscriptions {
         None
     }
 
-    fn find_fee(tx: &Hashed<EvaluatedTx>, input_idx: usize, input_offset: u64, tx_outs: &HashMap<OutPoint, TxOut>) -> FeeResult {
+    fn find_fee(tx: &Hashed<EvaluatedTx>, input_idx: usize, input_offset: u64, tx_outs: &HashMap<OutPoint, TxPrevout>) -> FeeResult {
         let inputs_cum = {
             let mut last_value = 0;
 

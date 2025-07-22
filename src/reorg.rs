@@ -58,7 +58,7 @@ impl ProceedReorg for TokenHistoryEntry {
 pub enum OrdinalsEntry {
     RestoreOffsets(Vec<(OutPoint, HashSet<u64>)>),
     RemoveOffsets(Vec<OutPoint>),
-    RestorePrevouts(Vec<(OutPoint, TxOut)>),
+    RestorePrevouts(Vec<(OutPoint, TxPrevout)>),
     RestorePartial(Vec<(OutPoint, Partials)>),
     RemovePartials(Vec<OutPoint>),
 }

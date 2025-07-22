@@ -84,13 +84,13 @@ pub struct TokenCache {
 }
 
 impl TokenCache {
-    pub fn load(prevouts: &HashMap<OutPoint, TxOut>, db: &DB) -> Self {
+    pub fn load(prevouts: &HashMap<OutPoint, TxPrevout>, db: &DB) -> Self {
         let mut token_cache = Self::default();
 
         let transfers_to_remove: HashSet<_> = prevouts
             .iter()
             .map(|(k, v)| AddressOutPoint {
-                address: v.script_pubkey.compute_script_hash(),
+                address: v.script_hash,
                 outpoint: *k,
             })
             .collect();

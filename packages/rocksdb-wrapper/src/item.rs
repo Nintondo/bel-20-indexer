@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::*;
 
 pub trait Pebble {
@@ -73,14 +75,38 @@ where
     }
 
     fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
-        let mut buf = POSTCARD_BUFFER
-            .with_borrow_mut(|buf| buf.pop())
-            .unwrap_or_default();
+        let mut buf = POSTCARD_BUFFER.with_borrow_mut(|buf| buf.pop()).unwrap_or_default();
         buf.clear();
         let buf = postcard::to_extend(v, buf).unwrap();
         let x = (f)(&buf);
         POSTCARD_BUFFER.with_borrow_mut(|x| x.push(buf));
         x
+    }
+}
+
+impl<T: Pebble<Inner = T>> Pebble for Vec<T> {
+    type Inner = Self;
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let size = T::FIXED_SIZE.expect("FIXED_SIZE is required in order to use Vec<Pebble>");
+        v.chunks(size).map(|x| T::from_bytes(Cow::Borrowed(x))).collect()
+    }
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        Cow::Owned(v.iter().flat_map(|x| T::get_bytes(x).into_owned()).collect())
+    }
+}
+
+impl<T: Pebble<Inner = T> + std::hash::Hash + Eq> Pebble for HashSet<T> {
+    type Inner = Self;
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let size = T::FIXED_SIZE.expect("FIXED_SIZE is required in order to use Vec<Pebble>");
+        v.chunks(size).map(|x| T::from_bytes(Cow::Borrowed(x))).collect()
+    }
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        Cow::Owned(v.iter().flat_map(|x| T::get_bytes(x).into_owned()).collect())
     }
 }
 
@@ -92,9 +118,7 @@ impl<const N: usize> Pebble for [u8; N] {
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        Ok(v.into_owned()
-            .try_into()
-            .expect("Failed to deserlize slice"))
+        Ok(v.into_owned().try_into().expect("Failed to deserlize slice"))
     }
 }
 
@@ -213,10 +237,7 @@ impl<K0: Pebble, K1: Pebble> Pebble for (K0, K1) {
     type Inner = (K0::Inner, K1::Inner);
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
-        assert!(
-            K0::FIXED_SIZE.is_some(),
-            "First key in MultiPebble must have fixed size"
-        );
+        assert!(K0::FIXED_SIZE.is_some(), "First key in MultiPebble must have fixed size");
 
         let mut buf = K0::get_bytes(&v.0).to_vec();
         buf.extend_from_slice(&K1::get_bytes(&v.1));
@@ -224,10 +245,7 @@ impl<K0: Pebble, K1: Pebble> Pebble for (K0, K1) {
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        assert!(
-            K0::FIXED_SIZE.is_some(),
-            "First key in MultiPebble must have fixed size"
-        );
+        assert!(K0::FIXED_SIZE.is_some(), "First key in MultiPebble must have fixed size");
 
         let k0_s = K0::FIXED_SIZE.unwrap();
         let k0 = K0::from_bytes(Cow::Borrowed(&v[..k0_s]))?;

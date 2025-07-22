@@ -174,6 +174,88 @@ pub struct Partials {
     pub parts: Vec<Part>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct TxPrevout {
+    pub script_hash: FullHash,
+    pub value: u64,
+}
+
+impl From<TxOut> for TxPrevout {
+    fn from(tx_out: TxOut) -> Self {
+        Self {
+            script_hash: tx_out.script_pubkey.compute_script_hash(),
+            value: tx_out.value,
+        }
+    }
+}
+
+impl rocksdb_wrapper::Pebble for TxPrevout {
+    type Inner = Self;
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        let mut result = Vec::with_capacity(32 + 8);
+        result.extend(v.script_hash);
+        result.extend(v.value.to_be_bytes());
+        Cow::Owned(result)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let script_hash: FullHash = v[..32].try_into().anyhow()?;
+        let value = u64::from_be_bytes(v[32..].try_into().anyhow()?);
+
+        Ok(Self { script_hash, value })
+    }
+}
+
+impl rocksdb_wrapper::Pebble for Partials {
+    type Inner = Self;
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        let mut buff = Vec::with_capacity(4 + 32 + v.parts.len() * (1 + 4 + 1700));
+
+        buff.extend(v.inscription_index.to_be_bytes());
+        buff.extend_from_slice(&bellscoin::consensus::serialize(&v.genesis_txid));
+
+        for part in &v.parts {
+            buff.push(part.is_tapscript as u8);
+            let script_len = part.script_buffer.len() as u32;
+            buff.extend(script_len.to_be_bytes());
+            buff.extend(part.script_buffer.clone());
+        }
+
+        Cow::Owned(buff)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let inscription_index = u32::from_be_bytes(v[..4].try_into()?);
+
+        let genesis_txid = bellscoin::consensus::deserialize(&v[4..32 + 4])?;
+
+        let mut parts = Vec::new();
+
+        let mut current_byte = 32 + 4;
+
+        while current_byte != v.len() {
+            let is_tapscript = v[current_byte] == 1;
+            current_byte += 1;
+
+            let script_len = u32::from_be_bytes(v[current_byte..current_byte + 4].try_into()?) as usize;
+            current_byte += 4;
+
+            let script_buffer = v[current_byte..current_byte + script_len].to_vec();
+            current_byte += script_len;
+
+            parts.push(Part { is_tapscript, script_buffer })
+        }
+
+        Ok(Partials {
+            inscription_index,
+            genesis_txid,
+            parts,
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct BlockInfo {
     pub hash: BlockHash,

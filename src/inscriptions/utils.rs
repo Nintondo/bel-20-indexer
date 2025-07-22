@@ -3,7 +3,7 @@ use nint_blk::proto::block::Block;
 
 use super::{processe_data::ProcessedData, *};
 
-pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>) -> anyhow::Result<HashMap<OutPoint, TxOut>> {
+pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
     let prevouts = block
         .txs
         .iter()
@@ -23,7 +23,8 @@ pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<Proc
             })
         })
         .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
-        .collect::<HashMap<_, _>>();
+        .map(|(outpoint, tx_out)| (outpoint, tx_out.into()))
+        .collect::<HashMap<_, TxPrevout>>();
 
     let txids_keys = block
         .txs
@@ -45,7 +46,7 @@ pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<Proc
                 }
                 None => {
                     if let Some(value) = prevouts.get(key) {
-                        result.insert(*key, value.clone());
+                        result.insert(*key, *value);
                     } else {
                         return Err(anyhow::anyhow!("Missing prevout for key {}", key));
                     }

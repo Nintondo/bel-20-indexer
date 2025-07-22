@@ -9,7 +9,7 @@ pub enum ProcessedData {
         block_proof: sha256::Hash,
     },
     Prevouts {
-        to_write: HashMap<OutPoint, TxOut>,
+        to_write: HashMap<OutPoint, TxPrevout>,
         to_remove: Vec<OutPoint>,
     },
     FullHash {

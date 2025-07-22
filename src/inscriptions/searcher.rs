@@ -8,7 +8,7 @@ use super::*;
 pub struct InscriptionSearcher {}
 
 impl InscriptionSearcher {
-    pub fn calc_offsets(tx: &Hashed<EvaluatedTx>, tx_outs: &HashMap<OutPoint, TxOut>) -> Option<Vec<u64>> {
+    pub fn calc_offsets(tx: &Hashed<EvaluatedTx>, tx_outs: &HashMap<OutPoint, TxPrevout>) -> Option<Vec<u64>> {
         let mut input_values = tx.value.inputs.iter().map(|x| tx_outs.get(&x.outpoint).map(|x| x.value)).collect::<Option<Vec<u64>>>()?;
 
         let spend: u64 = input_values.iter().sum();

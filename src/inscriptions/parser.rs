@@ -17,7 +17,7 @@ pub struct ParseInscription<'a> {
     input_index: u32,
     inputs_cum: &'a [u64],
     partials: &'a Partials,
-    prevouts: &'a HashMap<OutPoint, TxOut>,
+    prevouts: &'a HashMap<OutPoint, TxPrevout>,
 }
 
 pub struct Parser<'a> {
@@ -26,7 +26,7 @@ pub struct Parser<'a> {
 }
 
 impl Parser<'_> {
-    pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxOut>, data_to_write: &mut Vec<ProcessedData>) {
+    pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
         let is_jubilee_height = height as usize >= *JUBILEE_HEIGHT;
 
         // Hold inscription's partials from db and new in the block
@@ -91,11 +91,7 @@ impl Parser<'_> {
                                 if is_token_transfer_move {
                                     // because of token protocol leaked token amount
                                     // comeback to owner
-                                    let recipient = prevouts
-                                        .get(&txin.outpoint)
-                                        .expect("Owner of token transfer must exist")
-                                        .script_pubkey
-                                        .compute_script_hash();
+                                    let recipient = prevouts.get(&txin.outpoint).expect("Owner of token transfer must exist").script_hash;
                                     self.token_cache.transferred(old_location, recipient, txid, 0);
                                 }
                                 leaked.as_mut().unwrap().add(input_index, tx, inscription_offset, prevouts, LeakedInscription::Move);

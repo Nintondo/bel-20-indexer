@@ -286,9 +286,10 @@ pub struct AddressTokenIdDB {
 
 impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
     type Inner = Self;
+    const FIXED_SIZE: Option<usize> = Some(32 + 4 + 8);
 
     fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
-        let mut result = Vec::with_capacity(32 + 4 + 8);
+        let mut result = Vec::with_capacity(Self::FIXED_SIZE.unwrap());
         result.extend(v.address);
         result.extend(v.token.0);
         result.extend(v.id.to_be_bytes());

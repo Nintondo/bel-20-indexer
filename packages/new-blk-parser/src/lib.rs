@@ -5,6 +5,7 @@ extern crate tracing;
 
 use bellscoin::hashes::{Hash, sha256d};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
+use kanal::{SendError, Sender};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::BorrowMut,
@@ -21,7 +22,7 @@ use std::{
 
 use crate::{
     blockchain::{
-        BlockId, CoinType,
+        CoinType,
         checkpoint::CheckPoint,
         parser::{ChainOptions, ChainStorage},
         proto::{Hashed, address_to_fullhash},
@@ -33,7 +34,7 @@ mod blockchain;
 mod utils;
 
 pub use blockchain::{
-    LoadBlocks, LoadBlocksArgs,
+    BlockId, LoadBlocks, LoadBlocksArgs,
     proto::{self, ScriptType},
 };
 pub use utils::Auth;
@@ -56,8 +57,27 @@ pub struct Indexer {
     pub rpc_url: String,
     pub rpc_auth: Auth,
     pub token: WaitToken,
-    pub last_height: u32,
+    pub last_block: BlockId,
     pub reorg_max_len: usize,
+}
+
+trait SendChecked {
+    fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError>;
+}
+
+impl SendChecked for Sender<BlockEvent> {
+    fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError> {
+        check_ordering(last_sent_hash, &event.block.header);
+        self.send(event)
+    }
+}
+
+#[inline]
+fn check_ordering(last_sent_hash: &mut sha256d::Hash, header: &Hashed<proto::header::BlockHeader>) {
+    if *last_sent_hash != header.value.prev_hash {
+        panic!("Invalid blocks order. Expected {} got {}", last_sent_hash, header.value.prev_hash);
+    }
+    *last_sent_hash = header.hash;
 }
 
 impl Indexer {
@@ -66,9 +86,21 @@ impl Indexer {
 
         std::thread::spawn(move || {
             let coin = CoinType::from_str(&self.coin).unwrap();
-            let mut last_height = if self.last_height == 0 { 0 } else { self.last_height + 1 } as u64;
+            let client = utils::Client::new(&self.rpc_url, self.rpc_auth.clone(), coin, self.token.clone()).unwrap();
 
-            let mut chain = ChainStorage::new(&ChainOptions::new(self.path.as_deref(), self.index_dir_path.as_deref(), coin, self.last_height)).unwrap();
+            let mut last_height = {
+                let last = self.last_block.height;
+                if last == 0 { last } else { last + 1 }
+            };
+            let mut last_hash = self.last_block.hash;
+
+            let mut chain = ChainStorage::new(&ChainOptions::new(
+                self.path.as_deref(),
+                self.index_dir_path.as_deref(),
+                coin,
+                self.last_block.height as u32,
+            ))
+            .unwrap();
 
             let max_height = chain.max_height();
 
@@ -81,20 +113,17 @@ impl Indexer {
                     break;
                 };
 
-                if tx
-                    .send(BlockEvent {
-                        id: BlockId { height, hash: block.header.hash },
-                        block,
-                        reorg_len: 0,
-                        tip: max_height,
-                    })
-                    .is_err()
-                {
+                let event = BlockEvent {
+                    id: BlockId { height, hash: block.header.hash },
+                    block,
+                    reorg_len: 0,
+                    tip: max_height,
+                };
+
+                if tx.send_checked(event, &mut last_hash).is_err() {
                     return;
                 };
             }
-
-            let client = utils::Client::new(&self.rpc_url, self.rpc_auth.clone(), coin, self.token.clone()).unwrap();
 
             let mut checkpoint = match chain.complete() {
                 Some(v) => v,
@@ -105,7 +134,7 @@ impl Indexer {
                 }
             };
 
-            while checkpoint.height() <= last_height {
+            while checkpoint.height() < last_height {
                 let height = checkpoint.height() + 1;
                 let hash = client.get_block_hash(height).unwrap();
                 checkpoint = checkpoint.insert(BlockId { height, hash });
@@ -142,27 +171,24 @@ impl Indexer {
                             let next_height = checkpoint.height() + 1;
                             let next_hash = client.get_block_hash(next_height).unwrap();
                             let block = client.get_block(&next_hash).unwrap();
+                            let event = BlockEvent {
+                                block,
+                                id: BlockId {
+                                    height: next_height,
+                                    hash: next_hash,
+                                },
+                                reorg_len: reorg_counter,
+                                tip: best_height,
+                            };
 
-                            Self::check_order(checkpoint.hash(), &block.header);
+                            if tx.send_checked(event, &mut last_hash).is_err() {
+                                return;
+                            };
+
                             checkpoint = checkpoint.insert(BlockId {
                                 height: next_height,
                                 hash: next_hash,
                             });
-
-                            if tx
-                                .send(BlockEvent {
-                                    block,
-                                    id: BlockId {
-                                        height: next_height,
-                                        hash: next_hash,
-                                    },
-                                    reorg_len: reorg_counter,
-                                    tip: best_height,
-                                })
-                                .is_err()
-                            {
-                                return;
-                            };
 
                             reorg_counter = 0;
                         }
@@ -182,13 +208,6 @@ impl Indexer {
     pub fn to_scripthash(&self, address: &str, script_type: ScriptType) -> Result<sha256d::Hash> {
         let coin = CoinType::from_str(&self.coin).anyhow_with("Unsupported coin")?;
         address_to_fullhash(address, script_type, coin)
-    }
-
-    #[inline]
-    fn check_order(last_sent_hash: sha256d::Hash, header: &Hashed<proto::header::BlockHeader>) {
-        if last_sent_hash != header.value.prev_hash {
-            panic!("Invalid blocks order. Expected {} got {}", last_sent_hash, header.value.prev_hash);
-        }
     }
 }
 
@@ -237,8 +256,8 @@ mod tests {
                     hash: next_hash,
                 });
 
-                Indexer::check_order(
-                    checkpoint.hash(),
+                check_ordering(
+                    &mut checkpoint.hash(),
                     &Hashed {
                         hash: blocks.get(checkpoint.height() as usize - 1).map(|x| x.hash).unwrap_or(sha256d::Hash::all_zeros()),
                         value: BlockHeader {

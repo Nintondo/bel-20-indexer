@@ -262,6 +262,15 @@ pub struct BlockInfo {
     pub created: u32,
 }
 
+impl Default for BlockInfo {
+    fn default() -> Self {
+        Self {
+            hash: BlockHash::all_zeros(),
+            created: 0,
+        }
+    }
+}
+
 impl rocksdb_wrapper::Pebble for BlockInfo {
     type Inner = Self;
 

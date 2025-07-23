@@ -29,9 +29,14 @@ impl Server {
         }
         .to_string();
 
+        let last_height = db.last_block.get(()).unwrap_or_default();
+
         let indexer = nint_blk::Indexer {
             coin,
-            last_height: db.last_block.get(()).unwrap_or_default(),
+            last_block: nint_blk::BlockId {
+                height: last_height as u64,
+                hash: db.block_info.get(last_height).unwrap_or_default().hash.into(),
+            },
             path: BLK_DIR.clone(),
             reorg_max_len: REORG_CACHE_MAX_LEN,
             rpc_auth: nint_blk::Auth::UserPass(USER.to_string(), PASS.to_string()),

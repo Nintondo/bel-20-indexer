@@ -52,14 +52,20 @@ impl ProcessedData {
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
-                    // We don't panic when prevout is not found because there can be some prevouts from the current block transactions
-                    let prevouts = server.db.prevouts.multi_get_kv(to_remove.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect_vec();
+                    let prevouts = server
+                        .db
+                        .prevouts
+                        .multi_get(to_remove.iter())
+                        .into_iter()
+                        .zip(to_remove.iter())
+                        .map(|(v, k)| (*k, v.unwrap_or_else(|| *to_write.get(k).unwrap())))
+                        .collect();
+
                     reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
                 }
 
-                // to_remove should be handled first (read commend above for explanation)
-                server.db.prevouts.remove_batch(to_remove);
                 server.db.prevouts.extend(to_write);
+                server.db.prevouts.remove_batch(to_remove);
             }
             ProcessedData::FullHash { addresses } => {
                 server.db.fullhash_to_address.extend(addresses);

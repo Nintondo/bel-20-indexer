@@ -48,7 +48,7 @@ pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<Proc
                     if let Some(value) = prevouts.get(key) {
                         result.insert(*key, *value);
                     } else {
-                        return Err(anyhow::anyhow!("Missing prevout for key {}", key));
+                        return Err(anyhow::anyhow!("Missing prevout for key {}. Block: {}", key, block.header.hash));
                     }
                 }
             }

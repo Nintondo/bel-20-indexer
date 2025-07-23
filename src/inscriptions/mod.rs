@@ -51,7 +51,7 @@ impl Indexer {
 
         let indexer = InscriptionIndexer::new(self.server.clone(), self.reorg_cache.clone());
 
-        let mut progress: Option<Progress> = Some(Progress::begin("Indexing", self.server.indexer.last_height as u64, self.server.indexer.last_height as u64));
+        let mut progress: Option<Progress> = Some(Progress::begin("Indexing", self.server.indexer.last_block.height, self.server.indexer.last_block.height));
 
         let mut prev_height: Option<u64> = None;
         while !self.server.token.is_cancelled() {

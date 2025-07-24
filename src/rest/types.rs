@@ -271,7 +271,7 @@ pub struct TokensResult {
 pub struct AddressTokenBalanceArgs {
     pub offset: Option<Outpoint>,
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = 1, max = 100))]
+    #[validate(range(min = 1, max = 300))]
     pub limit: usize,
 }
 

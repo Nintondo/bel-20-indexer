@@ -130,6 +130,7 @@ impl Indexer {
                 None => {
                     last_height = last_height.saturating_sub(1);
                     let hash = client.get_block_hash(last_height).unwrap();
+                    last_hash = hash;
                     CheckPoint::new(BlockId { height: last_height, hash })
                 }
             };

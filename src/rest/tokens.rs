@@ -1,3 +1,5 @@
+use axum::http::StatusCode;
+use bitcoin_hashes::sha256d;
 use nint_blk::ScriptType;
 
 use super::*;
@@ -85,14 +87,31 @@ pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((addres
 
     let (from, to) = AddressLocation::search_with_offset(scripthash.into(), outpoint.into()).into_inner();
 
-    let data: Vec<_> = state
-        .db
-        .address_location_to_transfer
-        .range(&from..&to, false)
-        .map(|(_, TransferProtoDB { tick, amt, height })| anyhow::Ok(types::TokenTransferProof { amt, tick: tick.into(), height }))
-        .try_collect()
-        .track_with("")
-        .internal(INTERNAL)?;
+    let start = Instant::now();
 
-    Ok(Json(data))
+    while start.elapsed() < Duration::from_secs(5) {
+        let best_block_hash = state.client.get_best_block_hash().internal("Failed to connect to node")?;
+        let last_block = state.db.last_block.get(()).internal("Failed to get last block")?;
+        let last_block_hash: sha256d::Hash = state.db.block_info.get(last_block).internal("Failed to get last block info")?.hash.into();
+
+        if best_block_hash == last_block_hash {
+            let data: Vec<_> = state
+                .db
+                .address_location_to_transfer
+                .range(&from..&to, false)
+                .map(|(_, TransferProtoDB { tick, amt, height })| anyhow::Ok(types::TokenTransferProof { amt, tick: tick.into(), height }))
+                .try_collect()
+                .track_with("")
+                .internal(INTERNAL)?;
+
+            return Ok(Json(data));
+        }
+    }
+
+    let res = axum::response::Response::builder()
+        .status(StatusCode::SERVICE_UNAVAILABLE)
+        .body("Service isn't synced".into())
+        .internal("Failed to build body for the response")?;
+
+    Err(res)
 }

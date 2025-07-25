@@ -22,7 +22,6 @@ use std::{
 
 use crate::{
     blockchain::{
-        CoinType,
         checkpoint::CheckPoint,
         parser::{ChainOptions, ChainStorage},
         proto::{Hashed, address_to_fullhash},
@@ -34,10 +33,10 @@ mod blockchain;
 mod utils;
 
 pub use blockchain::{
-    BlockId, LoadBlocks, LoadBlocksArgs,
+    BlockId, CoinType, LoadBlocks, LoadBlocksArgs,
     proto::{self, ScriptType},
 };
-pub use utils::Auth;
+pub use utils::{Auth, Client};
 
 const BOUNDED_CHANNEL_SIZE: usize = 30;
 
@@ -53,12 +52,11 @@ pub struct BlockEvent {
 pub struct Indexer {
     pub path: Option<String>,
     pub index_dir_path: Option<String>,
-    pub coin: String,
-    pub rpc_url: String,
-    pub rpc_auth: Auth,
+    pub coin: CoinType,
     pub token: WaitToken,
     pub last_block: BlockId,
     pub reorg_max_len: usize,
+    pub client: Arc<Client>,
 }
 
 trait SendChecked {
@@ -85,9 +83,6 @@ impl Indexer {
         let (tx, rx) = kanal::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
 
         std::thread::spawn(move || {
-            let coin = CoinType::from_str(&self.coin).unwrap();
-            let client = utils::Client::new(&self.rpc_url, self.rpc_auth.clone(), coin, self.token.clone()).unwrap();
-
             let mut last_height = {
                 let last = self.last_block.height;
                 if last == 0 { last } else { last + 1 }
@@ -97,7 +92,7 @@ impl Indexer {
             let mut chain = ChainStorage::new(&ChainOptions::new(
                 self.path.as_deref(),
                 self.index_dir_path.as_deref(),
-                coin,
+                self.coin,
                 self.last_block.height as u32,
             ))
             .unwrap();
@@ -129,7 +124,7 @@ impl Indexer {
                 Some(v) => v,
                 None => {
                     last_height = last_height.saturating_sub(1);
-                    let hash = client.get_block_hash(last_height).unwrap();
+                    let hash = self.client.get_block_hash(last_height).unwrap();
                     last_hash = hash;
                     CheckPoint::new(BlockId { height: last_height, hash })
                 }
@@ -137,13 +132,13 @@ impl Indexer {
 
             while checkpoint.height() < last_height {
                 let height = checkpoint.height() + 1;
-                let hash = client.get_block_hash(height).unwrap();
+                let hash = self.client.get_block_hash(height).unwrap();
                 checkpoint = checkpoint.insert(BlockId { height, hash });
             }
 
             while !self.token.is_cancelled() {
                 let mut reorg_counter = 0;
-                let best_hash = client.get_best_block_hash().unwrap();
+                let best_hash = self.client.get_best_block_hash().unwrap();
 
                 if best_hash != checkpoint.hash() {
                     loop {
@@ -152,26 +147,28 @@ impl Indexer {
                         }
 
                         let hash = checkpoint.hash();
-                        match client.get_block_info(&hash) {
+                        match self.client.get_block_info(&hash) {
                             Ok(v) if v.confirmations < 0 => {
                                 reorg_counter += 1;
                                 checkpoint = checkpoint.prev().unwrap();
+                                last_hash = checkpoint.hash();
                                 continue;
                             }
                             Err(_) => {
                                 reorg_counter += 1;
                                 checkpoint = checkpoint.prev().unwrap();
+                                last_hash = checkpoint.hash();
                                 continue;
                             }
                             _ => {}
                         };
 
-                        let best_height = client.get_block_info(&best_hash).unwrap().height as u64;
+                        let best_height = self.client.get_block_info(&best_hash).unwrap().height as u64;
 
                         while checkpoint.height() < best_height {
                             let next_height = checkpoint.height() + 1;
-                            let next_hash = client.get_block_hash(next_height).unwrap();
-                            let block = client.get_block(&next_hash).unwrap();
+                            let next_hash = self.client.get_block_hash(next_height).unwrap();
+                            let block = self.client.get_block(&next_hash).unwrap();
                             let event = BlockEvent {
                                 block,
                                 id: BlockId {
@@ -207,8 +204,7 @@ impl Indexer {
     }
 
     pub fn to_scripthash(&self, address: &str, script_type: ScriptType) -> Result<sha256d::Hash> {
-        let coin = CoinType::from_str(&self.coin).anyhow_with("Unsupported coin")?;
-        address_to_fullhash(address, script_type, coin)
+        address_to_fullhash(address, script_type, self.coin)
     }
 }
 
@@ -235,6 +231,8 @@ mod tests {
             hash: sha256d::Hash::from_byte_array([6; 32]),
         };
 
+        let mut last_hash = checkpoint.hash();
+
         let mut reorg_counter = 0;
 
         if best_block_id.hash != checkpoint.hash() {
@@ -243,6 +241,7 @@ mod tests {
             while checkpoint.height() >= best_block_id.height {
                 reorg_counter += 1;
                 checkpoint = checkpoint.prev().unwrap();
+                last_hash = checkpoint.hash();
                 continue;
             }
 
@@ -258,7 +257,7 @@ mod tests {
                 });
 
                 check_ordering(
-                    &mut checkpoint.hash(),
+                    &mut last_hash,
                     &Hashed {
                         hash: blocks.get(checkpoint.height() as usize - 1).map(|x| x.hash).unwrap_or(sha256d::Hash::all_zeros()),
                         value: BlockHeader {

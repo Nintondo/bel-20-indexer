@@ -11,6 +11,7 @@ pub struct Server {
     pub token: WaitToken,
     pub holders: Arc<Holders>,
     pub indexer: Arc<nint_blk::Indexer>,
+    pub client: Arc<nint_blk::Client>,
 }
 
 impl Server {
@@ -29,7 +30,11 @@ impl Server {
         }
         .to_string();
 
+        let coin = nint_blk::CoinType::from_str(&coin).unwrap();
+
         let last_height = db.last_block.get(()).unwrap_or_default();
+
+        let client = Arc::new(nint_blk::Client::new(&URL, nint_blk::Auth::UserPass(USER.to_string(), PASS.to_string()), coin, token.clone()).unwrap());
 
         let indexer = nint_blk::Indexer {
             coin,
@@ -39,10 +44,9 @@ impl Server {
             },
             path: BLK_DIR.clone(),
             reorg_max_len: REORG_CACHE_MAX_LEN,
-            rpc_auth: nint_blk::Auth::UserPass(USER.to_string(), PASS.to_string()),
-            rpc_url: URL.to_string(),
             token: token.clone(),
             index_dir_path: INDEX_DIR.clone(),
+            client: client.clone(),
         };
 
         let server = Self {
@@ -52,6 +56,7 @@ impl Server {
             event_sender: tx.clone(),
             indexer: Arc::new(indexer),
             db,
+            client,
         };
 
         Ok((raw_rx, tx, server))

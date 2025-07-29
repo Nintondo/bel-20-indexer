@@ -88,7 +88,7 @@ impl ProceedReorg for OrdinalsEntry {
 }
 
 #[derive(Default)]
-struct ReorgHistoryBlock {
+pub struct ReorgHistoryBlock {
     token_history: Vec<TokenHistoryEntry>,
     ordinals_history: Vec<OrdinalsEntry>,
 }
@@ -100,7 +100,7 @@ impl ReorgHistoryBlock {
 }
 
 pub struct ReorgCache {
-    blocks: BTreeMap<u32, ReorgHistoryBlock>,
+    pub blocks: BTreeMap<u32, ReorgHistoryBlock>,
     len: usize,
 }
 
@@ -128,7 +128,7 @@ impl ReorgCache {
     }
 
     pub fn restore(&mut self, server: &Server, block_height: u32) -> anyhow::Result<()> {
-        while !self.blocks.is_empty() && block_height <= *self.blocks.last_key_value().unwrap().0 {
+        while !self.blocks.is_empty() && block_height < *self.blocks.last_key_value().unwrap().0 {
             let (height, data) = self.blocks.pop_last().anyhow()?;
 
             server.db.last_block.set((), height - 1);

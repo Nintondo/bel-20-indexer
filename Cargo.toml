@@ -1,6 +1,6 @@
 [package]
 name = "bel_20_node"
-version = "0.1.0"
+version = "1.0.9"
 edition = "2021"
 
 [workspace]

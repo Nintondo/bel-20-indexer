@@ -28,6 +28,7 @@ pub async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRes
         height: last_height,
         proof: last_poh.to_string(),
         blockhash: last_block_hash.to_string(),
+        version: PKG_VERSION.to_string(),
     };
 
     Ok(Json(data))

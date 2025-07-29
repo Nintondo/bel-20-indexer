@@ -37,13 +37,12 @@ impl Indexer {
     }
 
     pub fn run(self) -> anyhow::Result<()> {
-        self.index()?;
+        let res = self.index();
 
         self.reorg_cache.lock().restore_all(&self.server).track().ok();
-
         self.server.db.flush_all();
 
-        Ok(())
+        res
     }
 
     fn index(&self) -> anyhow::Result<()> {
@@ -75,6 +74,13 @@ impl Indexer {
                 progress.take();
             }
 
+            {
+                let mut cache = self.reorg_cache.lock();
+                if !cache.blocks.is_empty() && !handle_reorgs {
+                    cache.blocks.clear();
+                }
+            }
+
             if reorg_len > 0 {
                 warn!("Reorg detected: {} blocks", reorg_len);
                 let restore_height = prev_height.unwrap_or_default().saturating_sub(reorg_len as u64);
@@ -84,7 +90,9 @@ impl Indexer {
             }
 
             if let Some(last_reorg_height) = self.reorg_cache.lock().blocks.last_key_value().map(|x| x.0) {
-                assert_eq!(last_reorg_height + 1, id.height as u32, "Wrong reorg cache tip height");
+                if last_reorg_height + 1 != id.height as u32 {
+                    anyhow::bail!("Wrong reorg cache tip height. Expected {}, got {}", last_reorg_height + 1, id.height as u32);
+                }
             }
 
             indexer.handle(id.height as u32, block, handle_reorgs).track()?;

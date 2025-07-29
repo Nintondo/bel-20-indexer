@@ -21,7 +21,7 @@ pub async fn holders(State(server): State<Arc<Server>>, Query(query): Query<type
             .map(|(rank, x)| (rank + 1, x.0, x.1));
 
         for (rank, balance, hash) in keys {
-            let address = server.db.fullhash_to_address.get(hash).internal(INTERNAL)?;
+            let address = fullhash_to_address_str(&hash, server.db.fullhash_to_address.get(hash));
             let percent = balance / proto.supply * Fixed128::from(100);
 
             holders.push(types::Holder {

@@ -83,6 +83,10 @@ impl Indexer {
                 self.server.event_sender.send(ServerEvent::Reorg(reorg_len as u32, id.height as u32)).ok();
             }
 
+            if let Some(last_reorg_height) = self.reorg_cache.lock().blocks.last_key_value().map(|x| x.0) {
+                assert_eq!(last_reorg_height + 1, id.height as u32, "Wrong reorg cache tip height");
+            }
+
             indexer.handle(id.height as u32, block, handle_reorgs).track()?;
 
             prev_height = Some(id.height);

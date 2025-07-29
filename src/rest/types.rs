@@ -33,6 +33,7 @@ pub struct Status {
     pub height: u32,
     pub proof: String,
     pub blockhash: String,
+    pub version: String,
 }
 
 #[derive(Serialize)]

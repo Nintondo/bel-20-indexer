@@ -90,6 +90,8 @@ define_static! {
     DB_PATH: String = load_opt_env!("DB_PATH").unwrap_or("rocksdb".to_string());
 }
 
+const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() {
     dotenv::dotenv().ok();
     utils::init_logger();

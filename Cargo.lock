@@ -275,7 +275,7 @@ checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 
 [[package]]
 name = "bel_20_node"
-version = "0.1.0"
+version = "1.0.9"
 dependencies = [
  "anyhow",
  "axum",

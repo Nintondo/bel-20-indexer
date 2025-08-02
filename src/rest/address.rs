@@ -1,6 +1,19 @@
 use super::*;
 
-pub async fn address_tokens_tick(url: Uri, State(state): State<Arc<Server>>, Path(script_str): Path<String>) -> ApiResult<impl IntoResponse> {
+pub async fn address_tokens_tick(
+    url: Uri,
+    State(state): State<Arc<Server>>,
+    Path(script_str): Path<String>,
+    Query(params): Query<types::AddressTokensArgs>,
+) -> ApiResult<impl IntoResponse> {
+    params.validate().bad_request_from_error()?;
+
+    let token = params
+        .offset
+        .as_ref()
+        .map(LowerCaseTokenTick::from)
+        .and_then(|x| state.db.token_to_meta.get(&x).map(|x| x.proto.tick));
+
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
     let scripthash: FullHash = state
         .indexer
@@ -8,15 +21,32 @@ pub async fn address_tokens_tick(url: Uri, State(state): State<Arc<Server>>, Pat
         .bad_request_from_error()?
         .into();
 
-    let (from, to) = AddressToken::search(scripthash).into_inner();
     let data = state
         .db
-        .token_to_meta
-        .multi_get(state.db.address_token_to_balance.range(&from..&to, false).map(|(k, _)| k.token.into()).collect_vec().iter())
-        .into_iter()
-        .flatten()
-        .map(|x| x.proto.tick.to_string())
+        .address_token_to_balance
+        .range(
+            &AddressToken {
+                address: scripthash,
+                token: token.unwrap_or_default(),
+            }..=&AddressToken {
+                address: scripthash,
+                token: [u8::MAX; 4].into(),
+            },
+            false,
+        )
+        .filter(|(k, _)| {
+            params
+                .search
+                .as_ref()
+                .map(|x| x.to_lowercase())
+                .map(|x| k.token.to_string().to_lowercase().starts_with(&x))
+                .unwrap_or(true)
+        })
+        .skip(params.offset.is_some() as usize)
+        .take(params.limit)
+        .map(|(key, _)| key.token.to_string())
         .collect_vec();
+
     Ok(Json(data))
 }
 

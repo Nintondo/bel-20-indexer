@@ -321,18 +321,6 @@ pub struct AddressToken {
     pub token: OriginalTokenTick,
 }
 
-impl AddressToken {
-    pub fn search(address: FullHash) -> RangeInclusive<AddressToken> {
-        let start = AddressToken { address, token: [0; 4].into() };
-        let end = AddressToken {
-            address,
-            token: [u8::MAX; 4].into(),
-        };
-
-        start..=end
-    }
-}
-
 impl From<AddressTokenIdDB> for AddressToken {
     fn from(value: AddressTokenIdDB) -> Self {
         Self {

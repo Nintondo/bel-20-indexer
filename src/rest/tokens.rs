@@ -115,3 +115,50 @@ pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((addres
 
     Err(res)
 }
+
+pub async fn token_events(State(server): State<Arc<Server>>, Path(token): Path<OriginalTokenTickRest>, Query(args): Query<types::TokenEventsArgs>) -> ApiResult<impl IntoResponse> {
+    if let Some(outpoint_str) = args.search {
+        let txid = Txid::from_str(&outpoint_str[..64.min(outpoint_str.len())]).bad_request_from_error()?;
+
+        let vout: Option<u32> = if outpoint_str.len() > 65 {
+            // Skip 64th byte because it's separator
+            Some(outpoint_str[65..].parse().bad_request("Failed to parse outpoint from search prompt")?)
+        } else {
+            None
+        };
+
+        let from = OutPoint { txid, vout: vout.unwrap_or(0) };
+        let to = OutPoint {
+            txid,
+            vout: vout.unwrap_or(u32::MAX),
+        };
+
+        let v = server
+            .db
+            .outpoint_to_event
+            .range(&from..=&to, false)
+            .take(args.limit)
+            .flat_map(|(_, x)| server.db.address_token_to_history.get(x).map(|v| (x, v)))
+            .map(|(k, v)| types::AddressHistory::new(v.height, v.action, k, &server))
+            .collect::<Result<Vec<_>, _>>()
+            .internal("Couldn't found block for history entry")?;
+
+        Ok(Json(v))
+    } else {
+        let from = TokenId { id: 0, token: token.into() };
+
+        let offset = args.offset.unwrap_or(u64::MAX);
+        let to = TokenId { id: offset, token: token.into() };
+
+        let keys = server.db.token_id_to_event.range(&from..&to, true).take(args.limit).map(|x| x.1).collect_vec();
+        let history = server
+            .db
+            .address_token_to_history
+            .multi_get_kv(keys.iter(), false)
+            .into_iter()
+            .map(|(k, v)| types::AddressHistory::new(v.height, v.action, *k, &server))
+            .collect::<Result<Vec<_>, _>>()
+            .internal("Couldn't found block for history entry")?;
+        Ok(Json(history))
+    }
+}

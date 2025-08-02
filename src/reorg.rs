@@ -13,6 +13,7 @@ pub enum TokenHistoryEntry {
         last_history_id: u64,
         outpoint_to_event: Vec<OutPoint>,
         height: u32,
+        token_id_to_event: Vec<TokenId>,
     },
 }
 
@@ -43,11 +44,13 @@ impl ProceedReorg for TokenHistoryEntry {
                 last_history_id,
                 outpoint_to_event,
                 height,
+                token_id_to_event,
             } => {
                 server.db.last_history_id.set((), last_history_id);
                 server.db.block_events.remove(height);
                 server.db.address_token_to_history.remove_batch(to_remove);
                 server.db.outpoint_to_event.remove_batch(outpoint_to_event);
+                server.db.token_id_to_event.remove_batch(token_id_to_event);
             }
         }
 

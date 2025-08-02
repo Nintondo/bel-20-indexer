@@ -12,10 +12,19 @@ pub struct AddressTokenBalance {
 }
 
 #[derive(Deserialize, Validate)]
+pub struct TokenEventsArgs {
+    pub offset: Option<u64>,
+    #[serde(default = "utils::page_size_default")]
+    #[validate(range(min = 1, max = 100))]
+    pub limit: usize,
+    pub search: Option<String>,
+}
+
+#[derive(Deserialize, Validate)]
 pub struct AddressTokenHistoryArgs {
     pub offset: Option<u64>,
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = 1, max = 20))]
+    #[validate(range(min = 1, max = 100))]
     pub limit: usize,
     pub tick: OriginalTokenTickRest,
 }

@@ -18,6 +18,7 @@ rocksdb_wrapper::generate_db_code! {
     block_events: u32 => Vec<AddressTokenIdDB>,
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenIdDB,
+    token_id_to_event: TokenId => AddressTokenIdDB,
 }
 
 impl DB {

@@ -39,6 +39,7 @@ pub fn get_router(server: Arc<Server>) -> Router {
         .route("/status", get(info::status))
         .route("/proof-of-history", get(history::proof_of_history))
         .route("/events/{height}", get(history::events_by_height))
+        .route("/token-events/{tick}", get(tokens::token_events))
         .route("/all-addresses", get(info::all_addresses))
         .route("/txid/{txid}", get(history::txid_events))
         .with_state(server)

@@ -315,6 +315,29 @@ impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct TokenId {
+    pub token: OriginalTokenTick,
+    pub id: u64,
+}
+
+impl rocksdb_wrapper::Pebble for TokenId {
+    type Inner = Self;
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        let mut result = Vec::with_capacity(4 + 8);
+        result.extend(v.token.0);
+        result.extend(v.id.to_be_bytes());
+        Cow::Owned(result)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let token = OriginalTokenTick(v[..4].try_into().anyhow()?);
+        let id = u64::from_be_bytes(v[4..].try_into().anyhow()?);
+        Ok(Self { token, id })
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct AddressToken {
     pub address: FullHash,

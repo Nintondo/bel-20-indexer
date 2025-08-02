@@ -1,6 +1,6 @@
 [package]
 name = "bel_20_node"
-version = "1.0.9"
+version = "1.0.10"
 edition = "2021"
 
 [workspace]
@@ -19,7 +19,7 @@ nintondo-dogecoin = "0.30.6"
 
 rocksdb-wrapper = { path = "./packages/rocksdb-wrapper" }
 tokio = { version = "1.43.1", features = ["full"] }
-tower-http = {version = "0.6.5", features = ["compression-full"]}
+tower-http = { version = "0.6.5", features = ["compression-full"] }
 itertools = "0.14.0"
 rayon = "1.10.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

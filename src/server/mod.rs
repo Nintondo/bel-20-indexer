@@ -12,6 +12,7 @@ pub struct Server {
     pub holders: Arc<Holders>,
     pub indexer: Arc<nint_blk::Indexer>,
     pub client: Arc<nint_blk::Client>,
+    pub start_time: std::time::Instant,
 }
 
 impl Server {
@@ -57,6 +58,7 @@ impl Server {
             indexer: Arc::new(indexer),
             db,
             client,
+            start_time: std::time::Instant::now(),
         };
 
         Ok((raw_rx, tx, server))

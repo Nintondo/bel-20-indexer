@@ -130,7 +130,7 @@ impl Indexer {
                 }
             };
 
-            while checkpoint.height() < last_height {
+            while checkpoint.height() < last_height.saturating_sub(1) {
                 let height = checkpoint.height() + 1;
                 let hash = self.client.get_block_hash(height).unwrap();
                 checkpoint = checkpoint.insert(BlockId { height, hash });

@@ -43,6 +43,7 @@ pub struct Status {
     pub proof: String,
     pub blockhash: String,
     pub version: String,
+    pub uptime_secs: u64,
 }
 
 #[derive(Serialize)]

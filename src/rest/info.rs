@@ -29,6 +29,7 @@ pub async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoRes
         proof: last_poh.to_string(),
         blockhash: last_block_hash.to_string(),
         version: PKG_VERSION.to_string(),
+        uptime_secs: server.start_time.elapsed().as_secs(),
     };
 
     Ok(Json(data))

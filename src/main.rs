@@ -3,14 +3,7 @@ extern crate serde;
 extern crate tracing;
 
 use {
-    crate::server::threads::EventSender,
-    axum::{
-        extract::{Path, Query, State},
-        http::Response,
-        response::IntoResponse,
-        routing::get,
-        Json, Router,
-    },
+    crate::{rest::run_rest, server::threads::EventSender},
     bellscoin::{
         hashes::{sha256, Hash},
         opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
@@ -127,30 +120,6 @@ fn main() {
 
     main_result.track().ok();
     event_sender_result.track().ok();
-}
-
-async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
-    let listener = tokio::net::TcpListener::bind(&*SERVER_URL).await.unwrap();
-
-    let rest = axum::serve(listener, rest::get_router(server.clone()))
-        .with_graceful_shutdown(server.token.cancelled())
-        .into_future();
-
-    let deadline = async move {
-        server.token.cancelled().await;
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    };
-
-    tokio::select! {
-        v = rest => {
-            info!("Rest finished");
-            v.anyhow()
-        }
-        _ = deadline => {
-            warn!("Rest server shutdown timeout");
-            Ok(())
-        }
-    }
 }
 
 fn shutdown_handler(token: dutils::wait_token::WaitToken) {

@@ -1,4 +1,4 @@
-use bellscoin::consensus;
+use bellscoin::{consensus, OutPoint, Txid};
 
 use super::*;
 use inscriptions::structs::Part;

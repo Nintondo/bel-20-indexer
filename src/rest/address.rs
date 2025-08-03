@@ -5,7 +5,7 @@ pub async fn address_tokens_tick(
     State(state): State<Arc<Server>>,
     Path(script_str): Path<String>,
     Query(params): Query<types::AddressTokensArgs>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<impl IntoApiResponse> {
     params.validate().bad_request_from_error()?;
 
     let token = params
@@ -50,12 +50,16 @@ pub async fn address_tokens_tick(
     Ok(Json(data))
 }
 
+pub fn address_tokens_tick_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A list of token ticks for the address").tag("address")
+}
+
 pub async fn address_token_balance(
     url: Uri,
     State(state): State<Arc<Server>>,
     Path((script_str, tick)): Path<(String, OriginalTokenTickRest)>,
     Query(params): Query<types::AddressTokenBalanceArgs>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<impl IntoApiResponse> {
     params.validate().bad_request_from_error()?;
 
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
@@ -82,7 +86,7 @@ pub async fn address_token_balance(
         .filter(|(_, v)| v.tick == tick)
         .map(|(k, v)| TokenTransfer {
             amount: v.amt,
-            outpoint: k.location.outpoint,
+            outpoint: k.location.outpoint.into(),
         })
         .skip(params.offset.is_some() as usize)
         .take(params.limit)
@@ -99,12 +103,16 @@ pub async fn address_token_balance(
     Ok(Json(data))
 }
 
+pub fn address_token_balance_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Detailed info about the token balance for the address (with transfers").tag("address")
+}
+
 pub async fn address_tokens(
     url: Uri,
     State(state): State<Arc<Server>>,
     Path(script_str): Path<String>,
     Query(params): Query<types::AddressTokensArgs>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<impl IntoApiResponse> {
     params.validate().bad_request_from_error()?;
 
     let script_type = url.path().split('/').nth(1).internal(INTERNAL)?;
@@ -153,4 +161,8 @@ pub async fn address_tokens(
         .collect_vec();
 
     Ok(Json(data))
+}
+
+pub fn address_tokens_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A list of tokens for the address (without transfers)").tag("address")
 }

@@ -51,6 +51,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "aide"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d34f0f6ce85b460bf2f9e7eea6612f217ba700ae14e9e476805d2413480f64b"
+dependencies = [
+ "aide-macros",
+ "axum",
+ "bytes",
+ "cfg-if",
+ "http",
+ "indexmap 2.10.0",
+ "schemars 0.9.0",
+ "serde",
+ "serde_json",
+ "serde_qs",
+ "thiserror",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "aide-macros"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f2a08f14808f3c46f3e3004b727bace64af44c3c5996d0480a14d3852b1b25a"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "aligned"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -174,6 +208,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "021e862c184ae977658b36c4500f7feac3221ca5da43e3f25bd04ab6c79a29b5"
 dependencies = [
  "axum-core",
+ "axum-macros",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -219,6 +254,17 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "axum-macros"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "604fde5e028fea851ce1d8570bbdc034bec850d157f7569d10f347d06808c05c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -277,6 +323,7 @@ checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 name = "bel_20_node"
 version = "1.0.10"
 dependencies = [
+ "aide",
  "anyhow",
  "axum",
  "axum-streams",
@@ -294,6 +341,7 @@ dependencies = [
  "parking_lot",
  "rayon",
  "rocksdb-wrapper",
+ "schemars 0.9.0",
  "serde",
  "serde_json",
  "serde_with",
@@ -1772,9 +1820,9 @@ dependencies = [
 
 [[package]]
 name = "nintypes"
-version = "0.1.51"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "864d41a385d2940c37677e758861a01ec89804bcdf53ff7145afa032b6940464"
+checksum = "b18ae038125e928f276bb381fa0563dbf22500164a5c4b9468a37e56ae86a907"
 dependencies = [
  "ahash 0.8.12",
  "aligned",
@@ -1807,6 +1855,7 @@ dependencies = [
  "primitive-types",
  "rand",
  "rust_decimal",
+ "schemars 0.9.0",
  "serde",
  "serde_json",
  "serde_with",
@@ -2411,7 +2460,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
 dependencies = [
  "dyn-clone",
+ "indexmap 2.10.0",
  "ref-cast",
+ "schemars_derive",
  "serde",
  "serde_json",
 ]
@@ -2426,6 +2477,18 @@ dependencies = [
  "ref-cast",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5016d94c77c6d32f0b8e08b781f7dc8a90c2007d4e77472cc2807bc10a8438fe"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -2488,6 +2551,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_derive_internals"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2507,6 +2581,19 @@ checksum = "59fab13f937fa393d08645bf3a84bdfe86e296747b506ada67bb15f10f218b2a"
 dependencies = [
  "itoa",
  "serde",
+]
+
+[[package]]
+name = "serde_qs"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b417bedc008acbdf6d6b4bc482d29859924114bbe2650b7921fb68a261d0aa6"
+dependencies = [
+ "axum",
+ "futures",
+ "percent-encoding",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]

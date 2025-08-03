@@ -15,7 +15,6 @@ serde_with = "3.11.0"
 tracing = "0.1.40"
 serde_json = "1.0.132"
 bellscoin = "0.30.8"
-nintondo-dogecoin = "0.30.6"
 
 rocksdb-wrapper = { path = "./packages/rocksdb-wrapper" }
 tokio = { version = "1.43.1", features = ["full"] }

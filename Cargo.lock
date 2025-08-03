@@ -289,7 +289,6 @@ dependencies = [
  "itertools 0.14.0",
  "kanal",
  "nint-blk",
- "nintondo-dogecoin",
  "nintypes",
  "num-traits",
  "parking_lot",
@@ -1769,20 +1768,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tracing",
-]
-
-[[package]]
-name = "nintondo-dogecoin"
-version = "0.30.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d7a4c9bbd6475742f97adf5a05b69cd5412234e238f3e09d21f688a4b70e6e8"
-dependencies = [
- "bech32",
- "bitcoin-private",
- "bitcoin_hashes",
- "hex-conservative",
- "hex_lit",
- "secp256k1",
 ]
 
 [[package]]

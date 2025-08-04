@@ -1,5 +1,5 @@
 use bellscoin::ScriptBuf;
-use bitcoin_hashes::sha256d;
+use bitcoin_hashes::sha256;
 use nint_blk::proto::{tx::EvaluatedTx, Hashed};
 
 use crate::inscriptions::{
@@ -81,7 +81,7 @@ impl Parser<'_> {
                                     if ScriptBuf::from_bytes(tx.value.outputs[new_vout as usize].out.script_pubkey.clone()).is_op_return() {
                                         self.token_cache.burned_transfer(old_location, txid, new_vout);
                                     } else {
-                                        let owner = bellscoin::hashes::sha256d::Hash::hash(&tx.value.outputs[new_vout as usize].out.script_pubkey);
+                                        let owner = bellscoin::hashes::sha256::Hash::hash(&tx.value.outputs[new_vout as usize].out.script_pubkey);
                                         self.token_cache.transferred(old_location, owner.into(), txid, new_vout);
                                     };
                                 }
@@ -292,7 +292,7 @@ impl Parser<'_> {
         if ScriptBuf::from_bytes(tx_out.out.script_pubkey.clone()).is_op_return() {
             inscription_template.owner = *OP_RETURN_HASH;
         } else {
-            inscription_template.owner = sha256d::Hash::hash(&tx_out.out.script_pubkey).into();
+            inscription_template.owner = sha256::Hash::hash(&tx_out.out.script_pubkey).into();
         }
 
         inscription_template.location = location;

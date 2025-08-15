@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate tracing;
 
-use bellscoin::hashes::{Hash, sha256d};
+use bellscoin::hashes::{Hash, sha256, sha256d};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
 use kanal::{SendError, Sender};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -203,7 +203,7 @@ impl Indexer {
         rx
     }
 
-    pub fn to_scripthash(&self, address: &str, script_type: ScriptType) -> Result<sha256d::Hash> {
+    pub fn to_scripthash(&self, address: &str, script_type: ScriptType) -> Result<sha256::Hash> {
         address_to_fullhash(address, script_type, self.coin)
     }
 }

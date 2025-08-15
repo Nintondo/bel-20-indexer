@@ -4,7 +4,7 @@ use std::error::Error;
 
 use bellscoin::address::{Payload, WitnessProgram, WitnessVersion};
 use bellscoin::blockdata::script::Instruction;
-use bellscoin::hashes::{Hash, sha256d};
+use bellscoin::hashes::{Hash, sha256};
 use bellscoin::opcodes::Class::{IllegalOp, ReturnOp};
 use bellscoin::{PublicKey, Script, opcodes};
 use dutils::error::ContextWrapper;
@@ -188,10 +188,7 @@ impl FromStr for ScriptType {
 }
 
 pub fn address_to_payload(address: &str, coin: CoinType) -> crate::Result<Payload> {
-    let is_bech32 = address
-        .rfind('1')
-        .map(|x| address.split_at(x).0)
-        .is_some_and(|v| v == coin.bech32);
+    let is_bech32 = address.rfind('1').map(|x| address.split_at(x).0).is_some_and(|v| v == coin.bech32);
 
     if is_bech32 {
         let (_, payload, variant) = bellscoin::bech32::decode(address)?;
@@ -202,10 +199,7 @@ pub fn address_to_payload(address: &str, coin: CoinType) -> crate::Result<Payloa
         // Get the script version and program (converted from 5-bit to 8-bit)
         let (version, program): (WitnessVersion, Vec<u8>) = {
             let (v, p5) = payload.split_at(1);
-            (
-                WitnessVersion::try_from(v[0])?,
-                bellscoin::bech32::FromBase32::from_base32(p5)?,
-            )
+            (WitnessVersion::try_from(v[0])?, bellscoin::bech32::FromBase32::from_base32(p5)?)
         };
 
         let witness_program = WitnessProgram::new(version, program)?;
@@ -213,11 +207,7 @@ pub fn address_to_payload(address: &str, coin: CoinType) -> crate::Result<Payloa
         // Encoding check
         let expected = version.bech32_variant();
         if expected != variant {
-            anyhow::bail!(
-                "Invalid bech32 variant. Expected: {:?}, found: {:?}",
-                expected,
-                variant
-            );
+            anyhow::bail!("Invalid bech32 variant. Expected: {:?}, found: {:?}", expected, variant);
         }
 
         return Ok(Payload::WitnessProgram(witness_program));
@@ -234,32 +224,21 @@ pub fn address_to_payload(address: &str, coin: CoinType) -> crate::Result<Payloa
     }
 
     let payload = match data[0] {
-        v if v == coin.pubkey_address => {
-            Payload::PubkeyHash(bellscoin::PubkeyHash::from_slice(&data[1..]).unwrap())
-        }
-        v if v == coin.script_address => {
-            Payload::ScriptHash(bellscoin::ScriptHash::from_slice(&data[1..]).unwrap())
-        }
+        v if v == coin.pubkey_address => Payload::PubkeyHash(bellscoin::PubkeyHash::from_slice(&data[1..]).unwrap()),
+        v if v == coin.script_address => Payload::ScriptHash(bellscoin::ScriptHash::from_slice(&data[1..]).unwrap()),
         _ => anyhow::bail!("Invalid address version"),
     };
 
     Ok(payload)
 }
 
-pub fn address_to_fullhash(
-    address: &str,
-    script_type: ScriptType,
-    coin: CoinType,
-) -> crate::Result<sha256d::Hash> {
+pub fn address_to_fullhash(address: &str, script_type: ScriptType, coin: CoinType) -> crate::Result<sha256::Hash> {
     match script_type {
         ScriptType::Address => {
             let payload = address_to_payload(address, coin)?.script_pubkey();
-            Ok(sha256d::Hash::hash(payload.as_bytes()))
+            Ok(sha256::Hash::hash(payload.as_bytes()))
         }
-        ScriptType::ScriptHash => {
-            sha256d::Hash::from_slice(&hex::decode(address).anyhow_with("Invalid hex")?)
-                .anyhow_with("Invalid script hash length")
-        }
+        ScriptType::ScriptHash => sha256::Hash::from_slice(&hex::decode(address).anyhow_with("Invalid hex")?).anyhow_with("Invalid script hash length"),
     }
 }
 

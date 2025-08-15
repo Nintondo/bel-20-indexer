@@ -1,6 +1,6 @@
 use super::*;
 
-pub async fn holders(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersArgs>) -> ApiResult<impl IntoResponse> {
+pub async fn holders(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersArgs>) -> ApiResult<impl IntoApiResponse> {
     query.validate().bad_request_from_error()?;
 
     let tick: LowerCaseTokenTick = query.tick.into();
@@ -45,7 +45,11 @@ pub async fn holders(State(server): State<Arc<Server>>, Query(query): Query<type
     Ok(Json(result))
 }
 
-pub async fn holders_stats(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersStatsArgs>) -> ApiResult<impl IntoResponse> {
+pub fn holders_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A list of holders for specific token").tag("token")
+}
+
+pub async fn holders_stats(State(server): State<Arc<Server>>, Query(query): Query<types::HoldersStatsArgs>) -> ApiResult<impl IntoApiResponse> {
     let tick: LowerCaseTokenTick = query.tick.into();
     let proto = server.db.token_to_meta.get(&tick).map(|x| x.proto).not_found("Tick not found")?;
 
@@ -77,4 +81,8 @@ pub async fn holders_stats(State(server): State<Arc<Server>>, Query(query): Quer
     };
 
     Ok(Json(result))
+}
+
+pub fn holders_stats_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A stats of holders for specific token").tag("token")
 }

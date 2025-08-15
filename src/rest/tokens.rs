@@ -4,7 +4,7 @@ use nint_blk::ScriptType;
 
 use super::*;
 
-pub async fn tokens(State(server): State<Arc<Server>>, Query(args): Query<types::TokensArgs>) -> ApiResult<impl IntoResponse> {
+pub async fn tokens(State(server): State<Arc<Server>>, Query(args): Query<types::TokensArgs>) -> ApiResult<impl IntoApiResponse> {
     args.validate().bad_request_from_error()?;
 
     let iter = server
@@ -39,7 +39,7 @@ pub async fn tokens(State(server): State<Arc<Server>>, Query(args): Query<types:
             created: v.proto.created,
             mint_percent: v.proto.mint_percent().to_string(),
             tick: v.proto.tick.into(),
-            genesis: v.genesis,
+            genesis: v.genesis.into(),
             deployer: fullhash_to_address_str(&v.proto.deployer, server.db.fullhash_to_address.get(v.proto.deployer)),
             transactions: v.proto.transactions,
             holders: server.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
@@ -54,7 +54,11 @@ pub async fn tokens(State(server): State<Arc<Server>>, Query(args): Query<types:
     Ok(Json(types::TokensResult { count, pages, tokens }))
 }
 
-pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::TokenArgs>) -> ApiResult<impl IntoResponse> {
+pub fn tokens_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A complete list of tokens with sorts, filters and search").tag("token")
+}
+
+pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::TokenArgs>) -> ApiResult<impl IntoApiResponse> {
     args.validate().bad_request_from_error()?;
 
     let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
@@ -69,7 +73,7 @@ pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::
             transactions: v.proto.transactions,
             holders: server.holders.holders_by_tick(&v.proto.tick).unwrap_or(0) as u32,
             tick: v.proto.tick.into(),
-            genesis: v.genesis,
+            genesis: v.genesis.into(),
             supply: v.proto.supply,
             mint_percent: v.proto.mint_percent().to_string(),
             completed: v.proto.is_completed(),
@@ -82,7 +86,11 @@ pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::
     Ok(Json(token))
 }
 
-pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((address, outpoint)): Path<(String, Outpoint)>) -> ApiResult<impl IntoResponse> {
+pub fn token_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Detailed information about a token").tag("token")
+}
+
+pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((address, outpoint)): Path<(String, Outpoint)>) -> ApiResult<impl IntoApiResponse> {
     let scripthash = state.indexer.to_scripthash(&address, ScriptType::Address).bad_request_from_error()?;
 
     let (from, to) = AddressLocation::search_with_offset(scripthash.into(), outpoint.into()).into_inner();
@@ -114,4 +122,66 @@ pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((addres
         .internal("Failed to build body for the response")?;
 
     Err(res)
+}
+
+pub fn token_transfer_proof_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Verifies a transfer by address and outpoint").tag("token")
+}
+
+pub async fn token_events(
+    State(server): State<Arc<Server>>,
+    Path(token): Path<OriginalTokenTickRest>,
+    Query(args): Query<types::TokenEventsArgs>,
+) -> ApiResult<impl IntoApiResponse> {
+    if let Some(outpoint_str) = args.search {
+        let txid = Txid::from_str(&outpoint_str[..64.min(outpoint_str.len())]).bad_request_from_error()?;
+
+        let vout: Option<u32> = if outpoint_str.len() > 65 {
+            // Skip 64th byte because it's separator
+            Some(outpoint_str[65..].parse().bad_request("Failed to parse outpoint from search prompt")?)
+        } else {
+            None
+        };
+
+        let from = bellscoin::OutPoint {
+            txid: *txid,
+            vout: vout.unwrap_or(0),
+        };
+        let to = bellscoin::OutPoint {
+            txid: *txid,
+            vout: vout.unwrap_or(u32::MAX),
+        };
+
+        let v = server
+            .db
+            .outpoint_to_event
+            .range(&from..=&to, false)
+            .take(args.limit)
+            .flat_map(|(_, x)| server.db.address_token_to_history.get(x).map(|v| (x, v)))
+            .map(|(k, v)| types::AddressHistory::new(v.height, v.action, k, &server))
+            .collect::<Result<Vec<_>, _>>()
+            .internal("Couldn't found block for history entry")?;
+
+        Ok(Json(v))
+    } else {
+        let from = TokenId { id: 0, token: token.into() };
+
+        let offset = args.offset.unwrap_or(u64::MAX);
+        let to = TokenId { id: offset, token: token.into() };
+
+        let keys = server.db.token_id_to_event.range(&from..&to, true).take(args.limit).map(|x| x.1).collect_vec();
+        let history = server
+            .db
+            .address_token_to_history
+            .multi_get_kv(keys.iter(), false)
+            .into_iter()
+            .map(|(k, v)| types::AddressHistory::new(v.height, v.action, *k, &server))
+            .collect::<Result<Vec<_>, _>>()
+            .internal("Couldn't found block for history entry")?;
+        Ok(Json(history))
+    }
+}
+
+pub fn token_events_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A complete list of token events sorted by date of creation").tag("token")
 }

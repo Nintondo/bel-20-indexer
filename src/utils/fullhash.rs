@@ -11,14 +11,14 @@ impl FullHash {
     pub const ZERO: Self = Self([0; 32]);
 }
 
-impl From<bitcoin_hashes::sha256d::Hash> for FullHash {
-    fn from(value: bitcoin_hashes::sha256d::Hash) -> Self {
+impl From<bitcoin_hashes::sha256::Hash> for FullHash {
+    fn from(value: bitcoin_hashes::sha256::Hash) -> Self {
         Self(value.to_byte_array())
     }
 }
 
-impl From<&bitcoin_hashes::sha256d::Hash> for FullHash {
-    fn from(value: &bitcoin_hashes::sha256d::Hash) -> Self {
+impl From<&bitcoin_hashes::sha256::Hash> for FullHash {
+    fn from(value: &bitcoin_hashes::sha256::Hash) -> Self {
         Self(*value.as_byte_array())
     }
 }
@@ -69,7 +69,7 @@ impl TryFrom<Vec<u8>> for FullHash {
 }
 
 fn compute_script_hash(data: impl AsRef<[u8]>) -> FullHash {
-    bitcoin_hashes::sha256d::Hash::hash(data.as_ref()).into()
+    bitcoin_hashes::sha256::Hash::hash(data.as_ref()).into()
 }
 
 pub trait ComputeScriptHash {

@@ -1,4 +1,4 @@
-use bellscoin::consensus;
+use bellscoin::{consensus, OutPoint, Txid};
 
 use super::*;
 use inscriptions::structs::Part;
@@ -312,6 +312,29 @@ impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
         let id = u64::from_be_bytes(v[v.len() - 8..].try_into().anyhow()?);
 
         Ok(Self { address, id, token })
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct TokenId {
+    pub token: OriginalTokenTick,
+    pub id: u64,
+}
+
+impl rocksdb_wrapper::Pebble for TokenId {
+    type Inner = Self;
+
+    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+        let mut result = Vec::with_capacity(4 + 8);
+        result.extend(v.token.0);
+        result.extend(v.id.to_be_bytes());
+        Cow::Owned(result)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let token = OriginalTokenTick(v[..4].try_into().anyhow()?);
+        let id = u64::from_be_bytes(v[4..].try_into().anyhow()?);
+        Ok(Self { token, id })
     }
 }
 

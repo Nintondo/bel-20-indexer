@@ -59,8 +59,22 @@ pub enum Brc4Error {
     Parse(Brc4ParseErr),
 }
 
+/// Token tick in the original case (same as in the deploy)
 #[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub struct OriginalTokenTickRest([u8; 4]);
+
+impl schemars::JsonSchema for OriginalTokenTickRest {
+    fn schema_name() -> Cow<'static, str> {
+        "OriginalTokenTick".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": "^.+$"
+        })
+    }
+}
 
 impl Serialize for OriginalTokenTickRest {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -192,7 +206,7 @@ impl Display for InscriptionId {
 
 impl From<InscriptionId> for OutPoint {
     fn from(val: InscriptionId) -> Self {
-        OutPoint { txid: val.txid, vout: val.index }
+        OutPoint::new(val.txid, val.index)
     }
 }
 
@@ -202,6 +216,38 @@ impl From<OutPoint> for InscriptionId {
             txid: outpoint.txid,
             index: outpoint.vout,
         }
+    }
+}
+
+impl FromStr for InscriptionId {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(char) = s.chars().find(|char| !char.is_ascii()) {
+            return Err(ParseError::Character(char));
+        }
+
+        const TXID_LEN: usize = 64;
+        const MIN_LEN: usize = TXID_LEN + 2;
+
+        if s.len() < MIN_LEN {
+            return Err(ParseError::Length(s.len()));
+        }
+
+        let txid = &s[..TXID_LEN];
+
+        let separator = s.chars().nth(TXID_LEN).ok_or(ParseError::Separator(' '))?;
+
+        if separator != 'i' {
+            return Err(ParseError::Separator(separator));
+        }
+
+        let vout = &s[TXID_LEN + 1..];
+
+        Ok(Self {
+            txid: txid.parse().map_err(ParseError::Txid)?,
+            index: vout.parse().map_err(ParseError::Index)?,
+        })
     }
 }
 
@@ -231,9 +277,10 @@ pub enum TokenAction {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+/// Token transfer
+#[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 pub struct TokenTransfer {
-    pub outpoint: OutPoint,
+    pub outpoint: crate::rest::OutPoint,
     pub amount: Fixed128,
 }
 
@@ -290,35 +337,3 @@ impl Display for ParseError {
 }
 
 impl std::error::Error for ParseError {}
-
-impl FromStr for InscriptionId {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(char) = s.chars().find(|char| !char.is_ascii()) {
-            return Err(ParseError::Character(char));
-        }
-
-        const TXID_LEN: usize = 64;
-        const MIN_LEN: usize = TXID_LEN + 2;
-
-        if s.len() < MIN_LEN {
-            return Err(ParseError::Length(s.len()));
-        }
-
-        let txid = &s[..TXID_LEN];
-
-        let separator = s.chars().nth(TXID_LEN).ok_or(ParseError::Separator(' '))?;
-
-        if separator != 'i' {
-            return Err(ParseError::Separator(separator));
-        }
-
-        let vout = &s[TXID_LEN + 1..];
-
-        Ok(Self {
-            txid: txid.parse().map_err(ParseError::Txid)?,
-            index: vout.parse().map_err(ParseError::Index)?,
-        })
-    }
-}

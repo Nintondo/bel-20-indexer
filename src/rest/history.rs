@@ -2,10 +2,7 @@ use nint_blk::ScriptType;
 
 use super::*;
 
-pub async fn subscribe(
-    State(server): State<Arc<Server>>,
-    Json(payload): Json<types::SubscribeArgs>,
-) -> ApiResult<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>> {
+pub async fn subscribe(State(server): State<Arc<Server>>, Json(payload): Json<types::SubscribeArgs>) -> ApiResult<impl IntoResponse> {
     let (tx, rx) = mpsc::channel::<Result<Event, std::convert::Infallible>>(200_000);
 
     let addresses = payload.addresses.unwrap_or_default();
@@ -96,7 +93,7 @@ pub async fn address_token_history(
     State(server): State<Arc<Server>>,
     Path(script_str): Path<String>,
     Query(query): Query<types::AddressTokenHistoryArgs>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<impl IntoApiResponse> {
     query.validate().bad_request_from_error()?;
 
     let scripthash: FullHash = server.indexer.to_scripthash(&script_str, ScriptType::Address).bad_request_from_error()?.into();
@@ -131,7 +128,11 @@ pub async fn address_token_history(
     Ok(Json(res))
 }
 
-pub async fn events_by_height(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<impl IntoResponse> {
+pub fn address_token_history_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A list of token history for the address").tag("address")
+}
+
+pub async fn events_by_height(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<impl IntoApiResponse> {
     let keys = server.db.block_events.get(height).unwrap_or_default();
 
     let res = server
@@ -146,7 +147,11 @@ pub async fn events_by_height(State(server): State<Arc<Server>>, Path(height): P
     Ok(Json(res))
 }
 
-pub async fn proof_of_history(State(server): State<Arc<Server>>, Query(query): Query<types::ProofHistoryArgs>) -> ApiResult<impl IntoResponse> {
+pub fn events_by_height_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A list of events by height").tag("event")
+}
+
+pub async fn proof_of_history(State(server): State<Arc<Server>>, Query(query): Query<types::ProofHistoryArgs>) -> ApiResult<impl IntoApiResponse> {
     query.validate().bad_request_from_error()?;
 
     let res = server
@@ -160,11 +165,15 @@ pub async fn proof_of_history(State(server): State<Arc<Server>>, Query(query): Q
     Ok(Json(res))
 }
 
-pub async fn txid_events(State(server): State<Arc<Server>>, Path(txid): Path<Txid>) -> ApiResult<impl IntoResponse> {
+pub fn proof_of_history_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Proof of history of the blocks").tag("status")
+}
+
+pub async fn txid_events(State(server): State<Arc<Server>>, Path(txid): Path<rest::Txid>) -> ApiResult<impl IntoApiResponse> {
     let keys = server
         .db
         .outpoint_to_event
-        .range(&OutPoint { txid, vout: 0 }..&OutPoint { txid, vout: u32::MAX }, false)
+        .range(&bellscoin::OutPoint { txid: *txid, vout: 0 }..&bellscoin::OutPoint { txid: *txid, vout: u32::MAX }, false)
         .map(|(_, v)| v)
         .collect_vec();
 
@@ -180,4 +189,8 @@ pub async fn txid_events(State(server): State<Arc<Server>>, Path(txid): Path<Txi
     events.sort_unstable_by_key(|x| x.address_token.id);
 
     Ok(Json(events))
+}
+
+pub fn txid_events_docs(op: TransformOperation) -> TransformOperation {
+    op.description("A list of events by txid").tag("event")
 }

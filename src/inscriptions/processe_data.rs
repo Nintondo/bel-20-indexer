@@ -86,15 +86,30 @@ impl ProcessedData {
                     .map(|(address_token_id, history_value)| (history_value.action.outpoint(), address_token_id))
                     .collect_vec();
 
+                let token_id_to_event = history
+                    .iter()
+                    .map(|(address_token_id, _)| {
+                        (
+                            TokenId {
+                                token: address_token_id.token,
+                                id: address_token_id.id,
+                            },
+                            address_token_id,
+                        )
+                    })
+                    .collect_vec();
+
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
                     reorg_cache.push_token_entry(TokenHistoryEntry::RemoveHistory {
                         height: block_number,
                         last_history_id: server.db.last_history_id.get(()).unwrap_or_default(),
                         outpoint_to_event: outpoint_to_event.iter().map(|x| x.0).collect(),
                         to_remove: history.iter().map(|x| x.0).collect(),
+                        token_id_to_event: token_id_to_event.iter().map(|x| x.0).collect(),
                     });
                 }
 
+                server.db.token_id_to_event.extend(token_id_to_event);
                 server.db.block_events.set(block_number, block_events);
                 server.db.last_history_id.set((), last_history_id);
                 server.db.outpoint_to_event.extend(outpoint_to_event);

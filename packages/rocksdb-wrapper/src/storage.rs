@@ -13,9 +13,7 @@ impl RocksDB {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        let db = rocksdb::OptimisticTransactionDB::open_cf(&opts, path, tables)
-            .unwrap()
-            .arc();
+        let db = rocksdb::OptimisticTransactionDB::open_cf(&opts, path, tables).unwrap().arc();
         Self { db }
     }
 
@@ -43,11 +41,7 @@ fn _panic(ident: &str, cf: &str, e: anyhow::Error) -> ! {
 
 impl<K: Pebble, V: Pebble> RocksTable<K, V> {
     pub fn new(db: RocksDB, cf: String) -> Self {
-        Self {
-            db,
-            cf,
-            __marker: PhantomData,
-        }
+        Self { db, cf, __marker: PhantomData }
     }
 
     pub fn table_info(&self) -> TableInfo {
@@ -67,54 +61,34 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .map(|x| x.unwrap_or_else(|e| _panic("get", &self.cf, e)))
     }
 
-    pub fn multi_get<'a>(
-        &'a self,
-        keys: impl IntoIterator<Item = &'a K::Inner>,
-    ) -> Vec<Option<V::Inner>> {
-        let keys = keys
-            .into_iter()
-            .map(|x| K::get_bytes(x))
-            .collect::<Vec<_>>();
+    pub fn multi_get<'a>(&'a self, keys: impl IntoIterator<Item = &'a K::Inner>) -> Vec<Option<V::Inner>> {
+        let keys = keys.into_iter().map(|x| K::get_bytes(x)).collect::<Vec<_>>();
         self.db
             .db
             .batched_multi_get_cf(&self.cf(), keys.iter(), false)
             .into_iter()
             .map(|x| {
-                x.unwrap().map(|x| {
-                    V::from_bytes(Cow::Owned((*x).to_vec()))
-                        .unwrap_or_else(|e| _panic("multi_get", &self.cf, e))
-                })
+                x.unwrap()
+                    .map(|x| V::from_bytes(Cow::Owned((*x).to_vec())).unwrap_or_else(|e| _panic("multi_get", &self.cf, e)))
             })
             .collect()
     }
 
-    pub fn multi_get_kv<'a>(
-        &'a self,
-        keys: impl IntoIterator<Item = &'a K::Inner>,
-        panic_if_not_exists: bool,
-    ) -> Vec<(&'a K::Inner, V::Inner)> {
-        let keys_bytes = keys
-            .into_iter()
-            .map(|x| (x, K::get_bytes(x)))
-            .collect::<Vec<_>>();
+    pub fn multi_get_kv<'a>(&'a self, keys: impl IntoIterator<Item = &'a K::Inner>, panic_if_not_exists: bool) -> Vec<(&'a K::Inner, V::Inner)> {
+        let keys_bytes = keys.into_iter().map(|x| (x, K::get_bytes(x))).collect::<Vec<_>>();
 
         self.db
             .db
             .batched_multi_get_cf(&self.cf(), keys_bytes.iter().map(|x| &x.1), false)
             .into_iter()
             .map(|x| {
-                x.unwrap().map(|x| {
-                    V::from_bytes(Cow::Owned((*x).to_vec()))
-                        .unwrap_or_else(|e| _panic("multi_get", &self.cf, e))
-                })
+                x.unwrap()
+                    .map(|x| V::from_bytes(Cow::Owned((*x).to_vec())).unwrap_or_else(|e| _panic("multi_get", &self.cf, e)))
             })
             .zip(keys_bytes.into_iter().map(|x| x.0))
             .filter_map(|(v, k)| {
                 if panic_if_not_exists {
-                    Some((
-                        k,
-                        v.unwrap_or_else(|| _panic("multi_get", &self.cf, anyhow::Error::msg(""))),
-                    ))
+                    Some((k, v.unwrap_or_else(|| _panic("multi_get", &self.cf, anyhow::Error::msg("")))))
                 } else {
                     Some((k, v?))
                 }
@@ -123,21 +97,11 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
     }
 
     pub fn set(&self, k: impl Borrow<K::Inner>, v: impl Borrow<V::Inner>) {
-        self.db
-            .db
-            .put_cf(
-                &self.cf(),
-                K::get_bytes(k.borrow()),
-                V::get_bytes(v.borrow()),
-            )
-            .unwrap();
+        self.db.db.put_cf(&self.cf(), K::get_bytes(k.borrow()), V::get_bytes(v.borrow())).unwrap();
     }
 
     pub fn remove(&self, k: impl Borrow<K::Inner>) {
-        self.db
-            .db
-            .delete_cf(&self.cf(), K::get_bytes(k.borrow()))
-            .unwrap();
+        self.db.db.delete_cf(&self.cf(), K::get_bytes(k.borrow())).unwrap();
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (K::Inner, V::Inner)> + '_ {
@@ -145,25 +109,11 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .db
             .iterator_cf(&self.cf(), rocksdb::IteratorMode::Start)
             .flatten()
-            .map(|(k, v)| {
-                (
-                    K::from_bytes(Cow::Owned(k.into_vec())),
-                    V::from_bytes(Cow::Owned(v.into_vec())),
-                )
-            })
-            .map(|(k, v)| {
-                (
-                    k.unwrap_or_else(|e| _panic("iter key", &self.cf, e)),
-                    v.unwrap_or_else(|e| _panic("iter val", &self.cf, e)),
-                )
-            })
+            .map(|(k, v)| (K::from_bytes(Cow::Owned(k.into_vec())), V::from_bytes(Cow::Owned(v.into_vec()))))
+            .map(|(k, v)| (k.unwrap_or_else(|e| _panic("iter key", &self.cf, e)), v.unwrap_or_else(|e| _panic("iter val", &self.cf, e))))
     }
 
-    pub fn range<'a>(
-        &'a self,
-        range: impl RangeBounds<&'a K::Inner>,
-        reversed: bool,
-    ) -> Box<dyn Iterator<Item = (K::Inner, V::Inner)> + 'a> {
+    pub fn range<'a>(&'a self, range: impl RangeBounds<&'a K::Inner>, reversed: bool) -> Box<dyn Iterator<Item = (K::Inner, V::Inner)> + 'a> {
         enum Position {
             Start,
             End,
@@ -175,29 +125,13 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         }
 
         let mut start = match range.start_bound() {
-            Bound::Excluded(range) => (
-                Position::Start,
-                BoundType::Excluded,
-                Some(K::get_bytes(range)),
-            ),
-            Bound::Included(range) => (
-                Position::Start,
-                BoundType::Included,
-                Some(K::get_bytes(range)),
-            ),
+            Bound::Excluded(range) => (Position::Start, BoundType::Excluded, Some(K::get_bytes(range))),
+            Bound::Included(range) => (Position::Start, BoundType::Included, Some(K::get_bytes(range))),
             Bound::Unbounded => (Position::Start, BoundType::Unbounded, None),
         };
         let mut end = match range.end_bound() {
-            Bound::Excluded(range) => (
-                Position::End,
-                BoundType::Excluded,
-                Some(K::get_bytes(range)),
-            ),
-            Bound::Included(range) => (
-                Position::End,
-                BoundType::Included,
-                Some(K::get_bytes(range)),
-            ),
+            Bound::Excluded(range) => (Position::End, BoundType::Excluded, Some(K::get_bytes(range))),
+            Bound::Included(range) => (Position::End, BoundType::Included, Some(K::get_bytes(range))),
             Bound::Unbounded => (Position::End, BoundType::Unbounded, None),
         };
         if reversed {
@@ -225,9 +159,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
                 },
             )
             .flatten()
-            .skip_while(move |(k, _)| {
-                matches!(start_bound, BoundType::Excluded) && **k == **start.as_ref().unwrap()
-            })
+            .skip_while(move |(k, _)| matches!(start_bound, BoundType::Excluded) && **k == **start.as_ref().unwrap())
             .take_while(move |(k, _)| {
                 let x = match end_bound {
                     BoundType::Unbounded => None,
@@ -249,12 +181,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
                     true
                 }
             })
-            .map(move |(k, v)| {
-                (
-                    K::from_bytes(Cow::Owned(k.into_vec())),
-                    V::from_bytes(Cow::Owned(v.into_vec())),
-                )
-            })
+            .map(move |(k, v)| (K::from_bytes(Cow::Owned(k.into_vec())), V::from_bytes(Cow::Owned(v.into_vec()))))
             .map(|(k, v)| {
                 (
                     k.unwrap_or_else(|e| _panic("range key", &self.cf, e)),
@@ -274,13 +201,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .db
             .iterator_cf(&self.cf(), rocksdb::IteratorMode::Start)
             .flatten()
-            .flat_map(|(k, v)| {
-                anyhow::Ok((
-                    K::from_bytes(Cow::Borrowed(&k))?,
-                    V::from_bytes(Cow::Owned(v.into_vec()))?,
-                    k,
-                ))
-            })
+            .flat_map(|(k, v)| anyhow::Ok((K::from_bytes(Cow::Borrowed(&k))?, V::from_bytes(Cow::Owned(v.into_vec()))?, k)))
             .map(|(k, v, x)| (!(f)(k, v), x))
             .filter(|(b, _)| *b)
             .map(|(_, x)| x);
@@ -299,10 +220,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         self.db.db.write(w).unwrap();
     }
 
-    pub fn extend(
-        &self,
-        kv: impl IntoIterator<Item = (impl Borrow<K::Inner>, impl Borrow<V::Inner>)>,
-    ) {
+    pub fn extend(&self, kv: impl IntoIterator<Item = (impl Borrow<K::Inner>, impl Borrow<V::Inner>)>) {
         let mut w = WriteBatchWithTransaction::<true>::default();
         let cf = self.cf();
         for (k, v) in kv {

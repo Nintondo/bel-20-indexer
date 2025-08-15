@@ -1,4 +1,4 @@
-use bitcoin_hashes::sha256d;
+use bitcoin_hashes::sha256;
 
 use super::*;
 
@@ -67,7 +67,7 @@ impl InscriptionIndexer {
             .flat_map(|x| &x.value.outputs)
             .filter_map(|x| {
                 x.script.address.as_ref().map(|address| {
-                    let fullhash: FullHash = sha256d::Hash::hash(&x.out.script_pubkey).into();
+                    let fullhash: FullHash = sha256::Hash::hash(&x.out.script_pubkey).into();
                     (fullhash, address.to_owned())
                 })
             })

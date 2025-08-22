@@ -4,7 +4,7 @@ use super::*;
 
 use aide::{
     axum::{
-        routing::{get, get_with, post},
+        routing::{get, get_with},
         ApiRouter, IntoApiResponse,
     },
     openapi::{OpenApi, Tag},
@@ -20,7 +20,7 @@ use axum::{
 };
 use nintypes::common::inscriptions::Outpoint;
 use tokio::sync::mpsc;
-use tokio_stream::{wrappers::ReceiverStream, Stream};
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::compression::CompressionLayer;
 use validator::Validate;
 

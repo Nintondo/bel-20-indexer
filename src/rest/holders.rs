@@ -60,7 +60,7 @@ pub async fn holders_stats(State(server): State<Arc<Server>>, Query(query): Quer
 
         let mut total_value = Fixed128::ZERO;
 
-        for limit in [100, 100, 200, 500] {
+        for limit in [100, 100, 300, 500] {
             let mut value = Fixed128::ZERO;
             for _ in 0..limit {
                 value += iter.next().unwrap_or_default();

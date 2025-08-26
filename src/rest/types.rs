@@ -488,3 +488,9 @@ impl From<TokenMetaDB> for AllTokenInfoRest {
         }
     }
 }
+
+#[derive(Deserialize)]
+pub struct AllTickersQuery {
+    #[serde(default)]
+    pub block_height: Option<u32>,
+}

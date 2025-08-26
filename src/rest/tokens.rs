@@ -185,3 +185,33 @@ pub async fn token_events(
 pub fn token_events_docs(op: TransformOperation) -> TransformOperation {
     op.description("A complete list of token events sorted by date of creation").tag("token")
 }
+
+pub async fn all_tickers(State(server): State<Arc<Server>>, Query(args): Query<types::AllTickersQuery>) -> ApiResult<impl IntoResponse> {
+    let (tx, rx) = tokio::sync::mpsc::channel(1000);
+
+    tokio::spawn(async move {
+        if let Some(height) = args.block_height {
+            if let Some(events) = server.db.block_events.get(height) {
+                for x in server.db.address_token_to_history.multi_get_kv(events.iter(), true).into_iter().filter_map(|(k, v)| {
+                    if let TokenHistoryDB::Deploy { .. } = v.action {
+                        Some(k.token)
+                    } else {
+                        None
+                    }
+                }) {
+                    if tx.send(x.to_string()).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (_, meta) in server.db.token_to_meta.iter() {
+                if tx.send(meta.proto.tick.to_string()).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+    Ok(axum_streams::StreamBodyAs::json_array(stream))
+}

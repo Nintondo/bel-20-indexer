@@ -3,14 +3,21 @@ use super::*;
 pub async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl IntoResponse> {
     let (tx, rx) = tokio::sync::mpsc::channel(1000);
     tokio::spawn(async move {
-        let addresses = server.db.address_token_to_balance.iter().map(|x| x.0.address).collect::<HashSet<_>>();
+        let mut last_address: Option<FullHash> = None;
+        for fullhash in server.db.address_token_to_balance.iter().map(|x| x.0.address) {
+            if last_address.is_some_and(|x| x == fullhash) {
+                continue;
+            }
 
-        let addresses = server.load_addresses(addresses.iter().copied()).unwrap();
+            let Some(address_str) = server.db.fullhash_to_address.get(fullhash) else {
+                continue;
+            };
 
-        for address in addresses.iter() {
-            if tx.send(address).await.is_err() {
+            if tx.send(address_str).await.is_err() {
                 break;
             }
+
+            last_address = Some(fullhash);
         }
     });
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx);

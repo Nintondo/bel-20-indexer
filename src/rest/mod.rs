@@ -85,6 +85,7 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             .finish_api_with(&mut api, api_docs)
             // Not documented
             .route("/all-addresses", axum::routing::get(info::all_addresses))
+            .route("/all-tickers", axum::routing::get(tokens::all_tickers))
             .route("/events", axum::routing::post(history::subscribe))
             .layer(Extension(Arc::new(api)))
             .layer(CompressionLayer::new())

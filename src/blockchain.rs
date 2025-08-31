@@ -4,6 +4,7 @@ use std::str::FromStr;
 pub enum Blockchain {
     Dogecoin,
     Bellscoin,
+    Pepecoin,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +20,7 @@ impl FromStr for Blockchain {
         match s.to_ascii_lowercase().as_str() {
             "dogecoin" | "doge" => Ok(Blockchain::Dogecoin),
             "bellscoin" | "bells" => Ok(Blockchain::Bellscoin),
+            "pepecoin" | "pepe" => Ok(Blockchain::Pepecoin),
             _ => Err(BlockchainParseError::UnknownBlockchain),
         }
     }

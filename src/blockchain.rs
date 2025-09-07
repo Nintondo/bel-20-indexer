@@ -5,6 +5,7 @@ pub enum Blockchain {
     Dogecoin,
     Bellscoin,
     Pepecoin,
+    Trumpow,
 }
 
 #[derive(Debug, thiserror::Error)]

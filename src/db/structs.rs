@@ -391,8 +391,10 @@ impl From<TransferProtoDB> for TransferProto {
             TransferProto::Bel20(MintProtoWrapper { tick: v.tick, amt: v.amt })
         } else if *BLOCKCHAIN == Blockchain::Dogecoin {
             TransferProto::Drc20(MintProtoWrapper { tick: v.tick, amt: v.amt })
-        } else {
+        } else if *BLOCKCHAIN == Blockchain::Pepecoin {
             TransferProto::Prc20(MintProtoWrapper { tick: v.tick, amt: v.amt })
+        } else {
+            TransferProto::Trm20(MintProtoWrapper { tick: v.tick, amt: v.amt })
         }
     }
 }

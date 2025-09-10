@@ -96,6 +96,8 @@ pub enum MintProto {
     Drc20(MintProtoWrapper),
     #[serde(rename = "prc-20")]
     Prc20(MintProtoWrapper),
+    #[serde(rename = "trm-20")]
+    Trm20(MintProtoWrapper),
 }
 
 impl MintProto {
@@ -104,6 +106,7 @@ impl MintProto {
             MintProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
             MintProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
             MintProto::Prc20(v) if *BLOCKCHAIN == Blockchain::Pepecoin => Ok(*v),
+            MintProto::Trm20(v) if *BLOCKCHAIN == Blockchain::Trumpow => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
         }
     }
@@ -132,6 +135,8 @@ pub enum DeployProto {
     Drc20(DeployProtoWrapper),
     #[serde(rename = "prc-20")]
     Prc20(DeployProtoWrapper),
+    #[serde(rename = "trm-20")]
+    Trm20(DeployProtoWrapper),
 }
 
 impl DeployProto {
@@ -140,6 +145,7 @@ impl DeployProto {
             DeployProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
             DeployProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
             DeployProto::Prc20(v) if *BLOCKCHAIN == Blockchain::Pepecoin => Ok(*v),
+            DeployProto::Trm20(v) if *BLOCKCHAIN == Blockchain::Trumpow => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
         }
     }
@@ -163,6 +169,8 @@ pub enum TransferProto {
     Drc20(MintProtoWrapper),
     #[serde(rename = "prc-20")]
     Prc20(MintProtoWrapper),
+    #[serde(rename = "trm-20")]
+    Trm20(MintProtoWrapper),
 }
 
 impl TransferProto {
@@ -171,6 +179,7 @@ impl TransferProto {
             TransferProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
             TransferProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
             TransferProto::Prc20(v) if *BLOCKCHAIN == Blockchain::Pepecoin => Ok(*v),
+            TransferProto::Trm20(v) if *BLOCKCHAIN == Blockchain::Trumpow => Ok(*v),
             _ => anyhow::bail!("Unsupported type"),
         }
     }

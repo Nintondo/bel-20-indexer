@@ -1,0 +1,79 @@
+name: Deploy service for Pepe Testnet
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [Deploy]
+
+jobs:
+  deployment:
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.client_payload.ref }}
+
+    - name: Log in to Docker Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ secrets.CI_REGISTRY }}
+        username: ${{ secrets.CI_REGISTRY_USER }}
+        password: ${{ secrets.CI_REGISTRY_PASSWORD }}
+
+    - name: Check if Image Exists
+      env:
+        CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+        CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+        SERVICE_TAG: ${{ github.event.client_payload.sha }}
+      run: |
+        IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
+        if docker manifest inspect $IMAGE > /dev/null; then
+          echo "Image exists"
+        else
+          echo "Image does not exist"
+          exit 1
+        fi
+
+    - name: Deploy
+      uses: appleboy/ssh-action@v1.0.0
+      env:
+        CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+        CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+        SERVICE_TAG: ${{ github.event.client_payload.sha }}
+        DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
+        COIN: pepe
+        NETWORK: testnet
+      with:
+        host: ${{ secrets.PEPE_TESTNET_HOST_1 }}
+        username: ${{ secrets.PEPE_TESTNET_HOST_1_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
+        script: |
+          for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE COIN NETWORK; do
+            if [ -z "${!var}" ]; then
+              echo "Error: Environment variable ${var} is not set."
+              exit 1
+            fi
+          done
+
+          BASE_PATH="/opt/${COIN}-${NETWORK}"
+          SERVICE_PATH="${BASE_PATH}/services/${SERVICE_NAME}"
+          IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
+          CONTAINER="${COIN}-${NETWORK}-${SERVICE_NAME}"
+
+          update_docker_compose() {
+            local image="$1"
+            local compose_file="$2"
+            sed -i "s|image: .*/${SERVICE_NAME}:.*|image: ${image}|" "${compose_file}"
+          }
+          
+          cd "${SERVICE_PATH}" || exit 1
+          
+          update_docker_compose "${IMAGE}" "${DOCKER_COMPOSE_FILE}"
+
+          cd "${BASE_PATH}" || exit 1
+          
+          docker compose up -d --force-recreate "${CONTAINER}"

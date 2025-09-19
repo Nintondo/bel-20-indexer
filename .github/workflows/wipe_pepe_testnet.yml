@@ -1,0 +1,64 @@
+name: Wipe service for Pepe Testnet
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deployment:
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Wipe
+      uses: appleboy/ssh-action@v1.0.0
+      env:
+        SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+        SERVICE_DIR_1: ${{ vars.SERVICE_DIR_1 }}
+        SERVICE_DIR_2: ${{ vars.SERVICE_DIR_2 }}
+        COIN: pepe
+        NETWORK: testnet
+      with:
+        host: ${{ secrets.PEPE_TESTNET_HOST_1 }}
+        username: ${{ secrets.PEPE_TESTNET_HOST_1_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        envs: SERVICE_NAME,COIN,NETWORK,SERVICE_DIR_1,SERVICE_DIR_2
+        script: |
+          for var in SERVICE_NAME COIN NETWORK SERVICE_DIR_1 SERVICE_DIR_2; do
+            if [ -z "${!var}" ]; then
+              echo "Error: Environment variable ${var} is not set."
+              exit 1
+            fi
+          done
+
+          BASE_DIR="/opt/${COIN}-${NETWORK}"
+          SERVICE_PATH="${BASE_DIR}/services/${SERVICE_NAME}"
+
+          if [ ! -d "$BASE_DIR" ]; then
+            echo "Error: Base directory $BASE_DIR does not exist."
+            exit 1
+          fi
+
+          if [ ! -d "$SERVICE_PATH" ]; then
+            echo "Error: Service directory $SERVICE_PATH does not exist."
+            exit 1
+          fi
+
+          cd $BASE_DIR
+
+          CONTAINER_NAME="${COIN}-${NETWORK}-${SERVICE_NAME}"
+          if docker ps -a | grep -q $CONTAINER_NAME; then
+            docker rm -f $CONTAINER_NAME
+          else
+            echo "Warning: Docker container $CONTAINER_NAME does not exist."
+          fi
+
+          for DIR in ${SERVICE_DIR_1} ${SERVICE_DIR_2}; do
+            if [ -d "${SERVICE_PATH}/${DIR}" ]; then
+              rm -rf "${SERVICE_PATH}/${DIR}/*"
+            else
+              echo "Warning: Directory ${SERVICE_PATH}/${DIR} does not exist."
+            fi
+          done
+
+          docker compose up -d --force-recreate $CONTAINER_NAME

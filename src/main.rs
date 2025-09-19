@@ -75,6 +75,8 @@ define_static! {
         (Network::Bellscoin, Blockchain::Bellscoin) => 26_371,
         (Network::Bellscoin, Blockchain::Dogecoin) => 4_609_001,
         (Network::Testnet, Blockchain::Dogecoin) => 4_260_001,
+        (Network::Bellscoin, Blockchain::Junkcoin) => 273_000,
+        (Network::Testnet, Blockchain::Junkcoin) => 100_000,
         _ => 0,
     };
     SERVER_URL: String =

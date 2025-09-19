@@ -115,6 +115,26 @@ impl Coin for PepecoinTestnet {
     };
 }
 
+pub struct Junkcoin;
+impl Coin for Junkcoin {
+    const NAME: &'static str = "Junkcoin";
+    const CONFIG: EncoderConfig = EncoderConfig {
+        pubkey_address: 16,
+        script_address: 5,
+        bech32: "jc",
+    };
+}
+
+pub struct JunkcoinTestnet;
+impl Coin for JunkcoinTestnet {
+    const NAME: &'static str = "Junkcoin Testnet";
+    const CONFIG: EncoderConfig = EncoderConfig {
+        pubkey_address: 111,
+        script_address: 5,
+        bech32: "tjc",
+    };
+}
+
 #[derive(Clone, Copy)]
 // Holds the selected coin type information
 pub struct CoinType {
@@ -157,6 +177,8 @@ impl FromStr for CoinType {
             "bellscoin-testnet" => Ok(CoinType::from(BellscoinTestnet)),
             "pepecoin" => Ok(CoinType::from(Pepecoin)),
             "pepecoin-testnet" => Ok(CoinType::from(PepecoinTestnet)),
+            "junkcoin" => Ok(CoinType::from(Junkcoin)),
+            "junkcoin-testnet" => Ok(CoinType::from(JunkcoinTestnet)),
             n => anyhow::bail!("There is no implementation for `{}`!", n),
         }
     }

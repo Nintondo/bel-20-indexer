@@ -1,4 +1,4 @@
-use nint_blk::ScriptType;
+use nint_blk::proto::ScriptType;
 
 use super::*;
 

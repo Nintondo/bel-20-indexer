@@ -32,10 +32,7 @@ use crate::{
 mod blockchain;
 mod utils;
 
-pub use blockchain::{
-    BlockId, CoinType, LoadBlocks, LoadBlocksArgs,
-    proto::{self, ScriptType},
-};
+pub use blockchain::*;
 pub use utils::{Auth, Client};
 
 const BOUNDED_CHANNEL_SIZE: usize = 30;
@@ -209,7 +206,7 @@ impl Indexer {
         rx
     }
 
-    pub fn to_scripthash(&self, address: &str, script_type: ScriptType) -> Result<sha256::Hash> {
+    pub fn to_scripthash(&self, address: &str, script_type: proto::ScriptType) -> Result<sha256::Hash> {
         address_to_fullhash(address, script_type, self.coin)
     }
 }

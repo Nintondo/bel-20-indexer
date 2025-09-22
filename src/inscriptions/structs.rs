@@ -1,4 +1,5 @@
 use bellscoin::Script;
+use nint_blk::CoinType;
 
 use super::*;
 
@@ -27,7 +28,7 @@ pub enum ParsedInscription {
 }
 
 impl Inscription {
-    pub fn from_parts(partials: &[Part], vin: u32) -> ParsedInscription {
+    pub fn from_parts(partials: &[Part], vin: u32, coin: CoinType) -> ParsedInscription {
         if partials.len() == 1 && partials[0].is_tapscript {
             let script = Script::from_bytes(&partials[0].script_buffer);
             if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vin as usize) {
@@ -35,6 +36,10 @@ impl Inscription {
 
                 return ParsedInscription::Many(data);
             }
+        }
+
+        if coin.only_p2tr {
+            return ParsedInscription::None;
         }
 
         let mut sig_scripts = Vec::with_capacity(partials.len());

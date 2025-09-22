@@ -79,7 +79,7 @@ impl InscriptionIndexer {
             addresses: outpoint_fullhash_to_address.iter().map(|(fullhash, address)| (*fullhash, address.to_owned())).collect(),
         });
 
-        if block_height < *START_HEIGHT {
+        if block_height < self.server.indexer.coin.fib.unwrap_or_default() {
             return Ok(());
         }
 
@@ -97,7 +97,7 @@ impl InscriptionIndexer {
             return Ok(());
         }
 
-        let mut token_cache = TokenCache::load(&prevouts, &self.server.db);
+        let mut token_cache = TokenCache::load(&prevouts, self.server.clone());
 
         let transfers_to_remove = token_cache
             .valid_transfers

@@ -379,21 +379,14 @@ pub struct TransferProtoDB {
 }
 
 impl TransferProtoDB {
-    pub fn from_proto(value: TransferProto, height: u32) -> anyhow::Result<Self> {
-        let v = value.value()?;
+    pub fn from_proto(v: TransferProto, height: u32) -> anyhow::Result<Self> {
         Ok(Self { amt: v.amt, height, tick: v.tick })
     }
 }
 
 impl From<TransferProtoDB> for TransferProto {
     fn from(v: TransferProtoDB) -> Self {
-        match *BLOCKCHAIN {
-            Blockchain::Bellscoin => TransferProto::Bel20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
-            Blockchain::Dogecoin => TransferProto::Drc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
-            Blockchain::Pepecoin => TransferProto::Prc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
-            Blockchain::Litecoin => TransferProto::Ltc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
-            Blockchain::Bitcoin => TransferProto::Brc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
-        }
+        Self { amt: v.amt, tick: v.tick }
     }
 }
 

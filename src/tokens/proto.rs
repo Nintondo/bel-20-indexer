@@ -78,41 +78,12 @@ pub enum Brc4 {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct MintProtoWrapper {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MintProto {
     #[serde(deserialize_with = "bel_20_tick")]
     pub tick: OriginalTokenTick,
     #[serde(deserialize_with = "bel_20_decimal")]
     pub amt: Fixed128,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "p")]
-#[serde_as]
-pub enum MintProto {
-    #[serde(rename = "bel-20")]
-    Bel20(MintProtoWrapper),
-    #[serde(rename = "drc-20")]
-    Drc20(MintProtoWrapper),
-    #[serde(rename = "prc-20")]
-    Prc20(MintProtoWrapper),
-    #[serde(rename = "ltc-20")]
-    Ltc20(MintProtoWrapper),
-    #[serde(rename = "brc-20")]
-    Brc20(MintProtoWrapper),
-}
-
-impl MintProto {
-    pub fn value(&self) -> anyhow::Result<MintProtoWrapper> {
-        match self {
-            MintProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
-            MintProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
-            MintProto::Prc20(v) if *BLOCKCHAIN == Blockchain::Pepecoin => Ok(*v),
-            MintProto::Ltc20(v) if *BLOCKCHAIN == Blockchain::Litecoin => Ok(*v),
-            MintProto::Brc20(v) if *BLOCKCHAIN == Blockchain::Bitcoin => Ok(*v),
-            _ => anyhow::bail!("Unsupported type"),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -129,32 +100,16 @@ pub struct DeployProtoWrapper {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "p")]
-#[serde_as]
-pub enum DeployProto {
-    #[serde(rename = "bel-20")]
-    Bel20(DeployProtoWrapper),
-    #[serde(rename = "drc-20")]
-    Drc20(DeployProtoWrapper),
-    #[serde(rename = "prc-20")]
-    Prc20(DeployProtoWrapper),
-    #[serde(rename = "ltc-20")]
-    Ltc20(DeployProtoWrapper),
-    #[serde(rename = "brc-20")]
-    Brc20(DeployProtoWrapper),
-}
-
-impl DeployProto {
-    pub fn value(&self) -> anyhow::Result<DeployProtoWrapper> {
-        match self {
-            DeployProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
-            DeployProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
-            DeployProto::Prc20(v) if *BLOCKCHAIN == Blockchain::Pepecoin => Ok(*v),
-            DeployProto::Ltc20(v) if *BLOCKCHAIN == Blockchain::Litecoin => Ok(*v),
-            DeployProto::Brc20(v) if *BLOCKCHAIN == Blockchain::Bitcoin => Ok(*v),
-            _ => anyhow::bail!("Unsupported type"),
-        }
-    }
+pub struct DeployProto {
+    #[serde(deserialize_with = "bel_20_tick")]
+    pub tick: OriginalTokenTick,
+    #[serde(deserialize_with = "bel_20_decimal")]
+    pub max: Fixed128,
+    #[serde(default, deserialize_with = "bel_20_option_decimal")]
+    pub lim: Option<Fixed128>,
+    #[serde(with = ":: serde_with :: As :: < DisplayFromStr >")]
+    #[serde(default = "DeployProto::default_dec")]
+    pub dec: u8,
 }
 
 impl DeployProto {
@@ -165,33 +120,12 @@ impl DeployProto {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "p")]
-#[serde_as]
-pub enum TransferProto {
-    #[serde(rename = "bel-20")]
-    Bel20(MintProtoWrapper),
-    #[serde(rename = "drc-20")]
-    Drc20(MintProtoWrapper),
-    #[serde(rename = "prc-20")]
-    Prc20(MintProtoWrapper),
-    #[serde(rename = "ltc-20")]
-    Ltc20(MintProtoWrapper),
-    #[serde(rename = "brc-20")]
-    Brc20(MintProtoWrapper),
-}
-
-impl TransferProto {
-    pub fn value(&self) -> anyhow::Result<MintProtoWrapper> {
-        match self {
-            TransferProto::Bel20(v) if *BLOCKCHAIN == Blockchain::Bellscoin => Ok(*v),
-            TransferProto::Drc20(v) if *BLOCKCHAIN == Blockchain::Dogecoin => Ok(*v),
-            TransferProto::Prc20(v) if *BLOCKCHAIN == Blockchain::Pepecoin => Ok(*v),
-            TransferProto::Ltc20(v) if *BLOCKCHAIN == Blockchain::Litecoin => Ok(*v),
-            TransferProto::Brc20(v) if *BLOCKCHAIN == Blockchain::Bitcoin => Ok(*v),
-            _ => anyhow::bail!("Unsupported type"),
-        }
-    }
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct TransferProto {
+    #[serde(deserialize_with = "bel_20_tick")]
+    pub tick: OriginalTokenTick,
+    #[serde(deserialize_with = "bel_20_decimal")]
+    pub amt: Fixed128,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -201,34 +135,25 @@ pub enum Brc4Value {
     Deploy { tick: OriginalTokenTick, max: Fixed128, lim: Fixed128, dec: u8 },
 }
 
-impl TryFrom<&DeployProto> for Brc4Value {
-    type Error = anyhow::Error;
-
-    fn try_from(v: &DeployProto) -> Result<Self, Self::Error> {
-        let v = v.value()?;
-        Ok(Brc4Value::Deploy {
+impl From<&DeployProto> for Brc4Value {
+    fn from(v: &DeployProto) -> Self {
+        Self::Deploy {
             tick: v.tick,
             max: v.max,
             lim: v.lim.unwrap_or(v.max),
             dec: v.dec,
-        })
+        }
     }
 }
 
-impl TryFrom<&MintProto> for Brc4Value {
-    type Error = anyhow::Error;
-
-    fn try_from(v: &MintProto) -> Result<Self, Self::Error> {
-        let v = v.value()?;
-        Ok(Brc4Value::Mint { tick: v.tick, amt: v.amt })
+impl From<&MintProto> for Brc4Value {
+    fn from(v: &MintProto) -> Self {
+        Self::Mint { tick: v.tick, amt: v.amt }
     }
 }
 
-impl TryFrom<&TransferProto> for Brc4Value {
-    type Error = anyhow::Error;
-
-    fn try_from(v: &TransferProto) -> Result<Self, Self::Error> {
-        let v = v.value()?;
-        Ok(Brc4Value::Transfer { tick: v.tick, amt: v.amt })
+impl From<&TransferProto> for Brc4Value {
+    fn from(v: &TransferProto) -> Self {
+        Self::Transfer { tick: v.tick, amt: v.amt }
     }
 }

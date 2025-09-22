@@ -13,6 +13,13 @@ pub trait Coin {
     const NAME: &'static str;
     /// Configuration for address generation
     const CONFIG: EncoderConfig;
+    /// First inscription block
+    const FIB: Option<u32>;
+    /// Jubilee height
+    const JUBILEE_HEIGHT: Option<usize>;
+    /// BRC-20 protocol name
+    const BRC_NAME: &'static str;
+    const ONLY_P2RT: bool;
 }
 
 pub struct Bitcoin;
@@ -23,6 +30,10 @@ impl Coin for Bitcoin {
         script_address: 5,
         bech32: "bc",
     };
+    const FIB: Option<u32> = None;
+    const JUBILEE_HEIGHT: Option<usize> = None;
+    const BRC_NAME: &'static str = "brc-20";
+    const ONLY_P2RT: bool = true;
 }
 
 pub struct BitcoinTestnet;
@@ -33,6 +44,10 @@ impl Coin for BitcoinTestnet {
         script_address: 196,
         bech32: "tb",
     };
+    const FIB: Option<u32> = None;
+    const JUBILEE_HEIGHT: Option<usize> = None;
+    const BRC_NAME: &'static str = "brc-20";
+    const ONLY_P2RT: bool = true;
 }
 
 pub struct Litecoin;
@@ -43,6 +58,10 @@ impl Coin for Litecoin {
         script_address: 50,
         bech32: "ltc",
     };
+    const FIB: Option<u32> = Some(2_424_429);
+    const JUBILEE_HEIGHT: Option<usize> = Some(2_608_704);
+    const BRC_NAME: &'static str = "ltc-20";
+    const ONLY_P2RT: bool = true;
 }
 
 pub struct LitecoinTestnet;
@@ -53,6 +72,10 @@ impl Coin for LitecoinTestnet {
         script_address: 58,
         bech32: "tltc",
     };
+    const FIB: Option<u32> = Some(2_669_127);
+    const JUBILEE_HEIGHT: Option<usize> = Some(3_096_576);
+    const BRC_NAME: &'static str = "ltc-20";
+    const ONLY_P2RT: bool = true;
 }
 
 pub struct Dogecoin;
@@ -63,6 +86,10 @@ impl Coin for Dogecoin {
         script_address: 22,
         bech32: "dg",
     };
+    const FIB: Option<u32> = Some(4_609_001);
+    const JUBILEE_HEIGHT: Option<usize> = Some(usize::MAX);
+    const BRC_NAME: &'static str = "drc-20";
+    const ONLY_P2RT: bool = false;
 }
 
 pub struct DogecoinTestnet;
@@ -73,6 +100,10 @@ impl Coin for DogecoinTestnet {
         script_address: 196,
         bech32: "tdg",
     };
+    const FIB: Option<u32> = Some(4_260_001);
+    const JUBILEE_HEIGHT: Option<usize> = Some(usize::MAX);
+    const BRC_NAME: &'static str = "drc-20";
+    const ONLY_P2RT: bool = false;
 }
 
 pub struct Bellscoin;
@@ -83,6 +114,10 @@ impl Coin for Bellscoin {
         script_address: 30,
         bech32: "bel",
     };
+    const FIB: Option<u32> = Some(26_371);
+    const JUBILEE_HEIGHT: Option<usize> = Some(133_000);
+    const BRC_NAME: &'static str = "bel-20";
+    const ONLY_P2RT: bool = false;
 }
 
 pub struct BellscoinTestnet;
@@ -93,6 +128,10 @@ impl Coin for BellscoinTestnet {
         script_address: 22,
         bech32: "tbel",
     };
+    const FIB: Option<u32> = None;
+    const JUBILEE_HEIGHT: Option<usize> = None;
+    const BRC_NAME: &'static str = "bel-20";
+    const ONLY_P2RT: bool = false;
 }
 
 pub struct Pepecoin;
@@ -103,6 +142,10 @@ impl Coin for Pepecoin {
         script_address: 22,
         bech32: "pe",
     };
+    const FIB: Option<u32> = None;
+    const JUBILEE_HEIGHT: Option<usize> = None;
+    const BRC_NAME: &'static str = "prc-20";
+    const ONLY_P2RT: bool = false;
 }
 
 pub struct PepecoinTestnet;
@@ -113,15 +156,23 @@ impl Coin for PepecoinTestnet {
         script_address: 196,
         bech32: "tpe",
     };
+    const FIB: Option<u32> = None;
+    const JUBILEE_HEIGHT: Option<usize> = None;
+    const BRC_NAME: &'static str = "prc-20";
+    const ONLY_P2RT: bool = false;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 // Holds the selected coin type information
 pub struct CoinType {
     pub name: &'static str,
     pub pubkey_address: u8,
     pub script_address: u8,
     pub bech32: &'static str,
+    pub brc_name: &'static str,
+    pub jubilee_height: Option<usize>,
+    pub fib: Option<u32>,
+    pub only_p2tr: bool,
 }
 
 impl Default for CoinType {
@@ -139,6 +190,10 @@ impl<T: Coin> From<T> for CoinType {
             bech32: config.bech32,
             pubkey_address: config.pubkey_address,
             script_address: config.script_address,
+            brc_name: T::BRC_NAME,
+            jubilee_height: T::JUBILEE_HEIGHT,
+            fib: T::FIB,
+            only_p2tr: T::ONLY_P2RT,
         }
     }
 }

@@ -1,6 +1,9 @@
 use bellscoin::ScriptBuf;
 use bitcoin_hashes::sha256;
-use nint_blk::proto::{tx::EvaluatedTx, Hashed};
+use nint_blk::{
+    proto::{tx::EvaluatedTx, Hashed},
+    Bellscoin, Coin, CoinType,
+};
 
 use crate::inscriptions::{
     indexer::ParsedInscriptionResult,
@@ -18,6 +21,7 @@ pub struct ParseInscription<'a> {
     inputs_cum: &'a [u64],
     partials: &'a Partials,
     prevouts: &'a HashMap<OutPoint, TxPrevout>,
+    coin: CoinType,
 }
 
 pub struct Parser<'a> {
@@ -27,7 +31,7 @@ pub struct Parser<'a> {
 
 impl Parser<'_> {
     pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
-        let is_jubilee_height = height as usize >= *JUBILEE_HEIGHT;
+        let is_jubilee_height = height as usize >= self.server.indexer.coin.jubilee_height.unwrap_or_default();
 
         // Hold inscription's partials from db and new in the block
         let mut outpoint_to_partials = Self::load_partials(self.server, prevouts.keys().cloned().collect());
@@ -129,6 +133,7 @@ impl Parser<'_> {
                             inputs_cum: &inputs_cum,
                             partials: &partials,
                             prevouts,
+                            coin: self.server.indexer.coin,
                         },
                         leaked.as_mut().unwrap(),
                     );
@@ -171,7 +176,7 @@ impl Parser<'_> {
                             .insert(inscription_template.location.offset); // return false if item already exist
 
                         // This is only for BELLS
-                        if *JUBILEE_HEIGHT == 133_000 {
+                        if self.server.indexer.coin.name == Bellscoin::NAME {
                             offset_occupied = false;
                         }
 
@@ -223,7 +228,7 @@ impl Parser<'_> {
     }
 
     fn parse_inscription(payload: ParseInscription, leaked: &mut LeakedInscriptions) -> ParsedInscriptionResult {
-        let parsed = Inscription::from_parts(&payload.partials.parts, payload.input_index);
+        let parsed = Inscription::from_parts(&payload.partials.parts, payload.input_index, payload.coin);
 
         match parsed {
             ParsedInscription::None => ParsedInscriptionResult::None,
@@ -252,13 +257,6 @@ impl Parser<'_> {
 
         let pointer = inscription.pointer();
 
-        let is_taproot = payload
-            .partials
-            .parts
-            .first()
-            .map(|part| part.is_tapscript)
-            .unwrap_or(false);
-
         let mut inscription_template = InscriptionTemplate {
             content: inscription.into_body(),
             content_type,
@@ -273,7 +271,6 @@ impl Parser<'_> {
             owner: FullHash::ZERO,
             value: 0,
             leaked: false,
-            is_taproot,
         };
 
         let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)

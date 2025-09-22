@@ -1,3 +1,5 @@
+use nint_blk::{Coin, CoinType};
+
 use super::{proto::*, structs::*, *};
 
 type Tickers = HashSet<LowerCaseTokenTick>;
@@ -65,7 +67,7 @@ impl HistoryTokenAction {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct TokenCache {
     /// All tokens. Used to check if a transfer is valid. Used like a cache, loaded from db before parsing.
     pub tokens: HashMap<LowerCaseTokenTick, TokenMeta>,
@@ -81,11 +83,20 @@ pub struct TokenCache {
 
     /// All transfer actions that are valid. Used to write to the db.
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
+
+    pub server: Arc<Server>,
 }
 
 impl TokenCache {
-    pub fn load(prevouts: &HashMap<OutPoint, TxPrevout>, db: &DB) -> Self {
-        let mut token_cache = Self::default();
+    pub fn load(prevouts: &HashMap<OutPoint, TxPrevout>, server: Arc<Server>) -> Self {
+        let mut token_cache = Self {
+            all_transfers: HashMap::new(),
+            server,
+            token_accounts: HashMap::new(),
+            token_actions: Vec::new(),
+            tokens: HashMap::new(),
+            valid_transfers: BTreeMap::new(),
+        };
 
         let transfers_to_remove: HashSet<_> = prevouts
             .iter()
@@ -95,16 +106,16 @@ impl TokenCache {
             })
             .collect();
 
-        token_cache.valid_transfers.extend(db.load_transfers(&transfers_to_remove));
+        token_cache.valid_transfers.extend(token_cache.server.db.load_transfers(&transfers_to_remove));
 
         token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
 
         token_cache
     }
 
-    fn try_parse(content_type: &str, content: &[u8]) -> Result<Brc4, Brc4ParseErr> {
+    fn try_parse(content_type: &str, content: &[u8], coin: CoinType) -> Result<Brc4, Brc4ParseErr> {
         // Dogecoin wonky bugfix
-        if *BLOCKCHAIN == Blockchain::Dogecoin {
+        if coin.name == nint_blk::Dogecoin::NAME {
             if !content_type.starts_with("text/plain") && !content_type.starts_with("application/json") {
                 return Err(Brc4ParseErr::WrongContentType);
             }
@@ -120,6 +131,18 @@ impl TokenCache {
 
         let data = serde_json::from_str::<serde_json::Value>(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?;
 
+        let brc_name = data
+            .as_object()
+            .ok_or(Brc4ParseErr::WrongProtocol)?
+            .get("p")
+            .ok_or(Brc4ParseErr::WrongProtocol)?
+            .as_str()
+            .ok_or(Brc4ParseErr::WrongProtocol)?;
+
+        if brc_name != coin.brc_name {
+            return Err(Brc4ParseErr::WrongProtocol);
+        }
+
         let brc4 = serde_json::from_str::<Brc4>(&serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?).map_err(|error| match error.to_string().as_str() {
             "Invalid decimal: empty" => Brc4ParseErr::DecimalEmpty,
             "Invalid decimal: overflow from too many digits" => Brc4ParseErr::DecimalOverflow,
@@ -131,30 +154,10 @@ impl TokenCache {
         })?;
 
         match &brc4 {
-            Brc4::Mint { proto } => {
-                let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                if !v.amt.is_zero() {
-                    Ok(brc4)
-                } else {
-                    Err(Brc4ParseErr::WrongProtocol)
-                }
-            }
-            Brc4::Transfer { proto } => {
-                let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                if !v.amt.is_zero() {
-                    Ok(brc4)
-                } else {
-                    Err(Brc4ParseErr::WrongProtocol)
-                }
-            }
-            Brc4::Deploy { proto } => {
-                let v = proto.value().map_err(|_| Brc4ParseErr::WrongProtocol)?;
-                if v.dec <= DeployProto::MAX_DEC && !v.lim.unwrap_or(v.max).is_zero() && !v.max.is_zero() {
-                    Ok(brc4)
-                } else {
-                    Err(Brc4ParseErr::WrongProtocol)
-                }
-            }
+            Brc4::Mint { proto } if !proto.amt.is_zero() => Ok(brc4),
+            Brc4::Transfer { proto } if !proto.amt.is_zero() => Ok(brc4),
+            Brc4::Deploy { proto } if proto.dec <= DeployProto::MAX_DEC && !proto.lim.unwrap_or(proto.max).is_zero() && !proto.max.is_zero() => Ok(brc4),
+            _ => Err(Brc4ParseErr::WrongProtocol),
         }
     }
 
@@ -165,11 +168,7 @@ impl TokenCache {
             return None;
         }
 
-        if Self::taproot_only_chain() && !inc.is_taproot {
-            return None;
-        }
-
-        let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?) {
+        let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, self.server.indexer.coin) {
             Ok(ok) => ok,
             Err(_) => {
                 return None;
@@ -178,7 +177,7 @@ impl TokenCache {
 
         match brc4 {
             Brc4::Deploy { proto } => {
-                let v = proto.value().ok()?;
+                let v = proto;
 
                 self.token_actions.push(TokenAction::Deploy {
                     genesis: inc.genesis,
@@ -201,7 +200,7 @@ impl TokenCache {
             Brc4::Mint { proto } => {
                 self.token_actions.push(TokenAction::Mint {
                     owner: inc.owner,
-                    proto: proto.value().ok()?,
+                    proto,
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
                 });
@@ -210,11 +209,11 @@ impl TokenCache {
                 self.token_actions.push(TokenAction::Transfer {
                     location: inc.location,
                     owner: inc.owner,
-                    proto: proto.value().ok()?,
+                    proto,
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
                 });
-                self.all_transfers.insert(inc.location, TransferProtoDB::from_proto(proto.clone(), height).ok()?);
+                self.all_transfers.insert(inc.location, TransferProtoDB::from_proto(proto, height).ok()?);
                 return Some(proto);
             }
         };
@@ -280,7 +279,7 @@ impl TokenCache {
                 }
                 TokenAction::Mint {
                     owner,
-                    proto: MintProtoWrapper { tick, .. },
+                    proto: MintProto { tick, .. },
                     ..
                 } => {
                     tickers.insert((*tick).into());
@@ -288,7 +287,7 @@ impl TokenCache {
                 }
                 TokenAction::Transfer {
                     owner,
-                    proto: MintProtoWrapper { tick, .. },
+                    proto: TransferProto { tick, .. },
                     ..
                 } => {
                     tickers.insert((*tick).into());
@@ -339,7 +338,7 @@ impl TokenCache {
                     }
                 }
                 TokenAction::Mint { owner, proto, txid, vout } => {
-                    let MintProtoWrapper { tick, amt } = proto;
+                    let MintProto { tick, amt } = proto;
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;
                     };
@@ -395,7 +394,7 @@ impl TokenCache {
                         continue;
                     };
 
-                    let MintProtoWrapper { tick, amt } = proto;
+                    let TransferProto { tick, amt } = proto;
 
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;
@@ -488,12 +487,5 @@ impl TokenCache {
         }
 
         history
-    }
-}
-
-impl TokenCache {
-    #[inline]
-    fn taproot_only_chain() -> bool {
-        matches!(*BLOCKCHAIN, Blockchain::Litecoin | Blockchain::Bitcoin)
     }
 }

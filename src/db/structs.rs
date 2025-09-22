@@ -387,12 +387,12 @@ impl TransferProtoDB {
 
 impl From<TransferProtoDB> for TransferProto {
     fn from(v: TransferProtoDB) -> Self {
-        if *BLOCKCHAIN == Blockchain::Bellscoin {
-            TransferProto::Bel20(MintProtoWrapper { tick: v.tick, amt: v.amt })
-        } else if *BLOCKCHAIN == Blockchain::Dogecoin {
-            TransferProto::Drc20(MintProtoWrapper { tick: v.tick, amt: v.amt })
-        } else {
-            TransferProto::Prc20(MintProtoWrapper { tick: v.tick, amt: v.amt })
+        match *BLOCKCHAIN {
+            Blockchain::Bellscoin => TransferProto::Bel20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
+            Blockchain::Dogecoin => TransferProto::Drc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
+            Blockchain::Pepecoin => TransferProto::Prc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
+            Blockchain::Litecoin => TransferProto::Ltc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
+            Blockchain::Bitcoin => TransferProto::Brc20(MintProtoWrapper { tick: v.tick, amt: v.amt }),
         }
     }
 }

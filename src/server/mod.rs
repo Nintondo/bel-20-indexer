@@ -23,6 +23,8 @@ impl Server {
         let db = Arc::new(DB::open(db_path));
 
         let coin = match (*BLOCKCHAIN, *NETWORK) {
+            (Blockchain::Bitcoin, Network::Bellscoin) => "bitcoin",
+            (Blockchain::Bitcoin, Network::Testnet) => "bitcoin-testnet",
             (Blockchain::Litecoin, Network::Bellscoin) => "litecoin",
             (Blockchain::Litecoin, Network::Testnet) => "litecoin-testnet",
             (Blockchain::Bellscoin, Network::Bellscoin) => "bellscoin",

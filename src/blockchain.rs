@@ -6,6 +6,7 @@ pub enum Blockchain {
     Bellscoin,
     Pepecoin,
     Litecoin,
+    Bitcoin,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +24,7 @@ impl FromStr for Blockchain {
             "bellscoin" | "bells" => Ok(Blockchain::Bellscoin),
             "pepecoin" | "pepe" => Ok(Blockchain::Pepecoin),
             "litecoin" | "lite" => Ok(Blockchain::Litecoin),
+            "bitcoin" | "btc" => Ok(Blockchain::Bitcoin),
             _ => Err(BlockchainParseError::UnknownBlockchain),
         }
     }

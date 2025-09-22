@@ -165,6 +165,10 @@ impl TokenCache {
             return None;
         }
 
+        if Self::taproot_only_chain() && !inc.is_taproot {
+            return None;
+        }
+
         let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?) {
             Ok(ok) => ok,
             Err(_) => {
@@ -484,5 +488,12 @@ impl TokenCache {
         }
 
         history
+    }
+}
+
+impl TokenCache {
+    #[inline]
+    fn taproot_only_chain() -> bool {
+        matches!(*BLOCKCHAIN, Blockchain::Litecoin | Blockchain::Bitcoin)
     }
 }

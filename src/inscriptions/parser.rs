@@ -252,6 +252,13 @@ impl Parser<'_> {
 
         let pointer = inscription.pointer();
 
+        let is_taproot = payload
+            .partials
+            .parts
+            .first()
+            .map(|part| part.is_tapscript)
+            .unwrap_or(false);
+
         let mut inscription_template = InscriptionTemplate {
             content: inscription.into_body(),
             content_type,
@@ -266,6 +273,7 @@ impl Parser<'_> {
             owner: FullHash::ZERO,
             value: 0,
             leaked: false,
+            is_taproot,
         };
 
         let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)

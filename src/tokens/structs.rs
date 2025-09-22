@@ -299,6 +299,7 @@ pub struct InscriptionTemplate {
     pub value: u64,
     pub content: Option<Vec<u8>>,
     pub leaked: bool,
+    pub is_taproot: bool,
 }
 
 pub(crate) struct DeserializeFromStr<T: FromStr>(pub(crate) T);

@@ -39,9 +39,9 @@ pub struct Litecoin;
 impl Coin for Litecoin {
     const NAME: &'static str = "Litecoin";
     const CONFIG: EncoderConfig = EncoderConfig {
-        pubkey_address: 0,
-        script_address: 5,
-        bech32: "lt",
+        pubkey_address: 48,
+        script_address: 50,
+        bech32: "ltc",
     };
 }
 
@@ -50,8 +50,8 @@ impl Coin for LitecoinTestnet {
     const NAME: &'static str = "Litecoin Testnet";
     const CONFIG: EncoderConfig = EncoderConfig {
         pubkey_address: 111,
-        script_address: 196,
-        bech32: "tlt",
+        script_address: 58,
+        bech32: "tltc",
     };
 }
 
@@ -140,6 +140,13 @@ impl<T: Coin> From<T> for CoinType {
             pubkey_address: config.pubkey_address,
             script_address: config.script_address,
         }
+    }
+}
+
+impl CoinType {
+    #[inline]
+    pub fn has_mweb_extension_metadata(self) -> bool {
+        matches!(self.name, "Litecoin" | "Litecoin Testnet")
     }
 }
 

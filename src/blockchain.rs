@@ -22,7 +22,7 @@ impl FromStr for Blockchain {
             "dogecoin" | "doge" => Ok(Blockchain::Dogecoin),
             "bellscoin" | "bells" => Ok(Blockchain::Bellscoin),
             "pepecoin" | "pepe" => Ok(Blockchain::Pepecoin),
-            "litecoin" => Ok(Blockchain::Litecoin),
+            "litecoin" | "lite" => Ok(Blockchain::Litecoin),
             _ => Err(BlockchainParseError::UnknownBlockchain),
         }
     }

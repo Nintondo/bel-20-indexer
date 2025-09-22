@@ -67,6 +67,8 @@ define_static! {
     // multiple input inscription scan activation
     JUBILEE_HEIGHT: usize = match (*NETWORK, *BLOCKCHAIN) {
         (Network::Bellscoin, Blockchain::Bellscoin) => 133_000,
+        (Network::Bellscoin, Blockchain::Litecoin) => 2_608_704,
+        (Network::Testnet, Blockchain::Litecoin) => 3_096_576,
         (_, Blockchain::Dogecoin) => usize::MAX,
         _ => 0,
     };

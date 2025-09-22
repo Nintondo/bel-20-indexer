@@ -1,4 +1,5 @@
 use std::time::Instant;
+use std::io::Read;
 
 use super::*;
 
@@ -20,6 +21,7 @@ const BLOCK_VALID_MASK: u64 = BLOCK_VALID_RESERVED | BLOCK_VALID_TREE | BLOCK_VA
 const BLOCK_FAILED_VALID: u64 = 32;
 const BLOCK_FAILED_CHILD: u64 = 64;
 const BLOCK_FAILED_MASK: u64 = BLOCK_FAILED_VALID | BLOCK_FAILED_CHILD;
+const BLOCK_HAVE_MWEB: u64 = 1 << 28;
 
 /// Holds the index of longest valid chain
 pub struct ChainIndex {
@@ -32,7 +34,11 @@ impl ChainIndex {
     pub fn new(options: &ChainOptions) -> Result<Self> {
         let path = &options.index_dir_path;
         let start = Instant::now();
-        let block_index = path.as_ref().map(|path| get_block_index(path, options.range)).transpose()?.unwrap_or_default();
+        let block_index = path
+            .as_ref()
+            .map(|path| get_block_index(path, options.range, options.coin))
+            .transpose()?
+            .unwrap_or_default();
         tracing::trace!("Loaded block indexes from LevelDB in {}s", start.elapsed().as_secs_f64());
         let mut max_height_blk_index = HashMap::new();
 
@@ -109,7 +115,7 @@ impl From<BlockIndexRecord> for BlockIndexRecordSmall {
 }
 
 impl BlockIndexRecord {
-    fn from(key: &[u8], values: &[u8]) -> Result<Option<Self>> {
+    fn from(key: &[u8], values: &[u8], coin: CoinType) -> Result<Option<Self>> {
         let mut reader = Cursor::new(values);
 
         let block_hash: [u8; 32] = key.try_into().expect("leveldb: malformed blockhash");
@@ -132,6 +138,10 @@ impl BlockIndexRecord {
         }
         if status & BLOCK_HAVE_UNDO > 0 {
             _undo_offset = Some(read_varint(&mut reader)?);
+        }
+
+        if coin.has_mweb_extension_metadata() && status & BLOCK_HAVE_MWEB > 0 {
+            skip_mweb_extension(&mut reader)?;
         }
 
         let block_header = reader.read_block_header()?;
@@ -160,7 +170,7 @@ impl fmt::Debug for BlockIndexRecord {
     }
 }
 
-pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Result<HashMap<u64, BlockIndexRecordSmall>> {
+pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange, coin: CoinType) -> Result<HashMap<u64, BlockIndexRecordSmall>> {
     let mut block_index = IndexMap::<u64, Vec<BlockIndexRecord>>::with_capacity(900_000);
     let mut db_iter = DB::open(path, Options::default())?.new_iter()?;
     let (mut key, mut value) = (vec![], vec![]);
@@ -175,7 +185,7 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Re
             break;
         }
 
-        let Some(record) = BlockIndexRecord::from(&key[1..], &value)? else {
+        let Some(record) = BlockIndexRecord::from(&key[1..], &value, coin)? else {
             continue;
         };
 
@@ -245,4 +255,24 @@ fn read_varint(reader: &mut Cursor<&[u8]>) -> Result<u64> {
         }
     }
     Ok(n)
+}
+
+fn skip_mweb_extension(reader: &mut Cursor<&[u8]>) -> Result<()> {
+    // MWEB header fields
+    read_varint(reader)?; // height
+
+    let mut buf = [0u8; 32];
+    reader.read_exact(&mut buf)?; // output root
+    reader.read_exact(&mut buf)?; // kernel root
+    reader.read_exact(&mut buf)?; // leafset root
+    reader.read_exact(&mut buf)?; // kernel offset
+    reader.read_exact(&mut buf)?; // stealth offset
+
+    read_varint(reader)?; // output MMR size
+    read_varint(reader)?; // kernel MMR size
+
+    reader.read_exact(&mut buf)?; // hogex hash
+    read_varint(reader)?; // mweb amount
+
+    Ok(())
 }

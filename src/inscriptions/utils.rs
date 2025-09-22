@@ -1,7 +1,7 @@
 use bellscoin::ScriptBuf;
 use nint_blk::proto::block::Block;
 
-use super::{processe_data::ProcessedData, *};
+use super::{process_data::ProcessedData, *};
 
 pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
     let prevouts = block

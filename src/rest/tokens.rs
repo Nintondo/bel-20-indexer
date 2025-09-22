@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use bitcoin_hashes::sha256d;
-use nint_blk::ScriptType;
+use nint_blk::proto::ScriptType;
 
 use super::*;
 

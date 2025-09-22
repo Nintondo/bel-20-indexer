@@ -468,27 +468,6 @@ pub struct TokenTransferProof {
     pub height: u32,
 }
 
-#[derive(Serialize)]
-pub struct AllTokenInfoRest {
-    tick: OriginalTokenTickRest,
-    max: Fixed128,
-    lim: Fixed128,
-    dec: u8,
-    supply: Fixed128,
-}
-
-impl From<TokenMetaDB> for AllTokenInfoRest {
-    fn from(value: TokenMetaDB) -> Self {
-        Self {
-            tick: value.proto.tick.into(),
-            dec: value.proto.dec,
-            lim: value.proto.lim,
-            max: value.proto.max,
-            supply: value.proto.supply,
-        }
-    }
-}
-
 #[derive(Deserialize)]
 pub struct AllTickersQuery {
     #[serde(default)]

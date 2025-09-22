@@ -22,22 +22,7 @@ impl Server {
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
 
-        let coin = match (*BLOCKCHAIN, *NETWORK) {
-            (Blockchain::Bitcoin, Network::Bellscoin) => "bitcoin",
-            (Blockchain::Bitcoin, Network::Testnet) => "bitcoin-testnet",
-            (Blockchain::Litecoin, Network::Bellscoin) => "litecoin",
-            (Blockchain::Litecoin, Network::Testnet) => "litecoin-testnet",
-            (Blockchain::Bellscoin, Network::Bellscoin) => "bellscoin",
-            (Blockchain::Bellscoin, Network::Testnet) => "bellscoin-testnet",
-            (Blockchain::Dogecoin, Network::Bellscoin) => "dogecoin",
-            (Blockchain::Dogecoin, Network::Testnet) => "dogecoin-testnet",
-            (Blockchain::Pepecoin, Network::Bellscoin) => "pepecoin",
-            (Blockchain::Pepecoin, Network::Testnet) => "pepecoin-testnet",
-            _ => "bellscoin",
-        }
-        .to_string();
-
-        let coin = nint_blk::CoinType::from_str(&coin).unwrap();
+        let coin = nint_blk::CoinType::from_str(&load_env!("BLOCKCHAIN")).unwrap();
 
         let last_height = db.last_block.get(()).unwrap_or_default();
 

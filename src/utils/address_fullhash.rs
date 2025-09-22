@@ -11,10 +11,6 @@ impl AddressesFullHash {
     pub fn get(&self, hash: &FullHash) -> String {
         fullhash_to_address_str(hash, self.0.get(hash).cloned())
     }
-
-    pub fn iter(&'_ self) -> impl Iterator<Item = String> + use<'_> {
-        self.0.values().cloned()
-    }
 }
 
 impl From<HashMap<FullHash, String>> for AddressesFullHash {

@@ -6,9 +6,8 @@ use {
     crate::{rest::run_rest, server::threads::EventSender},
     bellscoin::{
         hashes::{sha256, Hash},
-        opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
+        opcodes, script, BlockHash, OutPoint, TxOut, Txid,
     },
-    blockchain::Blockchain,
     db::*,
     dutils::{
         error::{ApiError, ContextWrapper},
@@ -20,7 +19,7 @@ use {
     reorg::{ReorgCache, REORG_CACHE_MAX_LEN},
     rocksdb_wrapper::{RocksDB, RocksTable, UsingConsensus, UsingSerde},
     serde::{Deserialize, Deserializer, Serialize, Serializer},
-    serde_with::{serde_as, DisplayFromStr},
+    serde_with::DisplayFromStr,
     server::{Server, ServerEvent},
     std::{
         borrow::Cow,
@@ -45,7 +44,6 @@ mod rest;
 mod tokens;
 #[macro_use]
 mod utils;
-mod blockchain;
 mod db;
 mod server;
 
@@ -59,28 +57,7 @@ define_static! {
     URL: String = load_env!("RPC_URL");
     USER: String = load_env!("RPC_USER");
     PASS: String = load_env!("RPC_PASS");
-    BLOCKCHAIN: Blockchain = Blockchain::from_str(&load_env!("BLOCKCHAIN")).unwrap();
     INDEX_DIR: Option<String> = load_opt_env!("INDEX_DIR");
-    NETWORK: Network = load_opt_env!("NETWORK")
-        .map(|x| Network::from_str(&x).unwrap())
-        .unwrap_or(Network::Bellscoin);
-    // multiple input inscription scan activation
-    JUBILEE_HEIGHT: usize = match (*NETWORK, *BLOCKCHAIN) {
-        (Network::Bellscoin, Blockchain::Bellscoin) => 133_000,
-        (Network::Bellscoin, Blockchain::Litecoin) => 2_608_704,
-        (Network::Testnet, Blockchain::Litecoin) => 3_096_576,
-        (_, Blockchain::Dogecoin) => usize::MAX,
-        _ => 0,
-    };
-    // first token block height
-    START_HEIGHT: u32 = match (*NETWORK, *BLOCKCHAIN) {
-        (Network::Bellscoin, Blockchain::Bellscoin) => 26_371,
-        (Network::Bellscoin, Blockchain::Dogecoin) => 4_609_001,
-        (Network::Testnet, Blockchain::Dogecoin) => 4_260_001,
-        (Network::Bellscoin, Blockchain::Litecoin) => 2_424_429,
-        (Network::Testnet, Blockchain::Litecoin) => 2_669_127,
-        _ => 0,
-    };
     SERVER_URL: String =
         load_opt_env!("SERVER_BIND_URL").unwrap_or("0.0.0.0:8000".to_string());
     DEFAULT_HASH: sha256::Hash = sha256::Hash::hash("null".as_bytes());
@@ -93,7 +70,7 @@ fn main() {
     dotenv::dotenv().ok();
     utils::init_logger();
 
-    dbg!(&*BLK_DIR, &*URL, &*USER, &*PASS, &*BLOCKCHAIN, *NETWORK, *JUBILEE_HEIGHT, *START_HEIGHT, &*SERVER_URL,);
+    dbg!(&*BLK_DIR, &*URL, &*USER, &*PASS, &*SERVER_URL,);
 
     let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).unwrap();
 

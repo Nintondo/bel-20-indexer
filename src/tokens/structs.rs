@@ -256,12 +256,12 @@ pub enum TokenAction {
     /// Deploy new token action.
     Deploy { genesis: InscriptionId, proto: DeployProtoDB, owner: FullHash },
     /// Mint new token action.
-    Mint { owner: FullHash, proto: MintProtoWrapper, txid: Txid, vout: u32 },
+    Mint { owner: FullHash, proto: MintProto, txid: Txid, vout: u32 },
     /// Transfer token action.
     Transfer {
         location: Location,
         owner: FullHash,
-        proto: MintProtoWrapper,
+        proto: TransferProto,
         txid: Txid,
         vout: u32,
     },
@@ -299,7 +299,6 @@ pub struct InscriptionTemplate {
     pub value: u64,
     pub content: Option<Vec<u8>>,
     pub leaked: bool,
-    pub is_taproot: bool,
 }
 
 pub(crate) struct DeserializeFromStr<T: FromStr>(pub(crate) T);

@@ -31,11 +31,12 @@ pub trait BlockchainRead: Read {
         let header = self.read_block_header()?;
         // Parse AuxPow data if present
 
-        let aux_pow_extension = if header.version & (1 << 8) != 0 {
+        let aux_pow_extension = if coin.uses_aux_pow() && header.version & (1 << 8) != 0 {
             Some(self.read_aux_pow_extension(coin)?)
         } else {
             None
         };
+        
         let tx_count = VarUint::read_from(self)?;
         let txs = self.read_txs(tx_count.value, coin)?;
         Ok(Block::new(size, header, aux_pow_extension, tx_count, txs))

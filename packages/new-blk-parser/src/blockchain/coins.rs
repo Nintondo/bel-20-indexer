@@ -20,6 +20,7 @@ pub trait Coin {
     /// BRC-20 protocol name
     const BRC_NAME: &'static str;
     const ONLY_P2RT: bool;
+    const USES_AUX_POW: bool = false;
 }
 
 pub struct Bitcoin;
@@ -90,6 +91,7 @@ impl Coin for Dogecoin {
     const JUBILEE_HEIGHT: Option<usize> = Some(usize::MAX);
     const BRC_NAME: &'static str = "drc-20";
     const ONLY_P2RT: bool = false;
+    const USES_AUX_POW: bool = true;
 }
 
 pub struct DogecoinTestnet;
@@ -104,6 +106,7 @@ impl Coin for DogecoinTestnet {
     const JUBILEE_HEIGHT: Option<usize> = Some(usize::MAX);
     const BRC_NAME: &'static str = "drc-20";
     const ONLY_P2RT: bool = false;
+    const USES_AUX_POW: bool = true;
 }
 
 pub struct Bellscoin;
@@ -118,6 +121,7 @@ impl Coin for Bellscoin {
     const JUBILEE_HEIGHT: Option<usize> = Some(133_000);
     const BRC_NAME: &'static str = "bel-20";
     const ONLY_P2RT: bool = false;
+    const USES_AUX_POW: bool = true;
 }
 
 pub struct BellscoinTestnet;
@@ -132,6 +136,7 @@ impl Coin for BellscoinTestnet {
     const JUBILEE_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "bel-20";
     const ONLY_P2RT: bool = false;
+    const USES_AUX_POW: bool = true;
 }
 
 pub struct Pepecoin;
@@ -146,6 +151,7 @@ impl Coin for Pepecoin {
     const JUBILEE_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "prc-20";
     const ONLY_P2RT: bool = false;
+    const USES_AUX_POW: bool = true;
 }
 
 pub struct PepecoinTestnet;
@@ -160,6 +166,7 @@ impl Coin for PepecoinTestnet {
     const JUBILEE_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "prc-20";
     const ONLY_P2RT: bool = false;
+    const USES_AUX_POW: bool = true;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -173,6 +180,7 @@ pub struct CoinType {
     pub jubilee_height: Option<usize>,
     pub fib: Option<u32>,
     pub only_p2tr: bool,
+    pub uses_aux_pow: bool,
 }
 
 impl Default for CoinType {
@@ -194,6 +202,7 @@ impl<T: Coin> From<T> for CoinType {
             jubilee_height: T::JUBILEE_HEIGHT,
             fib: T::FIB,
             only_p2tr: T::ONLY_P2RT,
+            uses_aux_pow: T::USES_AUX_POW,
         }
     }
 }
@@ -202,6 +211,11 @@ impl CoinType {
     #[inline]
     pub fn has_mweb_extension_metadata(self) -> bool {
         matches!(self.name, "Litecoin" | "Litecoin Testnet")
+    }
+
+    #[inline]
+    pub fn uses_aux_pow(self) -> bool {
+        self.uses_aux_pow
     }
 }
 

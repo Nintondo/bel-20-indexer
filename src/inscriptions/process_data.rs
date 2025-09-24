@@ -8,6 +8,11 @@ pub enum ProcessedData {
         block_info: BlockInfo,
         block_proof: sha256::Hash,
     },
+    /// Variant preserved for saving blocks before FIRST_INSCRIPTION_BLOCK
+    BlockWithoutProof {
+        block_number: u32,
+        block_info: BlockInfo,
+    },
     Prevouts {
         to_write: HashMap<OutPoint, TxPrevout>,
         to_remove: Vec<OutPoint>,
@@ -49,6 +54,10 @@ impl ProcessedData {
                 server.db.last_block.set((), block_number);
                 server.db.block_info.set(block_number, block_info);
                 server.db.proof_of_history.set(block_number, block_proof);
+            }
+            ProcessedData::BlockWithoutProof { block_number, block_info } => {
+                server.db.last_block.set((), block_number);
+                server.db.block_info.set(block_number, block_info);
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {

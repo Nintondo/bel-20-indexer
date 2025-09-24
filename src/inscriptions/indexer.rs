@@ -80,6 +80,11 @@ impl InscriptionIndexer {
         });
 
         if block_height < self.server.indexer.coin.fib.unwrap_or_default() {
+            to_write.processed.push(ProcessedData::BlockWithoutProof {
+                block_number: block_height,
+                block_info,
+            });
+
             return Ok(());
         }
 

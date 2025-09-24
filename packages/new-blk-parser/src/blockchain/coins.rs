@@ -30,8 +30,8 @@ impl Coin for Bitcoin {
         script_address: 5,
         bech32: "bc",
     };
-    const FIB: Option<u32> = None;
-    const JUBILEE_HEIGHT: Option<usize> = None;
+    const FIB: Option<u32> = Some(767_430);
+    const JUBILEE_HEIGHT: Option<usize> = Some(824_544);
     const BRC_NAME: &'static str = "brc-20";
     const ONLY_P2RT: bool = true;
 }
@@ -40,12 +40,12 @@ pub struct BitcoinTestnet;
 impl Coin for BitcoinTestnet {
     const NAME: &'static str = "Bitcoin Testnet";
     const CONFIG: EncoderConfig = EncoderConfig {
-        pubkey_address: 113,
+        pubkey_address: 111,
         script_address: 196,
         bech32: "tb",
     };
-    const FIB: Option<u32> = None;
-    const JUBILEE_HEIGHT: Option<usize> = None;
+    const FIB: Option<u32> = Some(2_413_343);
+    const JUBILEE_HEIGHT: Option<usize> = Some(2_544_192);
     const BRC_NAME: &'static str = "brc-20";
     const ONLY_P2RT: bool = true;
 }

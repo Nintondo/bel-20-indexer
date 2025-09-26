@@ -48,7 +48,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         TableInfo::new::<K, V>()
     }
 
-    pub fn cf(&self) -> Arc<rocksdb::BoundColumnFamily> {
+    pub fn cf<'a>(&'a self) -> Arc<rocksdb::BoundColumnFamily<'a>> {
         self.db.db.cf_handle(&self.cf).unwrap()
     }
 

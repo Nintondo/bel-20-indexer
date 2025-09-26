@@ -5,7 +5,6 @@ pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 mod envelope;
 mod indexer;
 mod leaked;
-mod media;
 mod parser;
 mod processe_data;
 mod searcher;

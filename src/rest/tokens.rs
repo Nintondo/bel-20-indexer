@@ -90,6 +90,24 @@ pub fn token_docs(op: TransformOperation) -> TransformOperation {
     op.description("Detailed information about a token").tag("token")
 }
 
+pub async fn token_supplies(State(server): State<Arc<Server>>, Json(ticks): Json<Vec<OriginalTokenTickRest>>) -> ApiResult<impl IntoApiResponse> {
+    let keys = ticks.into_iter().map(LowerCaseTokenTick::from).collect_vec();
+    let res = server
+        .db
+        .token_to_meta
+        .multi_get(keys.iter())
+        .into_iter()
+        .map(|x| x.map(|x| x.proto.supply.to_string()))
+        .collect::<Option<Vec<_>>>()
+        .not_found("Some of ticks is invalid")?;
+
+    Ok(Json(res))
+}
+
+pub fn token_supplies_docs(op: TransformOperation) -> TransformOperation {
+    op.description("Batch operation to get token supply for each token from the provided list").tag("token")
+}
+
 pub async fn token_transfer_proof(State(state): State<Arc<Server>>, Path((address, outpoint)): Path<(String, Outpoint)>) -> ApiResult<impl IntoApiResponse> {
     let scripthash = state.indexer.to_scripthash(&address, ScriptType::Address).bad_request_from_error()?;
 

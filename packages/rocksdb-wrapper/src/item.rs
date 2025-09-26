@@ -5,7 +5,7 @@ use super::*;
 pub trait Pebble {
     const FIXED_SIZE: Option<usize> = None;
     type Inner;
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]>;
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]>;
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner>;
     fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
         (f)(&Self::get_bytes(v))
@@ -15,7 +15,7 @@ pub trait Pebble {
 impl Pebble for () {
     const FIXED_SIZE: Option<usize> = Some(0);
     type Inner = Self;
-    fn get_bytes(_: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(_: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Borrowed(&[])
     }
 
@@ -26,7 +26,7 @@ impl Pebble for () {
 
 impl Pebble for Cow<'_, [u8]> {
     type Inner = Self;
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         v.clone()
     }
 
@@ -41,7 +41,7 @@ impl Pebble for Cow<'_, [u8]> {
 
 impl Pebble for String {
     type Inner = Self;
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Borrowed(v.as_bytes())
     }
 
@@ -66,7 +66,7 @@ where
     T: serde::Serialize + for<'de> serde::Deserialize<'de>,
 {
     type Inner = T;
-    fn get_bytes(v: &T) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a T) -> Cow<'a, [u8]> {
         Cow::Owned(postcard::to_allocvec(v).unwrap())
     }
 
@@ -92,7 +92,7 @@ impl<T: Pebble<Inner = T>> Pebble for Vec<T> {
         v.chunks(size).map(|x| T::from_bytes(Cow::Borrowed(x))).collect()
     }
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Owned(v.iter().flat_map(|x| T::get_bytes(x).into_owned()).collect())
     }
 }
@@ -105,7 +105,7 @@ impl<T: Pebble<Inner = T> + std::hash::Hash + Eq> Pebble for HashSet<T> {
         v.chunks(size).map(|x| T::from_bytes(Cow::Borrowed(x))).collect()
     }
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Owned(v.iter().flat_map(|x| T::get_bytes(x).into_owned()).collect())
     }
 }
@@ -113,7 +113,7 @@ impl<T: Pebble<Inner = T> + std::hash::Hash + Eq> Pebble for HashSet<T> {
 impl<const N: usize> Pebble for [u8; N] {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Borrowed(v)
     }
 
@@ -132,7 +132,7 @@ where
 {
     type Inner = T;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut result = Vec::new();
         v.consensus_encode(&mut result).unwrap();
         Cow::Owned(result)
@@ -155,7 +155,7 @@ macro_rules! impl_pebble {
             const FIXED_SIZE: Option<usize> = Some(std::mem::size_of::<Packed<$T>>());
             type Inner = Self;
 
-            fn get_bytes(v: &Self::Inner) -> std::borrow::Cow<[u8]> {
+            fn get_bytes<'a>(v: &'a Self::Inner) -> std::borrow::Cow<'a, [u8]> {
                 Cow::Owned(v.to_be_bytes().to_vec())
             }
 
@@ -236,7 +236,7 @@ impl<K0: Pebble, K1: Pebble> MultiPebble for (K0, K1) {
 impl<K0: Pebble, K1: Pebble> Pebble for (K0, K1) {
     type Inner = (K0::Inner, K1::Inner);
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         assert!(K0::FIXED_SIZE.is_some(), "First key in MultiPebble must have fixed size");
 
         let mut buf = K0::get_bytes(&v.0).to_vec();

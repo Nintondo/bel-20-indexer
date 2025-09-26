@@ -36,7 +36,7 @@ impl LowerCaseTokenTick {
 impl rocksdb_wrapper::Pebble for LowerCaseTokenTick {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Borrowed(&v.0)
     }
 
@@ -144,7 +144,7 @@ impl AddressLocation {
 impl rocksdb_wrapper::Pebble for AddressLocation {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut result = Vec::with_capacity(32 + 44);
 
         result.extend(v.address);
@@ -192,7 +192,7 @@ impl From<TxOut> for TxPrevout {
 impl rocksdb_wrapper::Pebble for TxPrevout {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut result = Vec::with_capacity(32 + 8);
         result.extend(v.script_hash);
         result.extend(v.value.to_be_bytes());
@@ -210,7 +210,7 @@ impl rocksdb_wrapper::Pebble for TxPrevout {
 impl rocksdb_wrapper::Pebble for Partials {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut buff = Vec::with_capacity(4 + 32 + v.parts.len() * (1 + 4 + 1700));
 
         buff.extend(v.inscription_index.to_be_bytes());
@@ -274,7 +274,7 @@ impl Default for BlockInfo {
 impl rocksdb_wrapper::Pebble for BlockInfo {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         Cow::Owned([v.hash.to_byte_array().as_slice(), v.created.to_be_bytes().as_slice()].concat())
     }
 
@@ -297,7 +297,7 @@ impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
     type Inner = Self;
     const FIXED_SIZE: Option<usize> = Some(32 + 4 + 8);
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut result = Vec::with_capacity(Self::FIXED_SIZE.unwrap());
         result.extend(v.address);
         result.extend(v.token.0);
@@ -324,7 +324,7 @@ pub struct TokenId {
 impl rocksdb_wrapper::Pebble for TokenId {
     type Inner = Self;
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut result = Vec::with_capacity(4 + 8);
         result.extend(v.token.0);
         result.extend(v.id.to_be_bytes());
@@ -363,7 +363,7 @@ impl rocksdb_wrapper::Pebble for AddressToken {
         })
     }
 
-    fn get_bytes(v: &Self::Inner) -> Cow<[u8]> {
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
         let mut result = Vec::with_capacity(32 + 4);
         result.extend(v.address);
         result.extend(v.token.0);

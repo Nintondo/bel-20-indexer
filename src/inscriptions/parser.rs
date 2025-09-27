@@ -31,7 +31,7 @@ pub struct Parser<'a> {
 
 impl Parser<'_> {
     pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
-        let is_jubilee_height = height as usize >= self.server.indexer.coin.jubilee_height.unwrap_or_default();
+        let jubilant = height as usize >= self.server.indexer.coin.jubilee_height.unwrap_or_default();
 
         // Hold inscription's partials from db and new in the block
         let mut outpoint_to_partials = Self::load_partials(self.server, prevouts.keys().cloned().collect());
@@ -105,7 +105,7 @@ impl Parser<'_> {
                 }
 
                 // handle inscription creation
-                if is_jubilee_height || input_index == 0 {
+                if jubilant || input_index == 0 {
                     let mut partials = outpoint_to_partials.remove(&txin.outpoint).unwrap_or(Partials {
                         genesis_txid: txid,
                         inscription_index: 0,
@@ -175,13 +175,14 @@ impl Parser<'_> {
                             .or_default()
                             .insert(inscription_template.location.offset); // return false if item already exist
 
-                        // This is only for BELLS
                         if self.server.indexer.coin.name == Bellscoin::NAME {
                             offset_occupied = false;
                         }
 
+                        let is_reinscription = offset_occupied && (!jubilant || self.server.indexer.coin.only_p2tr);
+
                         // skip inscription which was created into occupied offset
-                        if !inscription_template.leaked && offset_occupied && !is_jubilee_height {
+                        if !inscription_template.leaked && is_reinscription {
                             continue;
                         }
 

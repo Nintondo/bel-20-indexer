@@ -27,6 +27,8 @@ impl Server {
             (Blockchain::Bellscoin, Network::Testnet) => "bellscoin-testnet",
             (Blockchain::Dogecoin, Network::Bellscoin) => "dogecoin",
             (Blockchain::Dogecoin, Network::Testnet) => "dogecoin-testnet",
+            (Blockchain::DogecoinEv, Network::Bellscoin) => "dogecoinev",
+            (Blockchain::DogecoinEv, Network::Testnet) => "dogecoinev-testnet",
             (Blockchain::Pepecoin, Network::Bellscoin) => "pepecoin",
             (Blockchain::Pepecoin, Network::Testnet) => "pepecoin-testnet",
             _ => "bellscoin",

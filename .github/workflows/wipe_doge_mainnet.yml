@@ -63,3 +63,5 @@ jobs:
           done
 
           docker compose up -d --force-recreate "${CONTAINER_NAME}"
+          sleep 10
+          docker exec nginx nginx -s reload

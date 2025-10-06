@@ -73,3 +73,5 @@ jobs:
           cd "${BASE_PATH}" || exit 1
           
           docker compose up -d --force-recreate "${CONTAINER}"
+          sleep 10
+          docker exec nginx nginx -s reload

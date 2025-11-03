@@ -6,6 +6,7 @@ on:
 jobs:
   deployment:
     runs-on: self-hosted
+    environment: doge-mainnet
 
     steps:
     - uses: actions/checkout@v4
@@ -16,11 +17,11 @@ jobs:
         SERVICE_NAME: ${{ vars.SERVICE_NAME }}
         SERVICE_DIR_1: ${{ vars.SERVICE_DIR_1 }}
         SERVICE_DIR_2: ${{ vars.SERVICE_DIR_2 }}
-        COIN: doge
-        NETWORK: mainnet
+        COIN: ${{ vars.COIN }}
+        NETWORK: ${{ vars.NETWORK }}
       with:
-        host: ${{ secrets.DOGE_MAINNET_HOST_1 }}
-        username: ${{ secrets.DOGE_MAINNET_HOST_1_USERNAME }}
+        host: ${{ secrets.HOST_1 }}
+        username: ${{ secrets.HOST_1_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: SERVICE_NAME,COIN,NETWORK,SERVICE_DIR_1,SERVICE_DIR_2
         script: |

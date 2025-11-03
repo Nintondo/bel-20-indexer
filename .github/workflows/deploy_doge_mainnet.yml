@@ -2,13 +2,35 @@ name: Deploy service for Doge Mainnet
 
 on:
   workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit SHA for deploy/rollback (default: latest in branch)'
+        required: false
+        default: ''
 
 jobs:
   deployment:
     runs-on: self-hosted
+    environment: doge-mainnet
 
     steps:
-    - uses: actions/checkout@v4
+
+    - name:  Determine commit SHA
+      run: |
+        if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+          echo "SERVICE_TAG=${{ github.event.client_payload.sha }}" >> $GITHUB_ENV
+          echo "Ref: ${{ github.event.client_payload.ref }}"
+        else
+          if [ -n "${{ github.event.inputs.sha }}" ]; then
+            echo "SERVICE_TAG=${{ github.event.inputs.sha }}" >> $GITHUB_ENV
+          else
+            echo "SERVICE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          fi
+        fi
+
+    - name: Log SERVICE_TAG
+      run: |
+        echo "Deploying image with SHA: ${{ env.SERVICE_TAG }}"
 
     - name: Log in to Docker Registry
       uses: docker/login-action@v2
@@ -17,12 +39,17 @@ jobs:
         username: ${{ secrets.CI_REGISTRY_USER }}
         password: ${{ secrets.CI_REGISTRY_PASSWORD }}
 
-    - name: Check if Image Exists
+    - name: Checkout repository at selected commit
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.client_payload.ref || github.ref }}
+
+    - name: Check if Image 1 Exists
       env:
         CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
         CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
         SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-        SERVICE_TAG: ${{ github.sha }}
+        SERVICE_TAG: ${{ env.SERVICE_TAG }}
       run: |
         IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
         if docker manifest inspect $IMAGE > /dev/null; then
@@ -32,19 +59,41 @@ jobs:
           exit 1
         fi
 
+    - name: Generate .env 1 file
+      env:
+        BLOCKS_DIR: ${{ vars.BLOCKS_DIR }}
+        BASIC_USER: ${{ secrets.BASIC_USER }}
+        BASIC_PASS: ${{ secrets.BASIC_PASS }}
+        COOKIE: ${{ secrets.COOKIE }}
+        DAEMON_RPC_ADDR: ${{ vars.DAEMON_RPC_ADDR }}
+        HTTP_ADDR: ${{ vars.HTTP_ADDR }}
+        NETWORK: ${{ vars.NETWORK }}
+        MONITORING_ADDR: ${{ vars.MONITORING_ADDR }}
+      run: |
+        envsubst < .env.template > .env.updated
+
+    - name: Copy .env 1 to server
+      uses: appleboy/scp-action@v1.0.0
+      with:
+        host: ${{ secrets.HOST_1 }}
+        username: ${{ secrets.HOST_1_USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        source: ".env.updated"
+        target: "/opt/${{ vars.COIN }}-${{ vars.NETWORK }}/services/${{ vars.SERVICE_NAME }}"
+
     - name: Deploy
       uses: appleboy/ssh-action@v1.0.0
       env:
         CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
         CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
         SERVICE_NAME: ${{ vars.SERVICE_NAME }}
-        SERVICE_TAG: ${{ github.sha }}
+        SERVICE_TAG: ${{ env.SERVICE_TAG }}
         DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
-        COIN: doge
-        NETWORK: mainnet
+        COIN: ${{ vars.COIN }}
+        NETWORK: ${{ vars.NETWORK }}
       with:
-        host: ${{ secrets.DOGE_MAINNET_HOST_1 }}
-        username: ${{ secrets.DOGE_MAINNET_HOST_1_USERNAME }}
+        host: ${{ secrets.HOST_1 }}
+        username: ${{ secrets.HOST_1_USERNAME }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK
         script: |
@@ -70,8 +119,11 @@ jobs:
           
           update_docker_compose "${IMAGE}" "${DOCKER_COMPOSE_FILE}"
 
+          mv .env .env.old
+          mv .env.updated .env
+
           cd "${BASE_PATH}" || exit 1
           
           docker compose up -d --force-recreate "${CONTAINER}"
           sleep 10
-          docker exec nginx nginx -s reload
+          docker exec nginx nginx -s reload || true

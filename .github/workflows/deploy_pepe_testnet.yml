@@ -63,14 +63,12 @@ jobs:
 
     - name: Generate .env 1 file
       env:
-        BLOCKS_DIR: ${{ vars.BLOCKS_DIR }}
-        BASIC_USER: ${{ secrets.BASIC_USER }}
-        BASIC_PASS: ${{ secrets.BASIC_PASS }}
-        COOKIE: ${{ secrets.COOKIE }}
-        DAEMON_RPC_ADDR: ${{ vars.DAEMON_RPC_ADDR }}
-        HTTP_ADDR: ${{ vars.HTTP_ADDR }}
+        RPC_URL: ${{ vars.RPC_URL }}
+        RPC_USER: ${{ secrets.RPC_USER }}
+        RPC_PASS: ${{ secrets.RPC_PASS }}
+        BLOCKCHAIN: ${{ vars.BLOCKCHAIN }}
         NETWORK: ${{ vars.NETWORK }}
-        MONITORING_ADDR: ${{ vars.MONITORING_ADDR }}
+        BLK_DIR: ${{ vars.BLK_DIR }}
       run: |
         envsubst < .env.template > .env.updated
 

@@ -36,7 +36,9 @@ pub use blockchain::{
     BlockId, CoinType, LoadBlocks, LoadBlocksArgs,
     proto::{self, ScriptType},
 };
-pub use utils::{Auth, Client};
+pub use utils::{Auth, Client, RpcRead};
+pub use utils::client::{GetBlockResult, Error as RpcError};
+pub type RpcResult<T> = std::result::Result<T, RpcError>;
 
 const BOUNDED_CHANNEL_SIZE: usize = 30;
 
@@ -56,7 +58,7 @@ pub struct Indexer {
     pub token: WaitToken,
     pub last_block: BlockId,
     pub reorg_max_len: usize,
-    pub client: Arc<Client>,
+    pub client: Arc<dyn RpcRead + Send + Sync>,
 }
 
 trait SendChecked {

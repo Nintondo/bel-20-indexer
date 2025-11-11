@@ -136,6 +136,22 @@ impl Client {
     }
 }
 
+// A minimal RPC trait used by the block watcher to interact with the node.
+// This allows tests to inject deterministic behaviors without a live RPC.
+pub trait RpcRead {
+    fn get_block(&self, hash: &sha256d::Hash) -> Result<Block>;
+    fn get_block_info(&self, hash: &sha256d::Hash) -> Result<GetBlockResult>;
+    fn get_block_hash(&self, height: u64) -> Result<sha256d::Hash>;
+    fn get_best_block_hash(&self) -> Result<sha256d::Hash>;
+}
+
+impl RpcRead for Client {
+    fn get_block(&self, hash: &sha256d::Hash) -> Result<Block> { Client::get_block(self, hash) }
+    fn get_block_info(&self, hash: &sha256d::Hash) -> Result<GetBlockResult> { Client::get_block_info(self, hash) }
+    fn get_block_hash(&self, height: u64) -> Result<sha256d::Hash> { Client::get_block_hash(self, height) }
+    fn get_best_block_hash(&self) -> Result<sha256d::Hash> { Client::get_best_block_hash(self) }
+}
+
 #[derive(Clone, PartialEq, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockResult {

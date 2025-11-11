@@ -1,9 +1,9 @@
 use super::*;
 
-mod client;
+pub mod client;
 mod range;
 
-pub use client::{Auth, Client};
+pub use client::{Auth, Client, RpcRead};
 pub use range::BlockHeightRange;
 
 pub fn arr_to_hex(data: &[u8]) -> String {

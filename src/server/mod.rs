@@ -49,7 +49,7 @@ impl Server {
             reorg_max_len: REORG_CACHE_MAX_LEN,
             token: token.clone(),
             index_dir_path: INDEX_DIR.clone(),
-            client: client.clone(),
+            client: client.clone() as Arc<dyn nint_blk::RpcRead + Send + Sync>,
         };
 
         let server = Self {

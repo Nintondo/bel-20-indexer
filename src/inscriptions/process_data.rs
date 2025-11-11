@@ -111,8 +111,20 @@ impl ProcessedData {
 
                 server.db.token_id_to_event.extend(token_id_to_event);
                 server.db.block_events.set(block_number, block_events);
+                #[cfg(feature = "failpoints")]
+                {
+                    fail::fail_point!("after_block_events_set");
+                }
                 server.db.last_history_id.set((), last_history_id);
+                #[cfg(feature = "failpoints")]
+                {
+                    fail::fail_point!("after_last_history_id_set");
+                }
                 server.db.outpoint_to_event.extend(outpoint_to_event);
+                #[cfg(feature = "failpoints")]
+                {
+                    fail::fail_point!("before_address_token_to_history_extend");
+                }
                 server.db.address_token_to_history.extend(history);
             }
             ProcessedData::Tokens {
@@ -170,6 +182,10 @@ impl ProcessedData {
                     }
                 }
 
+                #[cfg(feature = "failpoints")]
+                {
+                    fail::fail_point!("before_tokens_writes");
+                }
                 server.db.token_to_meta.extend(metas);
                 server.db.address_token_to_balance.extend(balances);
                 server.db.address_location_to_transfer.remove_batch(transfers_to_remove);

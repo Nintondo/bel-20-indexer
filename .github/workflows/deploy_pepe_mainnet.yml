@@ -67,6 +67,7 @@ jobs:
         BLOCKCHAIN: ${{ vars.BLOCKCHAIN }}
         NETWORK: ${{ vars.NETWORK }}
         BLK_DIR: ${{ vars.BLK_DIR }}
+        INDEX_DIR: ${{ vars.INDEX_DIR }}
       run: |
         envsubst < .env.template > .env.updated
 

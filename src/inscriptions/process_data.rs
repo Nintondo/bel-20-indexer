@@ -135,6 +135,7 @@ impl ProcessedData {
                         let new_deploys = metas.iter().filter(|x| !deploys.contains_key(&x.0)).map(|x| x.0.clone()).collect_vec();
 
                         reorg_cache.push_token_entry(TokenHistoryEntry::DeploysToRemove(new_deploys));
+                        reorg_cache.push_token_entry(TokenHistoryEntry::DeploysToRestore(deploys.clone().into_iter().collect()));
                     }
 
                     // Balances

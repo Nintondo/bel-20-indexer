@@ -279,6 +279,7 @@ pub struct Token {
     pub deployer: String,
 
     pub transactions: u32,
+    pub mint_count: u64,
     pub holders: u32,
     pub supply: Fixed128,
     pub mint_percent: String,

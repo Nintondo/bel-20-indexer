@@ -354,14 +354,14 @@ impl TokenCache {
                         continue;
                     }
 
-                    if Fixed128::from(*lim) < amt {
+                    if *lim < amt {
                         continue;
                     }
 
-                    if *supply == Fixed128::from(*max) {
+                    if *supply == *max {
                         continue;
                     }
-                    let amt = amt.min(Fixed128::from(*max) - *supply);
+                    let amt = amt.min(*max - *supply);
                     *supply += amt;
                     *transactions += 1;
 

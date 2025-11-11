@@ -6,7 +6,7 @@ mod envelope;
 mod indexer;
 mod leaked;
 mod parser;
-mod processe_data;
+mod process_data;
 mod searcher;
 pub mod structs;
 mod tag;
@@ -16,7 +16,7 @@ use envelope::{ParsedEnvelope, RawEnvelope};
 use indexer::InscriptionIndexer;
 use nint_blk::BlockEvent;
 use parser::Parser;
-use processe_data::ProcessedData;
+use process_data::ProcessedData;
 use structs::Inscription;
 use tag::Tag;
 

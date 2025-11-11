@@ -5,7 +5,7 @@ use nint_blk::proto::{tx::EvaluatedTx, Hashed};
 use crate::inscriptions::{
     indexer::ParsedInscriptionResult,
     leaked::{LeakedInscription, LeakedInscriptions},
-    processe_data::ProcessedData,
+    process_data::ProcessedData,
     searcher::InscriptionSearcher,
     structs::{ParsedInscription, Part},
 };

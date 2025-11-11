@@ -6,6 +6,7 @@ pub enum TokenHistoryEntry {
     BalancesBefore(Vec<(AddressToken, TokenBalance)>),
     BalancesToRemove(Vec<AddressToken>),
     DeploysToRemove(Vec<LowerCaseTokenTick>),
+    DeploysToRestore(Vec<(LowerCaseTokenTick, TokenMetaDB)>),
     RestoreTransfers(Vec<(AddressLocation, TransferProtoDB)>),
     RemoveTransfers(Vec<AddressLocation>),
     RemoveHistory {
@@ -26,6 +27,9 @@ impl ProceedReorg for TokenHistoryEntry {
         match self {
             TokenHistoryEntry::DeploysToRemove(to_remove) => {
                 server.db.token_to_meta.remove_batch(to_remove);
+            }
+            TokenHistoryEntry::DeploysToRestore(items) => {
+                server.db.token_to_meta.extend(items);
             }
             TokenHistoryEntry::BalancesBefore(items) => {
                 server.db.address_token_to_balance.extend(items);

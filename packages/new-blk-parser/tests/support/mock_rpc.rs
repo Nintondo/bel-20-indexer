@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use bellscoin::hashes::{sha256d, Hash};
 
 use nint_blk::proto::block::Block;
+use nint_blk::proto::header::BlockHeader;
+use nint_blk::proto::Hashed;
 use nint_blk::RpcRead;
 use nint_blk::GetBlockResult;
 
@@ -35,12 +37,15 @@ impl Default for Inner {
 
 impl RpcRead for MockRpc {
     fn get_block(&self, hash: &sha256d::Hash) -> nint_blk::RpcResult<Block> {
-        self.inner
-            .lock()
-            .unwrap()
-            .blocks
-            .remove(hash)
-            .ok_or_else(|| nint_blk::RpcError::Cancelled)
+        let maybe = self.inner.lock().unwrap().blocks.get(hash).map(|b| {
+            let header = Hashed { hash: b.header.hash, value: BlockHeader { ..b.header.value.clone() } };
+            Block { size: b.size, header, aux_pow_extension: None, tx_count: b.tx_count.clone(), txs: vec![] }
+        });
+        if let Some(block) = maybe {
+            Ok(block)
+        } else {
+            Err(nint_blk::RpcError::Cancelled)
+        }
     }
 
     fn get_block_info(&self, hash: &sha256d::Hash) -> nint_blk::RpcResult<GetBlockResult> {

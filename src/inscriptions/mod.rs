@@ -97,6 +97,22 @@ impl Indexer {
             self.server.event_sender.send(ServerEvent::Reorg(reorg_len as u32, id.height as u32)).ok();
         }
 
+        // Defense-in-depth: if near tip and stored block_info at this height exists
+        // and its hash mismatches the incoming block hash, perform a local restore
+        // even when reorg_len == 0 (covers same-height replacement that wasn't signaled).
+        if handle_reorgs {
+            if let Some(stored) = self.server.db.block_info.get(id.height as u32) {
+                let incoming_hash: BlockHash = block.header.hash.into();
+                if stored.hash != incoming_hash {
+                    // Roll back to previous height and emit a 1-block reorg event.
+                    let restore_height: u32 = id.height.saturating_sub(1) as u32;
+                    warn!("Head mismatch at height {}. Rolling back to {}.", id.height, restore_height);
+                    self.reorg_cache.lock().restore(&self.server, restore_height)?;
+                    self.server.event_sender.send(ServerEvent::Reorg(1, id.height as u32)).ok();
+                }
+            }
+        }
+
         if let Some(last_reorg_height) = self.reorg_cache.lock().blocks.last_key_value().map(|x| x.0) {
             if last_reorg_height + 1 != id.height as u32 {
                 anyhow::bail!("Wrong reorg cache tip height. Expected {}, got {}", last_reorg_height + 1, id.height as u32);

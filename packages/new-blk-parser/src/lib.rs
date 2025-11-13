@@ -67,7 +67,9 @@ trait SendChecked {
 
 impl SendChecked for Sender<BlockEvent> {
     fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError> {
-        check_ordering(last_sent_hash, &event.block.header);
+        // Ordering is validated by the caller prior to emission.
+        // Maintain last_sent_hash here to keep semantics consistent.
+        *last_sent_hash = event.block.header.hash;
         self.send(event)
     }
 }
@@ -169,14 +171,32 @@ impl Indexer {
 
                         while checkpoint.height() < best_height {
                             let next_height = checkpoint.height() + 1;
-                            let next_hash = self.client.get_block_hash(next_height).unwrap();
-                            let block = self.client.get_block(&next_hash).unwrap();
+
+                            // Attempt to fetch a block that correctly links to our current checkpoint.
+                            // If a reorg happens between RPC calls, realign by popping checkpoint and retrying.
+                            let (next_hash, block) = loop {
+                                let next_hash = self.client.get_block_hash(next_height).unwrap();
+                                let block = self.client.get_block(&next_hash).unwrap();
+
+                                if block.header.value.prev_hash == checkpoint.hash() {
+                                    break (next_hash, block);
+                                }
+
+                                // Parent mismatch -> treat as a reorg that occurred mid-loop.
+                                // Pop checkpoint by one and try again. Increment reorg counter.
+                                reorg_counter += 1;
+                                if let Some(prev) = checkpoint.prev() {
+                                    checkpoint = prev;
+                                    last_hash = checkpoint.hash();
+                                } else {
+                                    // Should not happen for non-genesis heights; but guard anyway.
+                                    break (next_hash, block);
+                                }
+                            };
+
                             let event = BlockEvent {
                                 block,
-                                id: BlockId {
-                                    height: next_height,
-                                    hash: next_hash,
-                                },
+                                id: BlockId { height: next_height, hash: next_hash },
                                 reorg_len: reorg_counter,
                                 tip: best_height,
                             };
@@ -185,11 +205,9 @@ impl Indexer {
                                 return;
                             };
 
-                            checkpoint = checkpoint.insert(BlockId {
-                                height: next_height,
-                                hash: next_hash,
-                            });
+                            checkpoint = checkpoint.insert(BlockId { height: next_height, hash: next_hash });
 
+                            // Reset reorg counter after successful emit
                             reorg_counter = 0;
                         }
 

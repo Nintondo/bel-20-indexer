@@ -1,4 +1,6 @@
 use std::time::Instant;
+use std::cmp::{Ordering, Reverse};
+use std::collections::BTreeMap;
 
 use super::*;
 
@@ -183,43 +185,100 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange) -> Re
             continue;
         }
 
-        if record.status & BLOCK_VALID_MASK == 0 {
-            continue;
-        }
-
-        if record.status & BLOCK_FAILED_MASK != 0 {
-            continue;
-        }
+        // Require HAVE_DATA, not failed, and validity level >= TRANSACTIONS
+        let level = record.status & BLOCK_VALID_MASK;
+        if (record.status & BLOCK_HAVE_DATA) == 0 { continue; }
+        if (record.status & BLOCK_FAILED_MASK) != 0 { continue; }
+        if level < BLOCK_VALID_TRANSACTIONS { continue; }
 
         block_index.entry(record.height).or_default().push(record);
     }
 
     block_index.sort_unstable_keys();
 
-    let mut last_pos: Option<usize> = None;
+    // Gather all heights and determine top
+    let heights: Vec<u64> = block_index.keys().cloned().collect();
+    if heights.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let &top_height = heights.last().unwrap();
 
-    Ok(block_index
-        .into_iter()
-        .map(|x| x.1)
-        .rev()
-        .peekable()
-        .batching(|it| {
-            let cur = it.next()?;
-
-            if last_pos.is_none() && cur.len() != 1 {
-                return Some(vec![]);
-            }
-
-            let prev_hash = cur[last_pos.unwrap_or_default()].prev_hash;
-
-            it.peek().map(|prev| {
-                last_pos = prev.iter().position(|x| x.block_hash == prev_hash);
-                vec![prev[last_pos.expect("Failed to find previous block hash. -reindex-chainstate is required to proceed")].clone()]
+    // Helper to choose best candidate at a height deterministically
+    fn pick_best(cands: &[BlockIndexRecord]) -> Option<BlockIndexRecord> {
+        cands
+            .iter()
+            .max_by(|a, b| {
+                let la = a.status & BLOCK_VALID_MASK;
+                let lb = b.status & BLOCK_VALID_MASK;
+                match la.cmp(&lb) {
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Greater => Ordering::Greater,
+                    Ordering::Equal => {
+                        // Tie-break: lower file index, then lower data offset
+                        match b.blk_index.cmp(&a.blk_index) { // reverse for min
+                            Ordering::Less => Ordering::Less,
+                            Ordering::Greater => Ordering::Greater,
+                            Ordering::Equal => b.data_offset.cmp(&a.data_offset), // reverse for min
+                        }
+                    }
+                }
             })
-        })
-        .flatten()
-        .map(|x| (x.height, x.into()))
-        .collect())
+            .cloned()
+    }
+
+    // Attempt to build a chain walking back by prev_hash
+    fn try_build(
+        per_height: &IndexMap<u64, Vec<BlockIndexRecord>>,
+        heights: &[u64],
+        start: BlockIndexRecord,
+        min_height: u64,
+    ) -> Option<BTreeMap<u64, BlockIndexRecord>> {
+        let mut chain = BTreeMap::new();
+        chain.insert(start.height, start.clone());
+        let mut cur = start;
+
+        // Walk backwards from start.height - 1 down to min_height
+        for h in heights.iter().rev().cloned() {
+            if h >= cur.height { continue; }
+            if h < min_height { break; }
+            let prevs = per_height.get(&h)?;
+            if let Some(prev) = prevs.iter().find(|r| r.block_hash == cur.prev_hash) {
+                chain.insert(h, prev.clone());
+                cur = prev.clone();
+            } else {
+                return None; // failed to link
+            }
+        }
+        Some(chain)
+    }
+
+    let min_height = range.start.saturating_sub(1);
+
+    // Try candidates at the top height until a full link is found
+    let top_candidates = block_index.get(&top_height).cloned().unwrap_or_default();
+    let mut sorted_top = top_candidates.clone();
+    sorted_top.sort_by(|a, b| {
+        let la = a.status & BLOCK_VALID_MASK;
+        let lb = b.status & BLOCK_VALID_MASK;
+        match lb.cmp(&la) { // higher first
+            Ordering::Equal => match a.blk_index.cmp(&b.blk_index) { // lower file first
+                Ordering::Equal => a.data_offset.cmp(&b.data_offset), // lower offset first
+                o => o,
+            },
+            o => o,
+        }
+    });
+
+    for cand in sorted_top {
+        if let Some(chain) = try_build(&block_index, &heights, cand, min_height) {
+            // Convert to expected map type
+            let out = chain.into_iter().map(|(h, r)| (h, r.into())).collect();
+            return Ok(out);
+        }
+    }
+
+    // If we reach here, we couldn't link prev_hash consistently.
+    anyhow::bail!("Failed to find previous block hash. -reindex-chainstate is required to proceed");
 }
 
 #[inline]

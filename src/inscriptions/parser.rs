@@ -175,6 +175,7 @@ impl Parser<'_> {
                             .or_default()
                             .insert(inscription_template.location.offset); // return false if item already exist
 
+                        // This is only for BELLS
                         if self.server.indexer.coin.name == Bellscoin::NAME {
                             offset_occupied = false;
                         }

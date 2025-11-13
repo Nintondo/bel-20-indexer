@@ -169,6 +169,12 @@ impl Indexer {
                             let next_height = checkpoint.height() + 1;
                             let next_hash = self.client.get_block_hash(next_height).unwrap();
                             let block = self.client.get_block(&next_hash).unwrap();
+
+                            // Guard if reorg happened in the mid of loop
+                            if block.header.value.prev_hash != checkpoint.hash() {
+                                break;
+                            }
+
                             let event = BlockEvent {
                                 block,
                                 id: BlockId {

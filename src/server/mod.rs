@@ -6,6 +6,7 @@ pub use structs::*;
 
 pub struct Server {
     pub db: Arc<DB>,
+    pub token_state: Arc<parking_lot::Mutex<RuntimeTokenState>>,
     pub event_sender: tokio::sync::broadcast::Sender<ServerEvent>,
     pub raw_event_sender: kanal::Sender<RawServerEvent>,
     pub token: WaitToken,
@@ -21,6 +22,7 @@ impl Server {
         let (tx, _) = tokio::sync::broadcast::channel(30_000);
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
+        let token_state = Arc::new(parking_lot::Mutex::new(RuntimeTokenState::from_db(&db)));
 
         let coin = nint_blk::CoinType::from_str(&load_env!("BLOCKCHAIN")).unwrap();
 
@@ -50,6 +52,7 @@ impl Server {
             db,
             client,
             start_time: std::time::Instant::now(),
+            token_state,
         };
 
         Ok((raw_rx, tx, server))

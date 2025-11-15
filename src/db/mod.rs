@@ -3,6 +3,9 @@ use super::*;
 mod structs;
 pub use structs::*;
 
+use rocksdb_wrapper::{Pebble, RocksTable, WriteBatchWithTransaction};
+use std::borrow::Borrow;
+
 rocksdb_wrapper::generate_db_code! {
     token_to_meta: LowerCaseTokenTick => UsingSerde<TokenMetaDB>,
     address_location_to_transfer: AddressLocation => UsingSerde<TransferProtoDB>,
@@ -34,5 +37,63 @@ impl DB {
             })
             .map(|(key, value)| (key.location, (key.address, value)))
             .collect()
+    }
+}
+
+pub struct DbBatch<'a> {
+    pub db: &'a DB,
+    pub batch: WriteBatchWithTransaction<true>,
+}
+
+impl<'a> DbBatch<'a> {
+    pub fn new(db: &'a DB) -> Self {
+        Self {
+            db,
+            batch: WriteBatchWithTransaction::<true>::default(),
+        }
+    }
+
+    pub fn write(self) {
+        // All tables share the same underlying RocksDB instance,
+        // so using any table's db handle is fine.
+        self.db.token_to_meta.db.db.write(self.batch).unwrap();
+    }
+
+    pub fn put<K: Pebble, V: Pebble>(&mut self, table: &RocksTable<K, V>, k: &K::Inner, v: &V::Inner) {
+        let cf = table.cf();
+        self.batch.put_cf(&cf, K::get_bytes(k), V::get_bytes(v));
+    }
+    
+    #[allow(dead_code)]
+    pub fn delete<K: Pebble, V: Pebble>(&mut self, table: &RocksTable<K, V>, k: &K::Inner) {
+        let cf = table.cf();
+        self.batch.delete_cf(&cf, K::get_bytes(k));
+    }
+
+    pub fn extend<K, V, I, BK, BV>(&mut self, table: &RocksTable<K, V>, kv: I)
+    where
+        K: Pebble,
+        V: Pebble,
+        I: IntoIterator<Item = (BK, BV)>,
+        BK: Borrow<K::Inner>,
+        BV: Borrow<V::Inner>,
+    {
+        let cf = table.cf();
+        for (k, v) in kv {
+            self.batch.put_cf(&cf, K::get_bytes(k.borrow()), V::get_bytes(v.borrow()));
+        }
+    }
+
+    pub fn remove_batch<K, V, I, BK>(&mut self, table: &RocksTable<K, V>, keys: I)
+    where
+        K: Pebble,
+        V: Pebble,
+        I: IntoIterator<Item = BK>,
+        BK: Borrow<K::Inner>,
+    {
+        let cf = table.cf();
+        for k in keys {
+            self.batch.delete_cf(&cf, K::get_bytes(k.borrow()));
+        }
     }
 }

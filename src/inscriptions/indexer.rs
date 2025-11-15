@@ -1,10 +1,16 @@
 use bitcoin_hashes::sha256;
 
 use super::*;
+use crate::inscriptions::utils::{PrevoutCache, PREVOUT_CACHE_CAPACITY};
+
+const FULLHASH_CACHE_CAPACITY: usize = 20_000_000;
 
 pub struct InscriptionIndexer {
     server: Arc<Server>,
     reorg_cache: Arc<parking_lot::Mutex<ReorgCache>>,
+    prevout_cache: PrevoutCache,
+    fullhash_cache: std::collections::VecDeque<FullHash>,
+    fullhash_set: HashSet<FullHash>,
 }
 
 #[derive(Default)]
@@ -16,10 +22,15 @@ pub struct DataToWrite {
 
 impl InscriptionIndexer {
     pub fn new(server: Arc<Server>, reorg_cache: Arc<parking_lot::Mutex<ReorgCache>>) -> Self {
-        Self { reorg_cache, server }
+        Self {
+            reorg_cache,
+            server,
+            prevout_cache: PrevoutCache::new(PREVOUT_CACHE_CAPACITY),
+            fullhash_cache: std::collections::VecDeque::new(),
+            fullhash_set: HashSet::new(),
+        }
     }
-
-    pub fn handle(&self, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
+    pub fn handle(&mut self, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
         let mut to_write = DataToWrite::default();
 
         self.handle_block(&mut to_write, block_height, block, handle_reorgs)?;
@@ -28,9 +39,11 @@ impl InscriptionIndexer {
             self.reorg_cache.lock().new_block(block_height);
         }
 
+        let mut db_batch = DbBatch::new(&self.server.db);
+
         // write/remove data from block
         for data in to_write.processed {
-            data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()));
+            data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()), &mut db_batch);
         }
 
         for event in to_write.block_events {
@@ -41,10 +54,12 @@ impl InscriptionIndexer {
             panic!("Failed to send raw event");
         }
 
+        db_batch.write();
+
         Ok(())
     }
 
-    fn handle_block(&self, to_write: &mut DataToWrite, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
+    fn handle_block(&mut self, to_write: &mut DataToWrite, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
         let current_hash = block.header.hash;
 
         let mut last_history_id = self.server.db.last_history_id.get(()).unwrap_or_default();
@@ -73,11 +88,23 @@ impl InscriptionIndexer {
             })
             .collect::<HashMap<_, _>>();
 
-        let prevouts = utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed)?;
+        let prevouts = utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed, Some(&mut self.prevout_cache))?;
 
-        to_write.processed.push(ProcessedData::FullHash {
-            addresses: outpoint_fullhash_to_address.iter().map(|(fullhash, address)| (*fullhash, address.to_owned())).collect(),
-        });
+        let mut new_fullhashes = Vec::new();
+        for (fullhash, address) in &outpoint_fullhash_to_address {
+            if !self.fullhash_set.contains(fullhash) {
+                self.fullhash_set.insert(*fullhash);
+                self.fullhash_cache.push_back(*fullhash);
+                new_fullhashes.push((*fullhash, address.to_owned()));
+                if self.fullhash_set.len() > FULLHASH_CACHE_CAPACITY {
+                    if let Some(old) = self.fullhash_cache.pop_front() {
+                        self.fullhash_set.remove(&old);
+                    }
+                }
+            }
+        }
+
+        to_write.processed.push(ProcessedData::FullHash { addresses: new_fullhashes });
 
         if block_height < self.server.indexer.coin.fib.unwrap_or_default() {
             to_write.processed.push(ProcessedData::BlockWithoutProof {

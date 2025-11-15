@@ -47,7 +47,7 @@ impl Indexer {
     fn index(&self) -> anyhow::Result<()> {
         let rx = self.server.indexer.clone().parse_blocks();
 
-        let indexer = InscriptionIndexer::new(self.server.clone(), self.reorg_cache.clone());
+        let mut indexer = InscriptionIndexer::new(self.server.clone(), self.reorg_cache.clone());
 
         let mut progress: Option<Progress> = Some(Progress::begin("Indexing", self.server.indexer.last_block.height, self.server.indexer.last_block.height));
 

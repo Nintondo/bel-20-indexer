@@ -3,7 +3,58 @@ use nint_blk::proto::block::Block;
 
 use super::{process_data::ProcessedData, *};
 
-pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
+pub const PREVOUT_CACHE_CAPACITY: usize = 10_000_000;
+
+pub struct PrevoutCache {
+    map: HashMap<OutPoint, TxPrevout>,
+    order: std::collections::VecDeque<OutPoint>,
+    capacity: usize,
+}
+
+impl PrevoutCache {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            map: HashMap::new(),
+            order: std::collections::VecDeque::new(),
+            capacity,
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, key: &OutPoint) -> Option<TxPrevout> {
+        self.map.get(key).copied()
+    }
+
+    pub fn insert(&mut self, key: OutPoint, value: TxPrevout) {
+        if self.map.contains_key(&key) {
+            self.map.insert(key, value);
+            return;
+        }
+        self.map.insert(key, value);
+        self.order.push_back(key);
+        if self.map.len() > self.capacity {
+            if let Some(old) = self.order.pop_front() {
+                self.map.remove(&old);
+            }
+        }
+    }
+
+    pub fn insert_block_outputs<I>(&mut self, outputs: I)
+    where
+        I: IntoIterator<Item = (OutPoint, TxPrevout)>,
+    {
+        for (k, v) in outputs {
+            self.insert(k, v);
+        }
+    }
+}
+
+pub fn process_prevouts(
+    db: Arc<DB>,
+    block: &Block,
+    data_to_write: &mut Vec<ProcessedData>,
+    mut cache: Option<&mut PrevoutCache>,
+) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
     let prevouts = block
         .txs
         .iter()
@@ -37,22 +88,49 @@ pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<Proc
     let mut result = HashMap::new();
 
     if !txids_keys.is_empty() {
-        let from_db = db.prevouts.multi_get(txids_keys.iter());
+        let mut missing_keys = Vec::new();
 
-        for (key, maybe_val) in txids_keys.iter().zip(from_db) {
-            match maybe_val {
-                Some(val) => {
+        // Try cache first
+        if let Some(ref cache) = cache {
+            for key in &txids_keys {
+                if let Some(val) = cache.get(key) {
                     result.insert(*key, val);
+                } else {
+                    missing_keys.push(*key);
                 }
-                None => {
-                    if let Some(value) = prevouts.get(key) {
-                        result.insert(*key, *value);
-                    } else {
-                        return Err(anyhow::anyhow!("Missing prevout for key {}. Block: {}", key, block.header.hash));
+            }
+        } else {
+            missing_keys = txids_keys.clone();
+        }
+
+        if !missing_keys.is_empty() {
+            let from_db = db.prevouts.multi_get(missing_keys.iter());
+
+            for (key, maybe_val) in missing_keys.iter().zip(from_db) {
+                match maybe_val {
+                    Some(val) => {
+                        if let Some(cache) = cache.as_deref_mut() {
+                            cache.insert(*key, val);
+                        }
+                        result.insert(*key, val);
+                    }
+                    None => {
+                        if let Some(value) = prevouts.get(key) {
+                        if let Some(cache) = cache.as_deref_mut() {
+                                cache.insert(*key, *value);
+                            }
+                            result.insert(*key, *value);
+                        } else {
+                            return Err(anyhow::anyhow!("Missing prevout for key {}. Block: {}", key, block.header.hash));
+                        }
                     }
                 }
             }
         }
+    }
+
+    if let Some(ref mut cache) = cache {
+        cache.insert_block_outputs(prevouts.iter().map(|(k, v)| (*k, *v)));
     }
 
     data_to_write.push(ProcessedData::Prevouts {

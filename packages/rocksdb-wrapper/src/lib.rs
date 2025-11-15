@@ -2,7 +2,7 @@
 
 use anyhow::bail;
 use dutils::error::ContextWrapper;
-use rocksdb::WriteBatchWithTransaction;
+pub use rocksdb::WriteBatchWithTransaction;
 use std::{
     borrow::{Borrow, Cow},
     cell::RefCell,

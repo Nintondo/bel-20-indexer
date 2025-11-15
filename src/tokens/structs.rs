@@ -299,6 +299,19 @@ pub struct InscriptionTemplate {
     pub value: u64,
     pub content: Option<Vec<u8>>,
     pub leaked: bool,
+    // ord/OPI compatibility fields (used for p2tr coins)
+    pub input_index: u32,
+    pub envelope_offset: u32,
+    pub duplicate_field: bool,
+    pub incomplete_field: bool,
+    pub unrecognized_even_field: bool,
+    pub has_pointer: bool,
+    pub pushnum: bool,
+    pub stutter: bool,
+    pub cursed_for_brc20: bool,
+    pub unbound: bool,
+    pub reinscription: bool,
+    pub vindicated: bool,
 }
 
 pub(crate) struct DeserializeFromStr<T: FromStr>(pub(crate) T);

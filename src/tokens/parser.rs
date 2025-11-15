@@ -161,6 +161,65 @@ impl TokenCache {
         }
     }
 
+    fn is_valid_brc20_like_ord(
+        content_type: &str,
+        content: &[u8],
+        cursed_for_brc20: bool,
+    ) -> bool {
+        if cursed_for_brc20 {
+            return false;
+        }
+
+        if !content_type.starts_with("application/json")
+            && !content_type.starts_with("text/plain")
+        {
+            return false;
+        }
+
+        if content_type.starts_with("application/json")
+            && content_type != "application/json"
+            && !content_type.starts_with("application/json;")
+        {
+            return false;
+        }
+
+        if content_type.starts_with("text/plain")
+            && content_type != "text/plain"
+            && !content_type.starts_with("text/plain;")
+        {
+            return false;
+        }
+
+        let json: serde_json::Value = match serde_json::from_slice(content) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+
+        let Some(protocol) = json.get("p").and_then(|v| v.as_str()) else {
+            return false;
+        };
+
+        // Keep only brc-20 until we get a better understanding of prog and module protocols.
+        if protocol != "brc-20" {
+            return false;
+        }
+
+        // if protocol != "brc-20" && protocol != "brc20-prog" && protocol != "brc20-module" {
+        //     return false;
+        // }
+
+        // if protocol == "brc20-module" {
+        //     let Some(module) = json.get("module").and_then(|m| m.as_str()) else {
+        //         return false;
+        //     };
+        //     if module != "BRC20PROG" {
+        //         return false;
+        //     }
+        // }
+
+        true
+    }
+
     /// Parses token action from the InscriptionTemplate.
     pub fn parse_token_action(&mut self, inc: &InscriptionTemplate, height: u32, created: u32) -> Option<TransferProto> {
         // skip to not add invalid token creation in token_cache
@@ -168,7 +227,23 @@ impl TokenCache {
             return None;
         }
 
-        let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, self.server.indexer.coin) {
+        let coin = self.server.indexer.coin;
+
+        // ord/OPI-style gating for BRC20 inscriptions on p2tr-only coins (BTC/LTC)
+        if coin.only_p2tr {
+            if inc.cursed_for_brc20 || inc.unbound {
+                return None;
+            }
+
+            let content_type = inc.content_type.as_ref()?;
+            let content = inc.content.as_ref()?;
+
+            if !Self::is_valid_brc20_like_ord(content_type, content, inc.cursed_for_brc20) {
+                return None;
+            }
+        }
+
+        let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, coin) {
             Ok(ok) => ok,
             Err(_) => {
                 return None;

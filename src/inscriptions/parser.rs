@@ -10,10 +10,23 @@ use crate::inscriptions::{
     leaked::{LeakedInscription, LeakedInscriptions},
     process_data::ProcessedData,
     searcher::InscriptionSearcher,
-    structs::{ParsedInscription, Part},
+    structs::{InscriptionMeta, ParsedInscription, Part},
 };
 
 use super::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Curse {
+    DuplicateField,
+    IncompleteField,
+    NotAtOffsetZero,
+    NotInFirstInput,
+    Pointer,
+    Pushnum,
+    Reinscription,
+    Stutter,
+    UnrecognizedEvenField,
+}
 
 pub struct ParseInscription<'a> {
     tx: &'a Hashed<EvaluatedTx>,
@@ -31,7 +44,9 @@ pub struct Parser<'a> {
 
 impl Parser<'_> {
     pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
-        let jubilant = height as usize >= self.server.indexer.coin.jubilee_height.unwrap_or_default();
+        let coin = self.server.indexer.coin;
+        let jubilant = height as usize >= coin.jubilee_height.unwrap_or_default();
+        let is_p2tr_only = coin.only_p2tr;
 
         // Hold inscription's partials from db and new in the block
         let mut outpoint_to_partials = Self::load_partials(self.server, prevouts.keys().cloned().collect());
@@ -62,10 +77,14 @@ impl Parser<'_> {
 
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
+            // For ord-style reinscription detection (p2tr coins only),
+            // track how many inscriptions we have already seen at each location in this transaction.
+            let mut location_inscription_count: HashMap<(OutPoint, u64), u32> = HashMap::new();
+
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
                 if let Some(inscription_offsets) = inscription_outpoint_to_offsets.remove(&txin.outpoint) {
-                    for inscription_offset in inscription_offsets {
+                    for (inscription_offset, initial_cursed) in inscription_offsets {
                         let old_location = Location {
                             outpoint: txin.outpoint,
                             offset: inscription_offset,
@@ -78,7 +97,11 @@ impl Parser<'_> {
                             Ok((new_vout, new_offset)) => {
                                 let new_outpoint = OutPoint { txid, vout: new_vout };
 
-                                inscription_outpoint_to_offsets.entry(new_outpoint).or_default().insert(new_offset);
+                                inscription_outpoint_to_offsets
+                                    .entry(new_outpoint)
+                                    .or_default()
+                                    .entry(new_offset)
+                                    .or_insert(initial_cursed);
 
                                 // handle move of token transfer
                                 if is_token_transfer_move {
@@ -169,22 +192,101 @@ impl Parser<'_> {
                         }
                     };
 
-                    for inscription_template in inscription_templates {
-                        let mut offset_occupied = !inscription_outpoint_to_offsets
-                            .entry(inscription_template.location.outpoint)
-                            .or_default()
-                            .insert(inscription_template.location.offset); // return false if item already exist
+                    for mut inscription_template in inscription_templates {
+                        let location = inscription_template.location;
+                        let loc_key = (location.outpoint, location.offset);
 
-                        // This is only for BELLS
-                        if self.server.indexer.coin.name == Bellscoin::NAME {
-                            offset_occupied = false;
+                        // Determine whether this satpoint was already occupied before this inscription.
+                        let offsets_map = inscription_outpoint_to_offsets.entry(location.outpoint).or_default();
+                        let had_previous_at_location = offsets_map.contains_key(&location.offset);
+
+                        // For non-p2tr coins, always track occupancy like legacy HashSet<u64> did.
+                        // The bool payload is unused for these coins, so we store `false`.
+                        if !is_p2tr_only && !had_previous_at_location {
+                            offsets_map.insert(location.offset, false);
                         }
 
-                        let is_reinscription = offset_occupied && (!jubilant || self.server.indexer.coin.only_p2tr);
+                        // For non-p2tr coins keep legacy reinscription skipping behavior.
+                        if !is_p2tr_only {
+                            let mut offset_occupied = had_previous_at_location;
 
-                        // skip inscription which was created into occupied offset
-                        if !inscription_template.leaked && is_reinscription {
-                            continue;
+                            // This is only for BELLS
+                            if coin.name == Bellscoin::NAME {
+                                offset_occupied = false;
+                            }
+
+                            let is_reinscription_legacy = offset_occupied && (!jubilant || coin.only_p2tr);
+
+                            // skip inscription which was created into occupied offset
+                            if !inscription_template.leaked && is_reinscription_legacy {
+                                continue;
+                            }
+                        }
+
+                        if is_p2tr_only {
+                            // --- ord-style curse classification for p2tr coins ---
+                            let mut curse: Option<Curse> = None;
+
+                            if inscription_template.unrecognized_even_field {
+                                curse = Some(Curse::UnrecognizedEvenField);
+                            } else if inscription_template.duplicate_field {
+                                curse = Some(Curse::DuplicateField);
+                            } else if inscription_template.incomplete_field {
+                                curse = Some(Curse::IncompleteField);
+                            } else if inscription_template.input_index != 0 {
+                                curse = Some(Curse::NotInFirstInput);
+                            } else if inscription_template.envelope_offset != 0 {
+                                curse = Some(Curse::NotAtOffsetZero);
+                            } else if inscription_template.has_pointer {
+                                curse = Some(Curse::Pointer);
+                            } else if inscription_template.pushnum {
+                                curse = Some(Curse::Pushnum);
+                            } else if inscription_template.stutter {
+                                curse = Some(Curse::Stutter);
+                            } else {
+                                // Potential reinscription curse.
+                                let count_so_far = *location_inscription_count.get(&loc_key).unwrap_or(&0);
+
+                                let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
+                                let total_count_before = base_count_from_db + count_so_far;
+
+                                if total_count_before > 0 {
+                                    let initial_cursed_or_vindicated =
+                                        offsets_map.get(&location.offset).copied().unwrap_or(false);
+
+                                    if total_count_before > 1 {
+                                        curse = Some(Curse::Reinscription);
+                                    } else if !initial_cursed_or_vindicated {
+                                        curse = Some(Curse::Reinscription);
+                                    }
+                                }
+                            }
+
+                            // Jubilee + unbound logic.
+                            let input_value = prevouts
+                                .get(&tx.value.inputs[input_index].outpoint)
+                                .map(|pv| pv.value)
+                                .unwrap_or(0);
+
+                            let cursed_for_brc20 = curse.is_some();
+                            let vindicated = curse.is_some() && jubilant;
+                            let unbound = input_value == 0
+                                || matches!(curse, Some(Curse::UnrecognizedEvenField))
+                                || inscription_template.unrecognized_even_field;
+
+                            // Persist initial cursed/vindicated state for this location if it's the first inscription here.
+                            if !had_previous_at_location {
+                                offsets_map.insert(location.offset, cursed_for_brc20);
+                            }
+
+                            // Update per-tx count after computing curse.
+                            *location_inscription_count.entry(loc_key).or_insert(0) += 1;
+
+                            inscription_template.cursed_for_brc20 = cursed_for_brc20;
+                            inscription_template.unbound = unbound;
+                            inscription_template.reinscription =
+                                matches!(curse, Some(Curse::Reinscription));
+                            inscription_template.vindicated = vindicated;
                         }
 
                         // handle token deploy|mint|transfer creation
@@ -195,7 +297,11 @@ impl Parser<'_> {
         }
 
         leaked.unwrap().get_leaked_inscriptions().for_each(|location| {
-            inscription_outpoint_to_offsets.entry(location.outpoint).or_default().insert(location.offset);
+            inscription_outpoint_to_offsets
+                .entry(location.outpoint)
+                .or_default()
+                .entry(location.offset)
+                .or_insert(false);
         });
 
         data_to_write.push(ProcessedData::InscriptionPartials {
@@ -219,7 +325,7 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, HashSet<u64>> {
+    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, bool>> {
         server
             .db
             .outpoint_to_inscription_offsets
@@ -235,19 +341,19 @@ impl Parser<'_> {
         match parsed {
             ParsedInscription::None => ParsedInscriptionResult::None,
             ParsedInscription::Partial => ParsedInscriptionResult::Partials,
-            ParsedInscription::Single(inscription) => Self::convert_to_template(&payload, inscription, leaked)
+            ParsedInscription::Single(inscription, meta) => Self::convert_to_template(&payload, inscription, meta, leaked)
                 .map(ParsedInscriptionResult::Single)
                 .unwrap_or(ParsedInscriptionResult::None),
             ParsedInscription::Many(inscriptions) => ParsedInscriptionResult::Many(
                 inscriptions
                     .into_iter()
-                    .filter_map(|inscription| Self::convert_to_template(&payload, inscription, leaked))
+                    .filter_map(|(inscription, meta)| Self::convert_to_template(&payload, inscription, meta, leaked))
                     .collect(),
             ),
         }
     }
 
-    fn convert_to_template(payload: &ParseInscription, inscription: Inscription, leaked: &mut LeakedInscriptions) -> Option<InscriptionTemplate> {
+    fn convert_to_template(payload: &ParseInscription, inscription: Inscription, meta: InscriptionMeta, leaked: &mut LeakedInscriptions) -> Option<InscriptionTemplate> {
         let genesis = {
             InscriptionId {
                 txid: payload.partials.genesis_txid,
@@ -273,6 +379,19 @@ impl Parser<'_> {
             owner: FullHash::ZERO,
             value: 0,
             leaked: false,
+             // ord/OPI compatibility fields, filled from meta and inscription
+             input_index: meta.input_index,
+             envelope_offset: meta.envelope_offset,
+             duplicate_field: meta.duplicate_field,
+             incomplete_field: meta.incomplete_field,
+             unrecognized_even_field: meta.unrecognized_even_field,
+             has_pointer: meta.has_pointer,
+             pushnum: meta.pushnum,
+             stutter: meta.stutter,
+             cursed_for_brc20: false,
+             unbound: false,
+             reinscription: false,
+             vindicated: false,
         };
 
         let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)

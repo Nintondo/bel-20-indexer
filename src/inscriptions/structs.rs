@@ -19,12 +19,24 @@ pub struct Inscription {
     pub unrecognized_even_field: bool,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct InscriptionMeta {
+    pub input_index: u32,
+    pub envelope_offset: u32,
+    pub duplicate_field: bool,
+    pub incomplete_field: bool,
+    pub unrecognized_even_field: bool,
+    pub has_pointer: bool,
+    pub pushnum: bool,
+    pub stutter: bool,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ParsedInscription {
     None,
     Partial,
-    Single(Inscription),
-    Many(Vec<Inscription>),
+    Single(Inscription, InscriptionMeta),
+    Many(Vec<(Inscription, InscriptionMeta)>),
 }
 
 impl Inscription {
@@ -32,7 +44,24 @@ impl Inscription {
         if partials.len() == 1 && partials[0].is_tapscript {
             let script = Script::from_bytes(&partials[0].script_buffer);
             if let Result::Ok(v) = RawEnvelope::from_tapscript(script, vin as usize) {
-                let data = v.into_iter().map(ParsedEnvelope::from).map(|x| x.payload).collect();
+                let data = v
+                    .into_iter()
+                    .map(ParsedEnvelope::from)
+                    .map(|envelope| {
+                        let inscription = envelope.payload;
+                        let meta = InscriptionMeta {
+                            input_index: envelope.input,
+                            envelope_offset: envelope.offset,
+                            duplicate_field: inscription.duplicate_field,
+                            incomplete_field: inscription.incomplete_field,
+                            unrecognized_even_field: inscription.unrecognized_even_field,
+                            has_pointer: inscription.pointer.is_some(),
+                            pushnum: envelope.pushnum,
+                            stutter: envelope.stutter,
+                        };
+                        (inscription, meta)
+                    })
+                    .collect();
 
                 return ParsedInscription::Many(data);
             }
@@ -148,7 +177,20 @@ impl InscriptionParser {
                         unrecognized_even_field: false,
                     };
 
-                    return ParsedInscription::Single(inscription);
+                    // Legacy/script-sig parser does not have envelope metadata.
+                    // Use a default InscriptionMeta; it is only meaningful for p2tr coins.
+                    let meta = InscriptionMeta {
+                        input_index: 0,
+                        envelope_offset: 0,
+                        duplicate_field: inscription.duplicate_field,
+                        incomplete_field: inscription.incomplete_field,
+                        unrecognized_even_field: inscription.unrecognized_even_field,
+                        has_pointer: inscription.pointer.is_some(),
+                        pushnum: false,
+                        stutter: false,
+                    };
+
+                    return ParsedInscription::Single(inscription, meta);
                 }
 
                 if push_datas.len() < 2 {

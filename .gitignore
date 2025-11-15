@@ -4,3 +4,4 @@ rocksdb/
 .idea/
 index/
 .aider*
+.env_*

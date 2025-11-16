@@ -3,7 +3,7 @@ use bitcoin_hashes::sha256;
 use super::*;
 use crate::inscriptions::utils::{PrevoutCache, PREVOUT_CACHE_CAPACITY};
 
-const FULLHASH_CACHE_CAPACITY: usize = 20_000_000;
+const FULLHASH_CACHE_CAPACITY: usize = 2_000_000;
 
 pub struct InscriptionIndexer {
     server: Arc<Server>,
@@ -40,32 +40,24 @@ impl InscriptionIndexer {
         }
 
         // Snapshot token deltas (if any) before we consume processed data
-        let tokens_delta = to_write
-            .processed
-            .iter()
-            .find_map(|pd| {
-                if let ProcessedData::Tokens {
-                    metas,
-                    balances,
-                    transfers_to_write,
-                    transfers_to_remove,
-                } = pd
-                {
-                    Some((
-                        metas.clone(),
-                        balances.clone(),
-                        transfers_to_write.clone(),
-                        transfers_to_remove.clone(),
-                    ))
-                } else {
-                    None
-                }
-            });
+        let tokens_delta = to_write.processed.iter().find_map(|pd| {
+            if let ProcessedData::Tokens {
+                metas,
+                balances,
+                transfers_to_write,
+                transfers_to_remove,
+            } = pd
+            {
+                Some((metas, balances, transfers_to_write, transfers_to_remove))
+            } else {
+                None
+            }
+        });
 
         let mut db_batch = DbBatch::new(&self.server.db);
 
         // write/remove data from block
-        for data in to_write.processed {
+        for data in &to_write.processed {
             data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()), &mut db_batch);
         }
 
@@ -74,7 +66,7 @@ impl InscriptionIndexer {
 
         if let Some((metas, balances, transfers_to_write, transfers_to_remove)) = tokens_delta {
             let mut rt = self.server.token_state.lock();
-            rt.apply_tokens_delta(&metas, &balances, &transfers_to_write, &transfers_to_remove);
+            rt.apply_tokens_delta(metas, balances, transfers_to_write, transfers_to_remove);
         }
 
         for event in to_write.block_events {

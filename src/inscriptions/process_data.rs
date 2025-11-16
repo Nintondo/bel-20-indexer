@@ -42,7 +42,7 @@ pub enum ProcessedData {
 }
 
 impl ProcessedData {
-    pub fn write(self, server: &Server, reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>, batch: &mut DbBatch<'_>) {
+    pub fn write(&self, server: &Server, reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>, batch: &mut DbBatch<'_>) {
         let mut reorg_cache = reorg_cache.as_ref().map(|x| x.lock());
 
         match self {
@@ -110,7 +110,7 @@ impl ProcessedData {
 
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
                     reorg_cache.push_token_entry(TokenHistoryEntry::RemoveHistory {
-                        height: block_number,
+                        height: *block_number,
                         last_history_id: server.db.last_history_id.get(()).unwrap_or_default(),
                         outpoint_to_event: outpoint_to_event.iter().map(|x| x.0).collect(),
                         to_remove: history.iter().map(|x| x.0).collect(),

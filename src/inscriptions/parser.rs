@@ -268,15 +268,30 @@ impl Parser<'_> {
                                 .map(|pv| pv.value)
                                 .unwrap_or(0);
 
-                            let cursed_for_brc20 = curse.is_some();
-                            let vindicated = curse.is_some() && jubilant;
+                            // Base cursed flag used for ord-style reinscription logic.
+                            // This mirrors ord's notion of "cursed or vindicated" – it is true
+                            // whenever a curse pattern is present, regardless of jubilee.
+                            let base_cursed = curse.is_some();
+
+                            // BRC-20-specific cursed flag:
+                            //  - For Litecoin (ltc-20), only pre-jubilee curses should be treated
+                            //    as BRC-20-invalid (post-jubilee they are "vindicated").
+                            //  - For all other coins (including Bitcoin), preserve existing
+                            //    behaviour and treat any curse as BRC-20-invalid.
+                            let cursed_for_brc20 = if coin.brc_name == "ltc-20" {
+                                base_cursed && !jubilant
+                            } else {
+                                base_cursed
+                            };
+
+                            let vindicated = base_cursed && jubilant;
                             let unbound = input_value == 0
                                 || matches!(curse, Some(Curse::UnrecognizedEvenField))
                                 || inscription_template.unrecognized_even_field;
 
                             // Persist initial cursed/vindicated state for this location if it's the first inscription here.
                             if !had_previous_at_location {
-                                offsets_map.insert(location.offset, cursed_for_brc20);
+                                offsets_map.insert(location.offset, base_cursed);
                             }
 
                             // Update per-tx count after computing curse.

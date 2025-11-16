@@ -176,6 +176,7 @@ impl TokenCache {
         content_type: &str,
         content: &[u8],
         cursed_for_brc20: bool,
+        coin: CoinType,
     ) -> bool {
         if cursed_for_brc20 {
             return false;
@@ -210,8 +211,9 @@ impl TokenCache {
             return false;
         };
 
-        // Keep only brc-20 until we get a better understanding of prog and module protocols.
-        if protocol != "brc-20" {
+        // Keep only BRC_* for this coin until we get a better
+        // understanding of prog and module protocols.
+        if protocol != coin.brc_name {
             return false;
         }
 
@@ -240,19 +242,33 @@ impl TokenCache {
 
         let coin = self.server.indexer.coin;
 
-        // ord/OPI-style gating for BRC20 inscriptions on p2tr-only coins (BTC/LTC)
+        // ord/OPI-style gating for BRC20 inscriptions on p2tr-only coins.
+        // Make behaviour coin-specific so that:
+        //  - BTC (brc-20) keeps existing logic: reject cursed or unbound inscriptions.
+        //  - LTC (ltc-20) matches ord/ord20: reject only pre-jubilee curses, allow unbound.
         if coin.only_p2tr {
-            if inc.cursed_for_brc20 || inc.unbound {
-                return None;
-            }
-
-            let content_type = inc.content_type.as_ref()?;
-            let content = inc.content.as_ref()?;
-
-            if !Self::is_valid_brc20_like_ord(content_type, content, inc.cursed_for_brc20) {
-                return None;
+            match coin.brc_name {
+                // Litecoin mainnet/testnet: emulate ord/ord20 behaviour.
+                "ltc-20" => {
+                    if inc.cursed_for_brc20 {
+                        return None;
+                    }
+                }
+                // Any other p2tr coin: keep conservative behaviour.
+                _ => {
+                    if inc.cursed_for_brc20 || inc.unbound {
+                        return None;
+                    }
+                }
             }
         }
+
+            // let content_type = inc.content_type.as_ref()?;
+            // let content = inc.content.as_ref()?;
+
+            // if !Self::is_valid_brc20_like_ord(content_type, content, inc.cursed_for_brc20, coin) {
+            //     return None;
+            // }
 
         let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, coin) {
             Ok(ok) => ok,

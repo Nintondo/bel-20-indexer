@@ -25,10 +25,12 @@ rocksdb_wrapper::generate_db_code! {
 }
 
 impl DB {
+    #[allow(dead_code)]
     pub fn load_token_accounts(&self, keys: Vec<AddressToken>) -> HashMap<AddressToken, TokenBalance> {
         self.address_token_to_balance.multi_get_kv(keys.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect()
     }
 
+    #[allow(dead_code)]
     pub fn load_transfers(&self, keys: &HashSet<AddressOutPoint>) -> Vec<(Location, (FullHash, TransferProtoDB))> {
         keys.iter()
             .flat_map(|x| {
@@ -63,7 +65,7 @@ impl<'a> DbBatch<'a> {
         let cf = table.cf();
         self.batch.put_cf(&cf, K::get_bytes(k), V::get_bytes(v));
     }
-    
+
     #[allow(dead_code)]
     pub fn delete<K: Pebble, V: Pebble>(&mut self, table: &RocksTable<K, V>, k: &K::Inner) {
         let cf = table.cf();

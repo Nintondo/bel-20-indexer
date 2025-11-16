@@ -85,6 +85,12 @@ impl Indexer {
                 let restore_height = prev_height.unwrap_or_default().saturating_sub(reorg_len as u64);
 
                 self.reorg_cache.lock().restore(&self.server, restore_height as u32)?;
+
+                {
+                    let mut rt = self.server.token_state.lock();
+                    *rt = RuntimeTokenState::from_db(&self.server.db);
+                }
+
                 self.server.event_sender.send(ServerEvent::Reorg(reorg_len as u32, id.height as u32)).ok();
             }
 

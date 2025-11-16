@@ -88,7 +88,7 @@ pub struct TokenCache {
 }
 
 impl TokenCache {
-    pub fn load(prevouts: &HashMap<OutPoint, TxPrevout>, server: Arc<Server>) -> Self {
+    pub fn load(prevouts: &HashMap<OutPoint, TxPrevout>, server: Arc<Server>, runtime: &RuntimeTokenState) -> Self {
         let mut token_cache = Self {
             all_transfers: HashMap::new(),
             server,
@@ -106,7 +106,18 @@ impl TokenCache {
             })
             .collect();
 
-        token_cache.valid_transfers.extend(token_cache.server.db.load_transfers(&transfers_to_remove));
+        let wanted: HashSet<(OutPoint, FullHash)> = transfers_to_remove
+            .iter()
+            .map(|ao| (ao.outpoint, ao.address))
+            .collect();
+
+        token_cache.valid_transfers.extend(
+            runtime
+                .valid_transfers
+                .iter()
+                .filter(|(loc, (addr, _))| wanted.contains(&(loc.outpoint, *addr)))
+                .map(|(loc, (addr, proto))| (*loc, (*addr, proto.clone()))),
+        );
 
         token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
 
@@ -314,14 +325,12 @@ impl TokenCache {
         });
     }
 
-    pub fn load_tokens_data(&mut self, db: &DB) -> anyhow::Result<()> {
+    pub fn load_tokens_data(&mut self, _db: &DB, runtime: &RuntimeTokenState) -> anyhow::Result<()> {
         let (tickers, users) = self.fill_tickers_and_users();
 
-        self.tokens = db
-            .token_to_meta
-            .multi_get_kv(tickers.iter(), false)
+        self.tokens = tickers
             .into_iter()
-            .map(|(k, v)| (k.clone(), TokenMeta::from(v)))
+            .filter_map(|tick| runtime.tokens.get(&tick).cloned().map(|meta| (tick, meta)))
             .collect::<HashMap<_, _>>();
 
         let keys: Vec<_> = users
@@ -334,7 +343,10 @@ impl TokenCache {
             })
             .collect();
 
-        self.token_accounts = db.load_token_accounts(keys);
+        self.token_accounts = keys
+            .into_iter()
+            .filter_map(|key| runtime.balances.get(&key).cloned().map(|v| (key, v)))
+            .collect();
 
         Ok(())
     }

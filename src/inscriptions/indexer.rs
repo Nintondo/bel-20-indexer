@@ -39,11 +39,42 @@ impl InscriptionIndexer {
             self.reorg_cache.lock().new_block(block_height);
         }
 
+        // Snapshot token deltas (if any) before we consume processed data
+        let tokens_delta = to_write
+            .processed
+            .iter()
+            .find_map(|pd| {
+                if let ProcessedData::Tokens {
+                    metas,
+                    balances,
+                    transfers_to_write,
+                    transfers_to_remove,
+                } = pd
+                {
+                    Some((
+                        metas.clone(),
+                        balances.clone(),
+                        transfers_to_write.clone(),
+                        transfers_to_remove.clone(),
+                    ))
+                } else {
+                    None
+                }
+            });
+
         let mut db_batch = DbBatch::new(&self.server.db);
 
         // write/remove data from block
         for data in to_write.processed {
             data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()), &mut db_batch);
+        }
+
+        // Commit DB changes before emitting events, preserving original ordering semantics.
+        db_batch.write();
+
+        if let Some((metas, balances, transfers_to_write, transfers_to_remove)) = tokens_delta {
+            let mut rt = self.server.token_state.lock();
+            rt.apply_tokens_delta(&metas, &balances, &transfers_to_write, &transfers_to_remove);
         }
 
         for event in to_write.block_events {
@@ -53,8 +84,6 @@ impl InscriptionIndexer {
         if self.server.raw_event_sender.send(to_write.history).is_err() && !self.server.token.is_cancelled() {
             panic!("Failed to send raw event");
         }
-
-        db_batch.write();
 
         Ok(())
     }
@@ -129,7 +158,8 @@ impl InscriptionIndexer {
             return Ok(());
         }
 
-        let mut token_cache = TokenCache::load(&prevouts, self.server.clone());
+        let runtime_guard = self.server.token_state.lock();
+        let mut token_cache = TokenCache::load(&prevouts, self.server.clone(), &*runtime_guard);
 
         let transfers_to_remove = token_cache
             .valid_transfers
@@ -144,7 +174,7 @@ impl InscriptionIndexer {
 
         parser.parse_block(block_height, block, &prevouts, &mut to_write.processed);
 
-        token_cache.load_tokens_data(&self.server.db)?;
+        token_cache.load_tokens_data(&self.server.db, &*runtime_guard)?;
 
         let mut fullhash_to_load = HashSet::new();
 

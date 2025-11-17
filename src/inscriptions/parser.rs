@@ -77,8 +77,27 @@ impl Parser<'_> {
 
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
-            // For ord-style reinscription detection (p2tr coins only),
-            // track how many inscriptions we have already seen at each location in this transaction.
+            // For ord-style reinscription detection (p2tr-only coins), track how many
+            // inscriptions we have already seen at each *input offset* in this
+            // transaction. This mirrors ord's `inscribed_offsets` map which is keyed
+            // by the running input value (before applying any pointer).
+            //
+            // Key:   global input offset (like ord's `offset = total_input_value`)
+            // Value: (initial_cursed_or_vindicated, count_in_this_tx)
+            //
+            // - `initial_cursed_or_vindicated` is approximated as the `base_cursed`
+            //   value of the first inscription we see at this offset in this tx.
+            // - `count` tracks how many inscriptions have been attached to this offset
+            //   in this tx so that we can reproduce ord's reinscription rules:
+            //     * if count > 1       => Reinscription
+            //     * if count == 1 and
+            //       initial was not
+            //       cursed/vindicated  => Reinscription
+            let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
+
+            // For non-p2tr coins we keep legacy reinscription behaviour which works
+            // with final satpoint locations. This continues to use the old
+            // per-location counter.
             let mut location_inscription_count: HashMap<(OutPoint, u64), u32> = HashMap::new();
 
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
@@ -224,7 +243,7 @@ impl Parser<'_> {
                         }
 
                         if is_p2tr_only {
-                            // --- ord-style curse classification for p2tr coins ---
+                            // --- ord-style curse classification for p2tr-only coins ---
                             let mut curse: Option<Curse> = None;
 
                             if inscription_template.unrecognized_even_field {
@@ -245,19 +264,36 @@ impl Parser<'_> {
                                 curse = Some(Curse::Stutter);
                             } else {
                                 // Potential reinscription curse.
-                                let count_so_far = *location_inscription_count.get(&loc_key).unwrap_or(&0);
-
-                                let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
-                                let total_count_before = base_count_from_db + count_so_far;
-
-                                if total_count_before > 0 {
-                                    let initial_cursed_or_vindicated =
-                                        offsets_map.get(&location.offset).copied().unwrap_or(false);
-
-                                    if total_count_before > 1 {
-                                        curse = Some(Curse::Reinscription);
-                                    } else if !initial_cursed_or_vindicated {
-                                        curse = Some(Curse::Reinscription);
+                                //
+                                // For p2tr-only coins we now follow ord's logic more
+                                // closely by keying reinscription detection off the
+                                // *input offset* (the running total input value
+                                // before this input), not the final satpoint
+                                // (outpoint, offset). This matches ord's use of
+                                // `inscribed_offsets.get(&offset)` where `offset`
+                                // is the `total_input_value` prior to applying any
+                                // pointer.
+                                //
+                                // `inputs_cum[input_index]` is our analogue of
+                                // ord's `total_input_value` at the beginning of
+                                // this input.
+                                if let Some(global_input_offset) = inputs_cum.get(input_index).copied() {
+                                    if let Some((initial_cursed_or_vindicated, count)) =
+                                        inscribed_offsets.get(&global_input_offset)
+                                    {
+                                        if *count > 1 {
+                                            // More than one inscription has already
+                                            // been attached to this input offset
+                                            // in this tx. Any further inscription
+                                            // is a reinscription.
+                                            curse = Some(Curse::Reinscription);
+                                        } else if !*initial_cursed_or_vindicated {
+                                            // Exactly one prior inscription at this
+                                            // input offset and it was blessed (not
+                                            // cursed or vindicated). The *second*
+                                            // one becomes a reinscription.
+                                            curse = Some(Curse::Reinscription);
+                                        }
                                     }
                                 }
                             }
@@ -289,13 +325,32 @@ impl Parser<'_> {
                                 || matches!(curse, Some(Curse::UnrecognizedEvenField))
                                 || inscription_template.unrecognized_even_field;
 
+                            // Track reinscriptions per input offset for p2tr-only coins.
+                            //
+                            // This is the in-memory analogue of ord's
+                            // `inscribed_offsets.entry(offset)` where `offset` is
+                            // `total_input_value` before examining this input.
+                            if let Some(global_input_offset) = inputs_cum.get(input_index).copied() {
+                                let entry = inscribed_offsets
+                                    .entry(global_input_offset)
+                                    // If this is the first inscription we see at
+                                    // this offset in this tx, the "initial cursed
+                                    // or vindicated" flag is simply this
+                                    // inscription's base_cursed value. Later
+                                    // inscriptions at the same offset keep this
+                                    // initial flag unchanged.
+                                    .or_insert((base_cursed, 0));
+
+                                // Saturating add to avoid any possible overflow,
+                                // though realistically we never expect more than a
+                                // handful of inscriptions per input.
+                                entry.1 = entry.1.saturating_add(1);
+                            }
+
                             // Persist initial cursed/vindicated state for this location if it's the first inscription here.
                             if !had_previous_at_location {
                                 offsets_map.insert(location.offset, base_cursed);
                             }
-
-                            // Update per-tx count after computing curse.
-                            *location_inscription_count.entry(loc_key).or_insert(0) += 1;
 
                             inscription_template.cursed_for_brc20 = cursed_for_brc20;
                             inscription_template.unbound = unbound;

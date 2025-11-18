@@ -59,7 +59,7 @@ impl Coin for Litecoin {
         script_address: 50,
         bech32: "ltc",
     };
-    const FIB: Option<u32> = Some(c);
+    const FIB: Option<u32> = Some(2_424_429);
     const JUBILEE_HEIGHT: Option<usize> = Some(2_608_704);
     const BRC_NAME: &'static str = "ltc-20";
     const ONLY_P2RT: bool = true;

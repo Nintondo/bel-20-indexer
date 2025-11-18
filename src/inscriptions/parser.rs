@@ -86,7 +86,8 @@ impl Parser<'_> {
             // Value: (initial_cursed_or_vindicated, count_in_this_tx)
             //
             // - `initial_cursed_or_vindicated` is approximated as the `base_cursed`
-            //   value of the first inscription we see at this offset in this tx.
+            //   value of the first inscription we see at this offset in this tx (or
+            //   the first old inscription seeded for this offset).
             // - `count` tracks how many inscriptions have been attached to this offset
             //   in this tx so that we can reproduce ord's reinscription rules:
             //     * if count > 1       => Reinscription
@@ -106,7 +107,30 @@ impl Parser<'_> {
 
                         let is_token_transfer_move = self.token_cache.all_transfers.contains_key(&old_location);
 
+                        // Global input-space offset for this old inscription. This is
+                        // our analogue of ord's `offset = total_input_value +
+                        // old_satpoint_offset` when seeding `inscribed_offsets` with
+                        // inscriptions that arrive on transaction inputs.
                         let offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
+
+                        // Seed ord-style `inscribed_offsets` for p2tr-only coins so
+                        // that reinscription detection later can see that this input
+                        // offset already carried inscriptions before new ones are
+                        // created in this transaction.
+                        if is_p2tr_only {
+                            if let Some(global_offset) = offset {
+                                let entry = inscribed_offsets
+                                    .entry(global_offset)
+                                    // `initial_cursed` is the base_cursed flag we
+                                    // stored for this satpoint when its initial
+                                    // inscription was created. We reuse it as our
+                                    // "initial cursed or vindicated" indicator for
+                                    // this offset.
+                                    .or_insert((initial_cursed, 0));
+                                entry.1 = entry.1.saturating_add(1);
+                            }
+                        }
+
                         match InscriptionSearcher::get_output_index_by_input(offset, &tx.value.outputs) {
                             Ok((new_vout, new_offset)) => {
                                 let new_outpoint = OutPoint { txid, vout: new_vout };

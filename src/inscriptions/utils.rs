@@ -3,7 +3,7 @@ use nint_blk::proto::block::Block;
 
 use super::{process_data::ProcessedData, *};
 
-pub const PREVOUT_CACHE_CAPACITY: usize = 1_000_000;
+pub const PREVOUT_CACHE_CAPACITY: usize = 10_000_000;
 
 pub struct PrevoutCache {
     map: HashMap<OutPoint, TxPrevout>,

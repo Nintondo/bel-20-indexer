@@ -13,28 +13,46 @@ impl RocksDB {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
-        // // Use more background threads (adjust 8 to your core count)
-        // opts.increase_parallelism(8);
-        // #[allow(unused_must_use)]
-        // {
-        //     // If available in your rocksdb version
-        //     opts.set_max_background_jobs(8);
-        // }
+        // Use more background threads (adjust 8 to your core count)
+        opts.increase_parallelism(8);
+        #[allow(unused_must_use)]
+        {
+            // If available in your rocksdb version
+            opts.set_max_background_jobs(8);
+        }
 
-        // // Optimize write path for ~2 GiB of RocksDB memory
-        // opts.optimize_level_style_compaction(1024 * 1024 * 1024);
+        // Optimize write path for ~2 GiB of RocksDB memory
+        opts.optimize_level_style_compaction(4 * 1024 * 1024 * 1024);
 
-        // // Bigger memtables and dynamic level sizes
-        // opts.set_write_buffer_size(256 * 1024 * 1024); // 256 MiB per memtable
-        // opts.set_max_write_buffer_number(6);
-        // opts.set_level_compaction_dynamic_level_bytes(true);
+        // Bigger memtables and dynamic level sizes
+        opts.set_write_buffer_size(512 * 1024 * 1024); // 512 MiB per memtable
+        opts.set_max_write_buffer_number(8);
+        opts.set_level_compaction_dynamic_level_bytes(true);
 
-        // // Larger SSTables → fewer compactions
-        // opts.set_target_file_size_base(128 * 1024 * 1024); // 128 MiB files
+        // Larger SSTables → fewer compactions
+        opts.set_target_file_size_base(128 * 1024 * 1024); // 128 MiB files
 
-        // // Smoother fsync
-        // opts.set_bytes_per_sync(4 * 1024 * 1024);
-        // opts.set_wal_bytes_per_sync(4 * 1024 * 1024);
+        // Smoother fsync
+        opts.set_bytes_per_sync(4 * 1024 * 1024);
+        opts.set_wal_bytes_per_sync(4 * 1024 * 1024);
+        
+
+        let mut block_opts = rocksdb::BlockBasedOptions::default();
+
+        // 8 GiB LRU block cache (tune up/down as you like)
+        let block_cache = rocksdb::Cache::new_lru_cache(8 * 1024 * 1024 * 1024);
+        block_opts.set_block_cache(&block_cache);
+
+        // Bloom filter: ~10 bits/key, not full index
+        block_opts.set_bloom_filter(10.0, false);
+
+        opts.set_block_based_table_factory(&block_opts);
+
+        opts.set_max_open_files(-1); // keep all files open, if OS limits allow
+
+        
+
+        
 
 
         let db = rocksdb::OptimisticTransactionDB::open_cf(&opts, path, tables).unwrap().arc();

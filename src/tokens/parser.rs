@@ -106,20 +106,24 @@ impl TokenCache {
             })
             .collect();
 
-        let wanted: HashSet<(OutPoint, FullHash)> = transfers_to_remove
+        // Use the secondary in-memory index on RuntimeTokenState to load only
+        // the transfers relevant to this block, without scanning all
+        // valid_transfers or hitting RocksDB.
+        for ao in &transfers_to_remove {
+            if let Some(locations) = runtime.transfers_by_outpoint.get(ao) {
+                for loc in locations {
+                    if let Some((addr, proto)) = runtime.valid_transfers.get(loc) {
+                        token_cache.valid_transfers.insert(*loc, (*addr, proto.clone()));
+                    }
+                }
+            }
+        }
+
+        token_cache.all_transfers = token_cache
+            .valid_transfers
             .iter()
-            .map(|ao| (ao.outpoint, ao.address))
+            .map(|(location, (_, proto))| (*location, proto.clone()))
             .collect();
-
-        token_cache.valid_transfers.extend(
-            runtime
-                .valid_transfers
-                .iter()
-                .filter(|(loc, (addr, _))| wanted.contains(&(loc.outpoint, *addr)))
-                .map(|(loc, (addr, proto))| (*loc, (*addr, proto.clone()))),
-        );
-
-        token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
 
         token_cache
     }
@@ -170,67 +174,6 @@ impl TokenCache {
             Brc4::Deploy { proto } if proto.dec <= DeployProto::MAX_DEC && !proto.lim.unwrap_or(proto.max).is_zero() && !proto.max.is_zero() => Ok(brc4),
             _ => Err(Brc4ParseErr::WrongProtocol),
         }
-    }
-
-    fn is_valid_brc20_like_ord(
-        content_type: &str,
-        content: &[u8],
-        cursed_for_brc20: bool,
-        coin: CoinType,
-    ) -> bool {
-        if cursed_for_brc20 {
-            return false;
-        }
-
-        if !content_type.starts_with("application/json")
-            && !content_type.starts_with("text/plain")
-        {
-            return false;
-        }
-
-        if content_type.starts_with("application/json")
-            && content_type != "application/json"
-            && !content_type.starts_with("application/json;")
-        {
-            return false;
-        }
-
-        if content_type.starts_with("text/plain")
-            && content_type != "text/plain"
-            && !content_type.starts_with("text/plain;")
-        {
-            return false;
-        }
-
-        let json: serde_json::Value = match serde_json::from_slice(content) {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
-
-        let Some(protocol) = json.get("p").and_then(|v| v.as_str()) else {
-            return false;
-        };
-
-        // Keep only BRC_* for this coin until we get a better
-        // understanding of prog and module protocols.
-        if protocol != coin.brc_name {
-            return false;
-        }
-
-        // if protocol != "brc-20" && protocol != "brc20-prog" && protocol != "brc20-module" {
-        //     return false;
-        // }
-
-        // if protocol == "brc20-module" {
-        //     let Some(module) = json.get("module").and_then(|m| m.as_str()) else {
-        //         return false;
-        //     };
-        //     if module != "BRC20PROG" {
-        //         return false;
-        //     }
-        // }
-
-        true
     }
 
     /// Parses token action from the InscriptionTemplate.

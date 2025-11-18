@@ -95,11 +95,6 @@ impl Parser<'_> {
             //       cursed/vindicated  => Reinscription
             let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
 
-            // For non-p2tr coins we keep legacy reinscription behaviour which works
-            // with final satpoint locations. This continues to use the old
-            // per-location counter.
-            let mut location_inscription_count: HashMap<(OutPoint, u64), u32> = HashMap::new();
-
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
                 if let Some(inscription_offsets) = inscription_outpoint_to_offsets.remove(&txin.outpoint) {
@@ -213,7 +208,6 @@ impl Parser<'_> {
 
                     for mut inscription_template in inscription_templates {
                         let location = inscription_template.location;
-                        let loc_key = (location.outpoint, location.offset);
 
                         // Determine whether this satpoint was already occupied before this inscription.
                         let offsets_map = inscription_outpoint_to_offsets.entry(location.outpoint).or_default();

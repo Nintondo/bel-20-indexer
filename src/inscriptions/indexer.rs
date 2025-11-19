@@ -131,6 +131,10 @@ impl InscriptionIndexer {
         Ok(())
     }
 
+    pub fn finalize(&mut self) -> anyhow::Result<()> {
+        self.flush_pending_batch()
+    }
+
     fn flush_pending_batch(&mut self) -> anyhow::Result<()> {
         if self.pending_processed.is_empty() {
             return Ok(());

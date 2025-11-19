@@ -109,10 +109,13 @@ impl Indexer {
             }
 
             if self.server.token.is_cancelled() {
+                // Ensure any pre-FIB batched data is flushed before exiting
+                indexer.finalize().track().ok();
                 return Ok(());
             }
         }
-
+        // Flush any remaining pre-FIB batch on graceful loop exit
+        indexer.finalize().track().ok();
         Ok(())
     }
 }

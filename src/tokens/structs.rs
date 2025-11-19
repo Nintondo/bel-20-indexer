@@ -312,6 +312,7 @@ pub struct InscriptionTemplate {
     pub unbound: bool,
     pub reinscription: bool,
     pub vindicated: bool,
+    pub pointer_value: Option<u64>,
 }
 
 pub(crate) struct DeserializeFromStr<T: FromStr>(pub(crate) T);

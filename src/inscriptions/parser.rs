@@ -363,8 +363,10 @@ impl Parser<'_> {
                             // `total_input_value` before examining this input.
                             // Record this inscription under pre-fee input offset as in ord
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
+                                let offset_to_track = inscription_template.pointer_value.unwrap_or(global_input_offset);
+
                                 let entry = inscribed_offsets
-                                    .entry(global_input_offset)
+                                    .entry(offset_to_track)
                                     // If this is the first inscription we see at
                                     // this offset in this tx, the "initial cursed
                                     // or vindicated" flag is simply this
@@ -494,6 +496,7 @@ impl Parser<'_> {
              unbound: false,
              reinscription: false,
              vindicated: false,
+             pointer_value: None,
         };
 
         let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)
@@ -505,6 +508,7 @@ impl Parser<'_> {
         if let Ok((new_vout, new_offset)) = InscriptionSearcher::get_output_index_by_input(pointer, &payload.tx.value.outputs) {
             vout = new_vout;
             offset = new_offset;
+            inscription_template.pointer_value = pointer;
         }
 
         let location: Location = Location {

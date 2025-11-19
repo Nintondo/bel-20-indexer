@@ -77,6 +77,17 @@ impl Parser<'_> {
 
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
+            // Additionally compute pre-fee cumulative input offsets (ord's total_input_value).
+            // inputs_cum is used for routing (post-fee), while inputs_cum_prefee mirrors
+            // ord's notion of cumulative input value before subtracting any fees.
+            let mut inputs_cum_prefee: Vec<u64> = Vec::with_capacity(tx.value.inputs.len());
+            let mut acc_prefee: u64 = 0;
+            for txin in &tx.value.inputs {
+                inputs_cum_prefee.push(acc_prefee);
+                acc_prefee = acc_prefee
+                    .saturating_add(prevouts.get(&txin.outpoint).map(|pv| pv.value).unwrap_or(0));
+            }
+
             // For ord-style reinscription detection (p2tr-only coins), track how many
             // inscriptions we have already seen at each *input offset* in this
             // transaction. This mirrors ord's `inscribed_offsets` map which is keyed
@@ -111,7 +122,8 @@ impl Parser<'_> {
                         // our analogue of ord's `offset = total_input_value +
                         // old_satpoint_offset` when seeding `inscribed_offsets` with
                         // inscriptions that arrive on transaction inputs.
-                        let offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
+                        // Use pre-fee input offset for seeding ord-style map
+                        let offset = inputs_cum_prefee.get(input_index).map(|x| *x + inscription_offset);
 
                         // Seed ord-style `inscribed_offsets` for p2tr-only coins so
                         // that reinscription detection later can see that this input
@@ -295,7 +307,8 @@ impl Parser<'_> {
                                 // `inputs_cum[input_index]` is our analogue of
                                 // ord's `total_input_value` at the beginning of
                                 // this input.
-                                if let Some(global_input_offset) = inputs_cum.get(input_index).copied() {
+                                // Use pre-fee cumulative offset (ord's total_input_value)
+                                if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
                                     if let Some((initial_cursed_or_vindicated, count)) =
                                         inscribed_offsets.get(&global_input_offset)
                                     {
@@ -348,7 +361,8 @@ impl Parser<'_> {
                             // This is the in-memory analogue of ord's
                             // `inscribed_offsets.entry(offset)` where `offset` is
                             // `total_input_value` before examining this input.
-                            if let Some(global_input_offset) = inputs_cum.get(input_index).copied() {
+                            // Record this inscription under pre-fee input offset as in ord
+                            if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
                                 let entry = inscribed_offsets
                                     .entry(global_input_offset)
                                     // If this is the first inscription we see at

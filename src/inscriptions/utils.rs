@@ -25,6 +25,16 @@ impl PrevoutCache {
         self.map.get(key).copied()
     }
 
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     pub fn insert(&mut self, key: OutPoint, value: TxPrevout) {
         if self.map.contains_key(&key) {
             self.map.insert(key, value);

@@ -5,12 +5,19 @@ use crate::inscriptions::utils::{PrevoutCache, PREVOUT_CACHE_CAPACITY};
 
 const FULLHASH_CACHE_CAPACITY: usize = 2_000_000;
 
+// Pre-FIB batching controls
+const PRE_FIB_BATCH_MAX_BLOCKS: usize = 1_000; // flush at most every N pre-FIB blocks
+const PREVOUT_CACHE_SAFETY_MARGIN: usize = 200_000; // keep headroom to avoid evicting uncommitted prevouts
+
 pub struct InscriptionIndexer {
     server: Arc<Server>,
     reorg_cache: Arc<parking_lot::Mutex<ReorgCache>>,
     prevout_cache: PrevoutCache,
     fullhash_cache: std::collections::VecDeque<FullHash>,
     fullhash_set: HashSet<FullHash>,
+    // Pre-FIB batching
+    pending_processed: Vec<ProcessedData>,
+    pending_blocks: usize,
 }
 
 #[derive(Default)]
@@ -28,11 +35,55 @@ impl InscriptionIndexer {
             prevout_cache: PrevoutCache::new(PREVOUT_CACHE_CAPACITY),
             fullhash_cache: std::collections::VecDeque::new(),
             fullhash_set: HashSet::new(),
+            pending_processed: Vec::new(),
+            pending_blocks: 0,
         }
     }
     pub fn handle(&mut self, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
-        let mut to_write = DataToWrite::default();
+        // Decide whether we’re in the pre-FIB fast-sync region
+        let fib = self.server.indexer.coin.fib.unwrap_or_default();
+        let is_pre_fib = block_height < fib;
 
+        // If we’re switching to immediate-commit mode (post-FIB or near tip), flush any pending pre-FIB batch first
+        if (!is_pre_fib || handle_reorgs) && !self.pending_processed.is_empty() {
+            self.flush_pending_batch()?;
+        }
+
+        // Pre-FIB batching path when far from tip (no reorg handling applied)
+        if is_pre_fib && !handle_reorgs {
+            // Predict cache growth to avoid evicting uncommitted outputs:
+            // - outputs are always inserted into cache
+            // - inputs missing from cache are inserted when loaded from DB
+            let predicted_outputs: usize = block.txs.iter().map(|tx| tx.value.outputs.len()).sum();
+            let predicted_missing_inputs: usize = block
+                .txs
+                .iter()
+                .filter(|tx| !tx.value.is_coinbase())
+                .flat_map(|tx| tx.value.inputs.iter())
+                .filter(|inp| self.prevout_cache.get(&inp.outpoint).is_none())
+                .count();
+            let predicted_additions = predicted_outputs + predicted_missing_inputs;
+
+            let cache_cap = self.prevout_cache.capacity();
+            let cache_len = self.prevout_cache.len();
+            let need_flush_for_cache = cache_len + predicted_additions + PREVOUT_CACHE_SAFETY_MARGIN >= cache_cap;
+            let need_flush_for_blocks = self.pending_blocks >= PRE_FIB_BATCH_MAX_BLOCKS;
+
+            if (need_flush_for_cache || need_flush_for_blocks) && !self.pending_processed.is_empty() {
+                self.flush_pending_batch()?;
+            }
+
+            // Build processed data for this block, but don’t commit to DB yet
+            let mut to_write = DataToWrite::default();
+            self.handle_block(&mut to_write, block_height, block, false)?;
+            self.pending_blocks += 1;
+            self.pending_processed.extend(to_write.processed);
+            // No events/history pre-FIB
+            return Ok(());
+        }
+
+        // Immediate commit path (post-FIB or near tip with reorg protection)
+        let mut to_write = DataToWrite::default();
         self.handle_block(&mut to_write, block_height, block, handle_reorgs)?;
 
         if handle_reorgs {
@@ -77,6 +128,23 @@ impl InscriptionIndexer {
             panic!("Failed to send raw event");
         }
 
+        Ok(())
+    }
+
+    fn flush_pending_batch(&mut self) -> anyhow::Result<()> {
+        if self.pending_processed.is_empty() {
+            return Ok(());
+        }
+
+        let mut db_batch = DbBatch::new(&self.server.db);
+        for data in &self.pending_processed {
+            // No reorg journal for deep sync; pass None
+            data.write(&self.server, None, &mut db_batch);
+        }
+        db_batch.write();
+
+        self.pending_processed.clear();
+        self.pending_blocks = 0;
         Ok(())
     }
 

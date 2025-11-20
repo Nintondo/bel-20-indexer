@@ -76,7 +76,7 @@ impl Parser<'_> {
             let mut inscription_index_in_tx = 0;
             let txid: Txid = tx.hash.into();
 
-            // Optional ad-hoc debug: set DEBUG_TXS=txid1,txid2 to trace reinscription decisions.
+            // Optional ad-hoc debug: set DEBUG_TXS=txid1,txid2 to trace reinscription/token decisions.
             let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
                 .ok()
                 .map(|s| {

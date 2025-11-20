@@ -1,6 +1,7 @@
 use nint_blk::{Coin, CoinType};
 
 use super::{proto::*, structs::*, *};
+use std::collections::HashSet;
 
 type Tickers = HashSet<LowerCaseTokenTick>;
 type Users = HashSet<(FullHash, OriginalTokenTick)>;
@@ -178,8 +179,27 @@ impl TokenCache {
 
     /// Parses token action from the InscriptionTemplate.
     pub fn parse_token_action(&mut self, inc: &InscriptionTemplate, height: u32, created: u32) -> Option<TransferProto> {
+        // Optional per-tx debug: set DEBUG_TXS=txid1,txid2 to trace token gating/decisions.
+        let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
+            .ok()
+            .map(|s| {
+                s.split(',')
+                    .filter_map(|t| Txid::from_str(t.trim()).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let log_this_tx = debug_txids.contains(&inc.genesis.txid);
+
         // skip to not add invalid token creation in token_cache
         if inc.owner.is_op_return_hash() || inc.leaked {
+            if log_this_tx {
+                eprintln!(
+                    "[DEBUG_TX] token-skip tx={} reason=owner_opreturn_or_leaked owner_opret={} leaked={}",
+                    inc.genesis.txid,
+                    inc.owner.is_op_return_hash(),
+                    inc.leaked
+                );
+            }
             return None;
         }
 
@@ -194,12 +214,26 @@ impl TokenCache {
                 // Litecoin mainnet/testnet: emulate ord/ord20 behaviour.
                 "ltc-20" => {
                     if inc.cursed_for_brc20 {
+                        if log_this_tx {
+                            eprintln!(
+                                "[DEBUG_TX] token-skip tx={} reason=cursed_for_brc20 ltc20",
+                                inc.genesis.txid
+                            );
+                        }
                         return None;
                     }
                 }
                 // Any other p2tr coin: keep conservative behaviour.
                 _ => {
                     if inc.cursed_for_brc20 || inc.unbound {
+                        if log_this_tx {
+                            eprintln!(
+                                "[DEBUG_TX] token-skip tx={} reason=cursed_or_unbound cursed={} unbound={}",
+                                inc.genesis.txid,
+                                inc.cursed_for_brc20,
+                                inc.unbound
+                            );
+                        }
                         return None;
                     }
                 }
@@ -215,7 +249,14 @@ impl TokenCache {
 
         let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, coin) {
             Ok(ok) => ok,
-            Err(_) => {
+            Err(err) => {
+                if log_this_tx {
+                    eprintln!(
+                        "[DEBUG_TX] token-skip tx={} reason=try_parse err={:?}",
+                        inc.genesis.txid,
+                        err
+                    );
+                }
                 return None;
             }
         };
@@ -243,6 +284,17 @@ impl TokenCache {
                 })
             }
             Brc4::Mint { proto } => {
+                if log_this_tx {
+                    eprintln!(
+                        "[DEBUG_TX] token-mint tx={} tick={:?} amt={:?} owner_opret={} cursed={} unbound={}",
+                        inc.genesis.txid,
+                        proto.tick,
+                        proto.amt,
+                        inc.owner.is_op_return_hash(),
+                        inc.cursed_for_brc20,
+                        inc.unbound
+                    );
+                }
                 self.token_actions.push(TokenAction::Mint {
                     owner: inc.owner,
                     proto,
@@ -251,6 +303,14 @@ impl TokenCache {
                 });
             }
             Brc4::Transfer { proto } => {
+                if log_this_tx {
+                    eprintln!(
+                        "[DEBUG_TX] token-transfer tx={} tick={:?} amt={:?}",
+                        inc.genesis.txid,
+                        proto.tick,
+                        proto.amt
+                    );
+                }
                 self.token_actions.push(TokenAction::Transfer {
                     location: inc.location,
                     owner: inc.owner,

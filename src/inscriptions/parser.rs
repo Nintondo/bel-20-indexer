@@ -14,6 +14,7 @@ use crate::inscriptions::{
 };
 
 use super::*;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Curse {
@@ -74,6 +75,17 @@ impl Parser<'_> {
 
             let mut inscription_index_in_tx = 0;
             let txid: Txid = tx.hash.into();
+
+            // Optional ad-hoc debug: set DEBUG_TXS=txid1,txid2 to trace reinscription decisions.
+            let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
+                .ok()
+                .map(|s| {
+                    s.split(',')
+                        .filter_map(|t| Txid::from_str(t.trim()).ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let log_this_tx = debug_txids.contains(&txid);
 
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
@@ -140,6 +152,13 @@ impl Parser<'_> {
                                     // this offset.
                                     .or_insert((initial_cursed, 0));
                                 entry.1 = entry.1.saturating_add(1);
+
+                                if log_this_tx {
+                                    eprintln!(
+                                        "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
+                                        txid, input_index, global_offset, initial_cursed, entry.1
+                                    );
+                                }
                             }
                         }
 
@@ -244,6 +263,7 @@ impl Parser<'_> {
 
                     for mut inscription_template in inscription_templates {
                         let location = inscription_template.location;
+                        let pointer_raw = inscription_template.pointer_value;
 
                         // Determine whether this satpoint was already occupied before this inscription.
                         let offsets_map = inscription_outpoint_to_offsets.entry(location.outpoint).or_default();
@@ -379,6 +399,25 @@ impl Parser<'_> {
                                 // though realistically we never expect more than a
                                 // handful of inscriptions per input.
                                 entry.1 = entry.1.saturating_add(1);
+
+                                if log_this_tx {
+                                    eprintln!(
+                                        concat!(
+                                            "[DEBUG_TX] new-inscr tx={} input={} base={} ptr={:?} ",
+                                            "curse={:?} base_cursed={} initial_flag={} count={} owner_opret={} location_offset={}"
+                                        ),
+                                        txid,
+                                        input_index,
+                                        global_input_offset,
+                                        pointer_raw,
+                                        curse,
+                                        base_cursed,
+                                        entry.0,
+                                        entry.1,
+                                        inscription_template.owner == *OP_RETURN_HASH,
+                                        location.offset,
+                                    );
+                                }
                             }
 
                             // Persist initial cursed/vindicated state for this location if it's the first inscription here.

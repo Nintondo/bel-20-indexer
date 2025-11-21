@@ -2,6 +2,7 @@ use bellscoin::{consensus, OutPoint, Txid};
 
 use super::*;
 use inscriptions::structs::Part;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Eq, PartialEq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -256,7 +257,7 @@ impl rocksdb_wrapper::Pebble for Partials {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct OffsetOccupancy {
     pub initial_cursed: bool,
     pub count: u8,
@@ -271,27 +272,23 @@ impl OffsetOccupancy {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for OffsetOccupancy {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Repr {
-            Bool(bool),
-            Struct {
-                initial_cursed: bool,
-                count: u8,
-            },
-        }
+pub struct InscriptionOffsets;
 
-        match Repr::deserialize(deserializer)? {
-            Repr::Bool(initial_cursed) => Ok(Self::new(initial_cursed)),
-            Repr::Struct { initial_cursed, count } => Ok(Self {
-                initial_cursed,
-                count,
-            }),
+impl rocksdb_wrapper::Pebble for InscriptionOffsets {
+    type Inner = BTreeMap<u64, OffsetOccupancy>;
+
+    fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
+        rocksdb_wrapper::UsingSerde::<BTreeMap<u64, OffsetOccupancy>>::get_bytes(v)
+    }
+
+    fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        let bytes = v.into_owned();
+        match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, OffsetOccupancy>>::from_bytes(Cow::Borrowed(&bytes)) {
+            Ok(map) => Ok(map),
+            Err(err_new) => match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, bool>>::from_bytes(Cow::Borrowed(&bytes)) {
+                Ok(map) => Ok(map.into_iter().map(|(offset, flag)| (offset, OffsetOccupancy::new(flag))).collect()),
+                Err(_) => Err(err_new),
+            },
         }
     }
 }

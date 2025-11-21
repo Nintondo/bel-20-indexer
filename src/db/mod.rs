@@ -14,7 +14,7 @@ rocksdb_wrapper::generate_db_code! {
     block_info: u32 => BlockInfo,
     prevouts: UsingConsensus<OutPoint> => TxPrevout,
     outpoint_to_partials: UsingConsensus<OutPoint> => Partials,
-    outpoint_to_inscription_offsets: UsingConsensus<OutPoint> => UsingSerde<BTreeMap<u64, bool>>,
+    outpoint_to_inscription_offsets: UsingConsensus<OutPoint> => UsingSerde<BTreeMap<u64, OffsetOccupancy>>,
     last_block: () => u32,
     last_history_id: () => u64,
     proof_of_history: u32 => UsingConsensus<sha256::Hash>,

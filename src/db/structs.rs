@@ -256,6 +256,46 @@ impl rocksdb_wrapper::Pebble for Partials {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Default)]
+pub struct OffsetOccupancy {
+    pub initial_cursed: bool,
+    pub count: u8,
+}
+
+impl OffsetOccupancy {
+    pub fn new(initial_cursed: bool) -> Self {
+        Self {
+            initial_cursed,
+            count: 1,
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for OffsetOccupancy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Bool(bool),
+            Struct {
+                initial_cursed: bool,
+                count: u8,
+            },
+        }
+
+        match Repr::deserialize(deserializer)? {
+            Repr::Bool(initial_cursed) => Ok(Self::new(initial_cursed)),
+            Repr::Struct { initial_cursed, count } => Ok(Self {
+                initial_cursed,
+                count,
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct BlockInfo {
     pub hash: BlockHash,

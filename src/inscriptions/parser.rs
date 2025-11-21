@@ -5,6 +5,7 @@ use nint_blk::{
     Bellscoin, Coin, CoinType,
 };
 
+use crate::db::OffsetOccupancy;
 use crate::inscriptions::{
     indexer::ParsedInscriptionResult,
     leaked::{LeakedInscription, LeakedInscriptions},
@@ -122,7 +123,7 @@ impl Parser<'_> {
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
                 if let Some(inscription_offsets) = inscription_outpoint_to_offsets.remove(&txin.outpoint) {
-                    for (inscription_offset, initial_cursed) in inscription_offsets {
+                    for (inscription_offset, occupancy) in inscription_offsets {
                         let old_location = Location {
                             outpoint: txin.outpoint,
                             offset: inscription_offset,
@@ -130,19 +131,20 @@ impl Parser<'_> {
 
                         let is_token_transfer_move = self.token_cache.all_transfers.contains_key(&old_location);
 
-                        // Global input-space offset for this old inscription. This is
-                        // our analogue of ord's `offset = total_input_value +
-                        // old_satpoint_offset` when seeding `inscribed_offsets` with
-                        // inscriptions that arrive on transaction inputs.
-                        // Use pre-fee input offset for seeding ord-style map
-                        let offset = inputs_cum_prefee.get(input_index).map(|x| *x + inscription_offset);
+                        // This is the ord-style input offset (pre-fee, pre-pointer) used for
+                        // reinscription detection. We aggregate counts by this key in-memory.
+                        let global_input_offset = inputs_cum_prefee.get(input_index).copied();
+
+                        // Global satpoint offset used for routing this inscription to outputs.
+                        let satpoint_offset = inputs_cum_prefee.get(input_index).map(|x| *x + inscription_offset);
 
                         // Seed ord-style `inscribed_offsets` for p2tr-only coins so
                         // that reinscription detection later can see that this input
                         // offset already carried inscriptions before new ones are
                         // created in this transaction.
                         if is_p2tr_only {
-                            if let Some(global_offset) = offset {
+                            if let Some(global_offset) = global_input_offset {
+                                let occ_count = occupancy.count.max(1);
                                 let entry = inscribed_offsets
                                     .entry(global_offset)
                                     // `initial_cursed` is the base_cursed flag we
@@ -150,27 +152,34 @@ impl Parser<'_> {
                                     // inscription was created. We reuse it as our
                                     // "initial cursed or vindicated" indicator for
                                     // this offset.
-                                    .or_insert((initial_cursed, 0));
-                                entry.1 = entry.1.saturating_add(1);
+                                    .or_insert((occupancy.initial_cursed, 0));
+                                entry.1 = entry.1.saturating_add(occ_count);
 
                                 if log_this_tx {
                                     eprintln!(
                                         "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
-                                        txid, input_index, global_offset, initial_cursed, entry.1
+                                        txid, input_index, global_offset, occupancy.initial_cursed, entry.1
                                     );
                                 }
                             }
                         }
 
-                        match InscriptionSearcher::get_output_index_by_input(offset, &tx.value.outputs) {
+                        match InscriptionSearcher::get_output_index_by_input(satpoint_offset, &tx.value.outputs) {
                             Ok((new_vout, new_offset)) => {
                                 let new_outpoint = OutPoint { txid, vout: new_vout };
+                                let occ_count = occupancy.count.max(1);
 
                                 inscription_outpoint_to_offsets
                                     .entry(new_outpoint)
                                     .or_default()
                                     .entry(new_offset)
-                                    .or_insert(initial_cursed);
+                                    .and_modify(|occ| {
+                                        occ.count = occ.count.saturating_add(occ_count);
+                                    })
+                                    .or_insert(OffsetOccupancy {
+                                        initial_cursed: occupancy.initial_cursed,
+                                        count: occ_count,
+                                    });
 
                                 // handle move of token transfer
                                 if is_token_transfer_move {
@@ -269,12 +278,6 @@ impl Parser<'_> {
                         let offsets_map = inscription_outpoint_to_offsets.entry(location.outpoint).or_default();
                         let had_previous_at_location = offsets_map.contains_key(&location.offset);
 
-                        // For non-p2tr coins, always track occupancy like legacy HashSet<u64> did.
-                        // The bool payload is unused for these coins, so we store `false`.
-                        if !is_p2tr_only && !had_previous_at_location {
-                            offsets_map.insert(location.offset, false);
-                        }
-
                         // For non-p2tr coins keep legacy reinscription skipping behavior.
                         if !is_p2tr_only {
                             let mut offset_occupied = had_previous_at_location;
@@ -291,6 +294,9 @@ impl Parser<'_> {
                                 continue;
                             }
                         }
+
+                        // Track the initial cursed/vindicated flag used for persistence.
+                        let mut base_cursed_for_location = false;
 
                         if is_p2tr_only {
                             // --- ord-style curse classification for p2tr-only coins ---
@@ -359,6 +365,7 @@ impl Parser<'_> {
                             // This mirrors ord's notion of "cursed or vindicated" – it is true
                             // whenever a curse pattern is present, regardless of jubilee.
                             let base_cursed = curse.is_some();
+                            base_cursed_for_location = base_cursed;
 
                             // BRC-20-specific cursed flag:
                             //  - For Litecoin (ltc-20), only pre-jubilee curses should be treated
@@ -383,10 +390,8 @@ impl Parser<'_> {
                             // `total_input_value` before examining this input.
                             // Record this inscription under pre-fee input offset as in ord
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
-                                let offset_to_track = inscription_template.pointer_value.unwrap_or(global_input_offset);
-
                                 let entry = inscribed_offsets
-                                    .entry(offset_to_track)
+                                    .entry(global_input_offset)
                                     // If this is the first inscription we see at
                                     // this offset in this tx, the "initial cursed
                                     // or vindicated" flag is simply this
@@ -420,16 +425,26 @@ impl Parser<'_> {
                                 }
                             }
 
-                            // Persist initial cursed/vindicated state for this location if it's the first inscription here.
-                            if !had_previous_at_location {
-                                offsets_map.insert(location.offset, base_cursed);
-                            }
-
                             inscription_template.cursed_for_brc20 = cursed_for_brc20;
                             inscription_template.unbound = unbound;
                             inscription_template.reinscription =
                                 matches!(curse, Some(Curse::Reinscription));
                             inscription_template.vindicated = vindicated;
+                        }
+
+                        // Persist multiplicity and initial cursed/vindicated flag for this location.
+                        if !had_previous_at_location {
+                            offsets_map.insert(
+                                location.offset,
+                                OffsetOccupancy {
+                                    initial_cursed: base_cursed_for_location,
+                                    count: 1,
+                                },
+                            );
+                        } else {
+                            offsets_map.entry(location.offset).and_modify(|occ| {
+                                occ.count = occ.count.saturating_add(1);
+                            });
                         }
 
                         // handle token deploy|mint|transfer creation
@@ -444,7 +459,7 @@ impl Parser<'_> {
                 .entry(location.outpoint)
                 .or_default()
                 .entry(location.offset)
-                .or_insert(false);
+                .or_insert_with(|| OffsetOccupancy::new(false));
         });
 
         data_to_write.push(ProcessedData::InscriptionPartials {
@@ -468,7 +483,7 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, bool>> {
+    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, OffsetOccupancy>> {
         server
             .db
             .outpoint_to_inscription_offsets

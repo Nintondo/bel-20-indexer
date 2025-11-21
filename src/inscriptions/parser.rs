@@ -44,6 +44,91 @@ pub struct Parser<'a> {
     pub token_cache: &'a mut TokenCache,
 }
 
+// Helper used for ord-style reinscription detection: an inscription is cursed
+// when this input offset has already carried more than one inscription, or the
+// first inscription at this offset was not cursed/vindicated.
+fn is_reinscription(inscribed_offsets: &BTreeMap<u64, (bool, u8)>, global_input_offset: u64) -> bool {
+    if let Some((initial_cursed_or_vindicated, count)) = inscribed_offsets.get(&global_input_offset) {
+        *count > 1 || !*initial_cursed_or_vindicated
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn spend_with_multiple_existing_inscriptions_curses_reinscription() {
+        // UTXO already carried two inscriptions at the same input offset.
+        let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
+        inscribed_offsets.insert(10, (true, 2));
+
+        assert!(is_reinscription(&inscribed_offsets, 10));
+
+        // Any curse should mark BRC-20 invalid for non-LTC coins.
+        let coin = CoinType::default(); // Bitcoin settings, only_p2tr = true
+        assert!(compute_cursed_for_brc20(coin, true, false));
+    }
+
+    #[test]
+    fn repeated_inscriptions_in_same_tx_are_cursed_even_with_pointer() {
+        let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
+        let global_offset = 0;
+
+        // First inscription at this input offset is allowed.
+        assert!(!is_reinscription(&inscribed_offsets, global_offset));
+        let (initial_flag_first, count_first) = increment_inscription_count(&mut inscribed_offsets, global_offset, false);
+        assert!(!initial_flag_first);
+        assert_eq!(count_first, 1);
+
+        // Second inscription (same input offset, whether pointered or not) is cursed.
+        assert!(is_reinscription(&inscribed_offsets, global_offset));
+        let (initial_flag_second, count_second) = increment_inscription_count(&mut inscribed_offsets, global_offset, true);
+        assert!(!initial_flag_second);
+        assert_eq!(count_second, 2);
+
+        // A pointer-based inscription would still hash to the same input offset key.
+        assert!(is_reinscription(&inscribed_offsets, global_offset));
+    }
+
+    #[test]
+    fn brc20_gating_rejects_reinscriptions() {
+        let coin = CoinType::default(); // brc-20
+        assert!(compute_cursed_for_brc20(coin, true, false));
+
+        // For ltc-20, curses before jubilee are rejected; after jubilee they are vindicated.
+        let ltc_coin = CoinType {
+            brc_name: "ltc-20",
+            ..CoinType::default()
+        };
+        assert!(compute_cursed_for_brc20(ltc_coin, true, false));
+        assert!(!compute_cursed_for_brc20(ltc_coin, true, true));
+    }
+}
+
+// Increment the inscription counter for a given input offset, preserving the
+// initial cursed/vindicated flag. Returns the stored tuple after increment.
+fn increment_inscription_count(
+    inscribed_offsets: &mut BTreeMap<u64, (bool, u8)>,
+    global_input_offset: u64,
+    base_cursed: bool,
+) -> (bool, u8) {
+    let entry = inscribed_offsets.entry(global_input_offset).or_insert((base_cursed, 0));
+    entry.1 = entry.1.saturating_add(1);
+    *entry
+}
+
+fn compute_cursed_for_brc20(coin: CoinType, base_cursed: bool, jubilant: bool) -> bool {
+    if coin.brc_name == "ltc-20" {
+        base_cursed && !jubilant
+    } else {
+        base_cursed
+    }
+}
+
 impl Parser<'_> {
     pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
         let coin = self.server.indexer.coin;
@@ -319,38 +404,11 @@ impl Parser<'_> {
                             } else if inscription_template.stutter {
                                 curse = Some(Curse::Stutter);
                             } else {
-                                // Potential reinscription curse.
-                                //
-                                // For p2tr-only coins we now follow ord's logic more
-                                // closely by keying reinscription detection off the
-                                // *input offset* (the running total input value
-                                // before this input), not the final satpoint
-                                // (outpoint, offset). This matches ord's use of
-                                // `inscribed_offsets.get(&offset)` where `offset`
-                                // is the `total_input_value` prior to applying any
-                                // pointer.
-                                //
-                                // `inputs_cum[input_index]` is our analogue of
-                                // ord's `total_input_value` at the beginning of
-                                // this input.
-                                // Use pre-fee cumulative offset (ord's total_input_value)
+                                // Potential reinscription curse keyed by the pre-fee
+                                // input offset, mirroring ord/OPI behaviour.
                                 if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
-                                    if let Some((initial_cursed_or_vindicated, count)) =
-                                        inscribed_offsets.get(&global_input_offset)
-                                    {
-                                        if *count > 1 {
-                                            // More than one inscription has already
-                                            // been attached to this input offset
-                                            // in this tx. Any further inscription
-                                            // is a reinscription.
-                                            curse = Some(Curse::Reinscription);
-                                        } else if !*initial_cursed_or_vindicated {
-                                            // Exactly one prior inscription at this
-                                            // input offset and it was blessed (not
-                                            // cursed or vindicated). The *second*
-                                            // one becomes a reinscription.
-                                            curse = Some(Curse::Reinscription);
-                                        }
+                                    if is_reinscription(&inscribed_offsets, global_input_offset) {
+                                        curse = Some(Curse::Reinscription);
                                     }
                                 }
                             }
@@ -372,11 +430,7 @@ impl Parser<'_> {
                             //    as BRC-20-invalid (post-jubilee they are "vindicated").
                             //  - For all other coins (including Bitcoin), preserve existing
                             //    behaviour and treat any curse as BRC-20-invalid.
-                            let cursed_for_brc20 = if coin.brc_name == "ltc-20" {
-                                base_cursed && !jubilant
-                            } else {
-                                base_cursed
-                            };
+                            let cursed_for_brc20 = compute_cursed_for_brc20(coin, base_cursed, jubilant);
 
                             let vindicated = base_cursed && jubilant;
                             let unbound = input_value == 0
@@ -390,20 +444,7 @@ impl Parser<'_> {
                             // `total_input_value` before examining this input.
                             // Record this inscription under pre-fee input offset as in ord
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
-                                let entry = inscribed_offsets
-                                    .entry(global_input_offset)
-                                    // If this is the first inscription we see at
-                                    // this offset in this tx, the "initial cursed
-                                    // or vindicated" flag is simply this
-                                    // inscription's base_cursed value. Later
-                                    // inscriptions at the same offset keep this
-                                    // initial flag unchanged.
-                                    .or_insert((base_cursed, 0));
-
-                                // Saturating add to avoid any possible overflow,
-                                // though realistically we never expect more than a
-                                // handful of inscriptions per input.
-                                entry.1 = entry.1.saturating_add(1);
+                                let (initial_flag, count) = increment_inscription_count(&mut inscribed_offsets, global_input_offset, base_cursed);
 
                                 if log_this_tx {
                                     eprintln!(
@@ -417,8 +458,8 @@ impl Parser<'_> {
                                         pointer_raw,
                                         curse,
                                         base_cursed,
-                                        entry.0,
-                                        entry.1,
+                                        initial_flag,
+                                        count,
                                         inscription_template.owner == *OP_RETURN_HASH,
                                         location.offset,
                                     );

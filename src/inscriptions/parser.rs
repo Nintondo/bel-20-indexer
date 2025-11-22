@@ -221,7 +221,7 @@ impl Parser<'_> {
                         let global_input_offset = inputs_cum_prefee.get(input_index).copied();
 
                         // Global satpoint offset used for routing this inscription to outputs.
-                        let satpoint_offset = inputs_cum_prefee.get(input_index).map(|x| *x + inscription_offset);
+                        let satpoint_offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
 
                         // Seed ord-style `inscribed_offsets` for p2tr-only coins so
                         // that reinscription detection later can see that this input

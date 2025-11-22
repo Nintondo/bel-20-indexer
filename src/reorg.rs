@@ -63,7 +63,7 @@ impl ProceedReorg for TokenHistoryEntry {
 }
 
 pub enum OrdinalsEntry {
-    RestoreOffsets(Vec<(OutPoint, BTreeMap<u64, OffsetOccupancy>)>),
+    RestoreOffsets(Vec<(OutPoint, BTreeMap<u64, OccupancyState>)>),
     RemoveOffsets(Vec<OutPoint>),
     RestorePrevouts(Vec<(OutPoint, TxPrevout)>),
     RestorePartial(Vec<(OutPoint, Partials)>),

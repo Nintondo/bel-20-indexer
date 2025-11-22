@@ -5,7 +5,7 @@ use nint_blk::{
     Bellscoin, Coin, CoinType,
 };
 
-use crate::db::OffsetOccupancy;
+use crate::db::OccupancyState;
 use crate::inscriptions::{
     indexer::ParsedInscriptionResult,
     leaked::{LeakedInscription, LeakedInscriptions},
@@ -13,6 +13,7 @@ use crate::inscriptions::{
     searcher::InscriptionSearcher,
     structs::{InscriptionMeta, ParsedInscription, Part},
 };
+use crate::tokens::InscriptionId;
 
 use super::*;
 use std::collections::HashSet;
@@ -47,12 +48,32 @@ pub struct Parser<'a> {
 // Helper used for ord-style reinscription detection: an inscription is cursed
 // when this input offset has already carried more than one inscription, or the
 // first inscription at this offset was not cursed/vindicated.
-fn is_reinscription(inscribed_offsets: &BTreeMap<u64, (bool, u8)>, global_input_offset: u64) -> bool {
-    if let Some((initial_cursed_or_vindicated, count)) = inscribed_offsets.get(&global_input_offset) {
-        *count > 1 || !*initial_cursed_or_vindicated
-    } else {
-        false
+#[derive(Clone, Debug)]
+struct InscribedOffsetState {
+    first_inscription: Option<InscriptionId>,
+    initial_cursed_or_vindicated: bool,
+    count: u8,
+}
+
+impl InscribedOffsetState {
+    fn from_occupancy(state: &OccupancyState) -> Self {
+        Self {
+            first_inscription: state.first_inscription,
+            initial_cursed_or_vindicated: state.initial_cursed_or_vindicated,
+            count: 0,
+        }
     }
+
+    fn bump(&mut self, delta: u8) {
+        self.count = self.count.saturating_add(delta.max(1));
+    }
+}
+
+fn is_reinscription(inscribed_offsets: &BTreeMap<u64, InscribedOffsetState>, global_input_offset: u64) -> bool {
+    inscribed_offsets
+        .get(&global_input_offset)
+        .map(|entry| entry.count > 1 || !entry.initial_cursed_or_vindicated)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -63,8 +84,15 @@ mod tests {
     #[test]
     fn spend_with_multiple_existing_inscriptions_curses_reinscription() {
         // UTXO already carried two inscriptions at the same input offset.
-        let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
-        inscribed_offsets.insert(10, (true, 2));
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        inscribed_offsets.insert(
+            10,
+            InscribedOffsetState {
+                first_inscription: None,
+                initial_cursed_or_vindicated: true,
+                count: 2,
+            },
+        );
 
         assert!(is_reinscription(&inscribed_offsets, 10));
 
@@ -75,18 +103,20 @@ mod tests {
 
     #[test]
     fn repeated_inscriptions_in_same_tx_are_cursed_even_with_pointer() {
-        let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
         let global_offset = 0;
 
         // First inscription at this input offset is allowed.
         assert!(!is_reinscription(&inscribed_offsets, global_offset));
-        let (initial_flag_first, count_first) = increment_inscription_count(&mut inscribed_offsets, global_offset, false);
+        let (initial_flag_first, count_first) =
+            increment_inscription_count(&mut inscribed_offsets, global_offset, false, None);
         assert!(!initial_flag_first);
         assert_eq!(count_first, 1);
 
         // Second inscription (same input offset, whether pointered or not) is cursed.
         assert!(is_reinscription(&inscribed_offsets, global_offset));
-        let (initial_flag_second, count_second) = increment_inscription_count(&mut inscribed_offsets, global_offset, true);
+        let (initial_flag_second, count_second) =
+            increment_inscription_count(&mut inscribed_offsets, global_offset, true, None);
         assert!(!initial_flag_second);
         assert_eq!(count_second, 2);
 
@@ -107,18 +137,69 @@ mod tests {
         assert!(compute_cursed_for_brc20(ltc_coin, true, false));
         assert!(!compute_cursed_for_brc20(ltc_coin, true, true));
     }
+
+    #[test]
+    fn cursed_first_inscription_allows_one_reinscription() {
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        seed_offset_from_state(&mut inscribed_offsets, 0, OccupancyState::from_legacy(true, 1));
+
+        assert!(!is_reinscription(&inscribed_offsets, 0));
+
+        // After recording the second inscription, the next attempt (third overall)
+        // becomes a cursed reinscription.
+        let _ = increment_inscription_count(&mut inscribed_offsets, 0, true, None);
+        assert!(is_reinscription(&inscribed_offsets, 0));
+    }
+
+    #[test]
+    fn blessed_first_inscription_curses_second() {
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        seed_offset_from_state(&mut inscribed_offsets, 0, OccupancyState::from_legacy(false, 1));
+
+        assert!(is_reinscription(&inscribed_offsets, 0));
+    }
 }
 
 // Increment the inscription counter for a given input offset, preserving the
 // initial cursed/vindicated flag. Returns the stored tuple after increment.
 fn increment_inscription_count(
-    inscribed_offsets: &mut BTreeMap<u64, (bool, u8)>,
+    inscribed_offsets: &mut BTreeMap<u64, InscribedOffsetState>,
     global_input_offset: u64,
     base_cursed: bool,
+    candidate_first: Option<InscriptionId>,
 ) -> (bool, u8) {
-    let entry = inscribed_offsets.entry(global_input_offset).or_insert((base_cursed, 0));
-    entry.1 = entry.1.saturating_add(1);
-    *entry
+    let entry = inscribed_offsets
+        .entry(global_input_offset)
+        .or_insert_with(|| InscribedOffsetState {
+            first_inscription: candidate_first.clone(),
+            initial_cursed_or_vindicated: base_cursed,
+            count: 0,
+        });
+
+    if entry.first_inscription.is_none() && candidate_first.is_some() {
+        entry.first_inscription = candidate_first;
+    }
+
+    let initial_flag = entry.initial_cursed_or_vindicated;
+    entry.bump(1);
+    (initial_flag, entry.count)
+}
+
+fn seed_offset_from_state(
+    inscribed_offsets: &mut BTreeMap<u64, InscribedOffsetState>,
+    global_input_offset: u64,
+    state: OccupancyState,
+) {
+    let entry = inscribed_offsets
+        .entry(global_input_offset)
+        .or_insert_with(|| InscribedOffsetState::from_occupancy(&state));
+    entry.bump(state.count.max(1));
+    if entry.first_inscription.is_none() {
+        entry.first_inscription = state.first_inscription;
+    }
+    if entry.count == state.count.max(1) {
+        entry.initial_cursed_or_vindicated = state.initial_cursed_or_vindicated;
+    }
 }
 
 fn compute_cursed_for_brc20(coin: CoinType, base_cursed: bool, jubilant: bool) -> bool {
@@ -203,7 +284,7 @@ impl Parser<'_> {
             //     * if count == 1 and
             //       initial was not
             //       cursed/vindicated  => Reinscription
-            let mut inscribed_offsets: BTreeMap<u64, (bool, u8)> = BTreeMap::new();
+            let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
 
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
@@ -229,22 +310,23 @@ impl Parser<'_> {
                         // created in this transaction.
                         if is_p2tr_only {
                             if let Some(global_offset) = global_input_offset {
-                                let occ_count = occupancy.count.max(1);
-                                let entry = inscribed_offsets
-                                    .entry(global_offset)
-                                    // `initial_cursed` is the base_cursed flag we
-                                    // stored for this satpoint when its initial
-                                    // inscription was created. We reuse it as our
-                                    // "initial cursed or vindicated" indicator for
-                                    // this offset.
-                                    .or_insert((occupancy.initial_cursed, 0));
-                                entry.1 = entry.1.saturating_add(occ_count);
+                                seed_offset_from_state(
+                                    &mut inscribed_offsets,
+                                    global_offset,
+                                    occupancy.clone(),
+                                );
 
                                 if log_this_tx {
-                                    eprintln!(
-                                        "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
-                                        txid, input_index, global_offset, occupancy.initial_cursed, entry.1
-                                    );
+                                    if let Some(entry) = inscribed_offsets.get(&global_offset) {
+                                        eprintln!(
+                                            "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
+                                            txid,
+                                            input_index,
+                                            global_offset,
+                                            entry.initial_cursed_or_vindicated,
+                                            entry.count
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -261,8 +343,9 @@ impl Parser<'_> {
                                     .and_modify(|occ| {
                                         occ.count = occ.count.saturating_add(occ_count);
                                     })
-                                    .or_insert(OffsetOccupancy {
-                                        initial_cursed: occupancy.initial_cursed,
+                                    .or_insert(OccupancyState {
+                                        first_inscription: occupancy.first_inscription,
+                                        initial_cursed_or_vindicated: occupancy.initial_cursed_or_vindicated,
                                         count: occ_count,
                                     });
 
@@ -357,7 +440,6 @@ impl Parser<'_> {
 
                     for mut inscription_template in inscription_templates {
                         let location = inscription_template.location;
-                        let pointer_raw = inscription_template.pointer_value;
 
                         // Determine whether this satpoint was already occupied before this inscription.
                         let offsets_map = inscription_outpoint_to_offsets.entry(location.outpoint).or_default();
@@ -384,6 +466,8 @@ impl Parser<'_> {
                         let mut base_cursed_for_location = false;
 
                         if is_p2tr_only {
+                            let pointer_raw = inscription_template.pointer_value;
+                            let mut reinscription_flag = had_previous_at_location;
                             // --- ord-style curse classification for p2tr-only coins ---
                             let mut curse: Option<Curse> = None;
 
@@ -437,14 +521,17 @@ impl Parser<'_> {
                                 || matches!(curse, Some(Curse::UnrecognizedEvenField))
                                 || inscription_template.unrecognized_even_field;
 
-                            // Track reinscriptions per input offset for p2tr-only coins.
-                            //
-                            // This is the in-memory analogue of ord's
-                            // `inscribed_offsets.entry(offset)` where `offset` is
-                            // `total_input_value` before examining this input.
-                            // Record this inscription under pre-fee input offset as in ord
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
-                                let (initial_flag, count) = increment_inscription_count(&mut inscribed_offsets, global_input_offset, base_cursed);
+                                if inscribed_offsets.contains_key(&global_input_offset) {
+                                    reinscription_flag = true;
+                                }
+
+                                let (initial_flag, count) = increment_inscription_count(
+                                    &mut inscribed_offsets,
+                                    global_input_offset,
+                                    base_cursed,
+                                    Some(inscription_template.genesis),
+                                );
 
                                 if log_this_tx {
                                     eprintln!(
@@ -468,8 +555,7 @@ impl Parser<'_> {
 
                             inscription_template.cursed_for_brc20 = cursed_for_brc20;
                             inscription_template.unbound = unbound;
-                            inscription_template.reinscription =
-                                matches!(curse, Some(Curse::Reinscription));
+                            inscription_template.reinscription = reinscription_flag;
                             inscription_template.vindicated = vindicated;
                         }
 
@@ -477,10 +563,7 @@ impl Parser<'_> {
                         if !had_previous_at_location {
                             offsets_map.insert(
                                 location.offset,
-                                OffsetOccupancy {
-                                    initial_cursed: base_cursed_for_location,
-                                    count: 1,
-                                },
+                                OccupancyState::new(inscription_template.genesis, base_cursed_for_location),
                             );
                         } else {
                             offsets_map.entry(location.offset).and_modify(|occ| {
@@ -500,7 +583,7 @@ impl Parser<'_> {
                 .entry(location.outpoint)
                 .or_default()
                 .entry(location.offset)
-                .or_insert_with(|| OffsetOccupancy::new(false));
+                .or_insert_with(|| OccupancyState::from_legacy(false, 1));
         });
 
         data_to_write.push(ProcessedData::InscriptionPartials {
@@ -524,7 +607,7 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, OffsetOccupancy>> {
+    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, OccupancyState>> {
         server
             .db
             .outpoint_to_inscription_offsets

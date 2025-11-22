@@ -36,8 +36,8 @@ pub enum ProcessedData {
         to_write: Vec<(OutPoint, Partials)>,
     },
     InscriptionOffset {
-        to_remove: Vec<(OutPoint, BTreeMap<u64, OffsetOccupancy>)>,
-        to_write: Vec<(OutPoint, BTreeMap<u64, OffsetOccupancy>)>,
+        to_remove: Vec<(OutPoint, BTreeMap<u64, OccupancyState>)>,
+        to_write: Vec<(OutPoint, BTreeMap<u64, OccupancyState>)>,
     },
 }
 

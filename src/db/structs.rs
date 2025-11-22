@@ -3,6 +3,7 @@ use bellscoin::{consensus, OutPoint, Txid};
 use super::*;
 use inscriptions::structs::Part;
 use std::collections::BTreeMap;
+use crate::tokens::InscriptionId;
 
 #[derive(Clone, Eq, PartialEq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -258,16 +259,26 @@ impl rocksdb_wrapper::Pebble for Partials {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct OffsetOccupancy {
-    pub initial_cursed: bool,
+pub struct OccupancyState {
+    pub first_inscription: Option<InscriptionId>,
+    pub initial_cursed_or_vindicated: bool,
     pub count: u8,
 }
 
-impl OffsetOccupancy {
-    pub fn new(initial_cursed: bool) -> Self {
+impl OccupancyState {
+    pub fn new(first_inscription: InscriptionId, initial_flag: bool) -> Self {
         Self {
-            initial_cursed,
+            first_inscription: Some(first_inscription),
+            initial_cursed_or_vindicated: initial_flag,
             count: 1,
+        }
+    }
+
+    pub fn from_legacy(initial_flag: bool, count: u8) -> Self {
+        Self {
+            first_inscription: None,
+            initial_cursed_or_vindicated: initial_flag,
+            count,
         }
     }
 }
@@ -275,19 +286,41 @@ impl OffsetOccupancy {
 pub struct InscriptionOffsets;
 
 impl rocksdb_wrapper::Pebble for InscriptionOffsets {
-    type Inner = BTreeMap<u64, OffsetOccupancy>;
+    type Inner = BTreeMap<u64, OccupancyState>;
 
     fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
-        rocksdb_wrapper::UsingSerde::<BTreeMap<u64, OffsetOccupancy>>::get_bytes(v)
+        rocksdb_wrapper::UsingSerde::<BTreeMap<u64, OccupancyState>>::get_bytes(v)
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
         let bytes = v.into_owned();
-        match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, OffsetOccupancy>>::from_bytes(Cow::Borrowed(&bytes)) {
+        match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, OccupancyState>>::from_bytes(Cow::Borrowed(&bytes)) {
             Ok(map) => Ok(map),
-            Err(err_new) => match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, bool>>::from_bytes(Cow::Borrowed(&bytes)) {
-                Ok(map) => Ok(map.into_iter().map(|(offset, flag)| (offset, OffsetOccupancy::new(flag))).collect()),
-                Err(_) => Err(err_new),
+            Err(err_new) => {
+                #[derive(Serialize, Deserialize)]
+                struct LegacyOffsetOccupancy {
+                    initial_cursed: bool,
+                    count: u8,
+                }
+
+                match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, LegacyOffsetOccupancy>>::from_bytes(Cow::Borrowed(&bytes)) {
+                    Ok(map) => Ok(map
+                        .into_iter()
+                        .map(|(offset, legacy)| {
+                            (
+                                offset,
+                                OccupancyState::from_legacy(legacy.initial_cursed, legacy.count.max(1)),
+                            )
+                        })
+                        .collect()),
+                    Err(_) => match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, bool>>::from_bytes(Cow::Borrowed(&bytes)) {
+                        Ok(map) => Ok(map
+                            .into_iter()
+                            .map(|(offset, flag)| (offset, OccupancyState::from_legacy(flag, 1)))
+                            .collect()),
+                        Err(_) => Err(err_new),
+                    },
+                }
             },
         }
     }

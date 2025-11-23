@@ -205,6 +205,17 @@ impl TokenCache {
 
         let coin = self.server.indexer.coin;
 
+        // ord/OPI: reinscriptions are not valid BRC-20 actions.
+        if coin.only_p2tr && inc.reinscription {
+            if log_this_tx {
+                eprintln!(
+                    "[DEBUG_TX] token-skip tx={} reason=reinscription",
+                    inc.genesis.txid
+                );
+            }
+            return None;
+        }
+
         // ord/OPI-style gating for BRC20 inscriptions on p2tr-only coins.
         // Make behaviour coin-specific so that:
         //  - BTC (brc-20) keeps existing logic: reject cursed or unbound inscriptions.

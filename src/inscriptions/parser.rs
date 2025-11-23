@@ -297,11 +297,12 @@ impl Parser<'_> {
 
                         let is_token_transfer_move = self.token_cache.all_transfers.contains_key(&old_location);
 
-                        // This is the ord-style input offset (pre-fee, pre-pointer) used for
-                        // reinscription detection. We aggregate counts by this key in-memory.
-                        let global_input_offset = inputs_cum_prefee.get(input_index).copied();
-
-                        // Global satpoint offset used for routing this inscription to outputs.
+                        // Ord seeds `inscribed_offsets` for old inscriptions at
+                        // `offset = total_input_value + old_satpoint_offset`.
+                        // Here `input_base_prefee` is that `total_input_value`,
+                        // so seeding at `input_base_prefee + inscription_offset`
+                        // mirrors ord's offset computation.
+                        let input_base_prefee = inputs_cum_prefee.get(input_index).copied();
                         let satpoint_offset = inputs_cum.get(input_index).map(|x| *x + inscription_offset);
 
                         // Seed ord-style `inscribed_offsets` for p2tr-only coins so
@@ -309,20 +310,22 @@ impl Parser<'_> {
                         // offset already carried inscriptions before new ones are
                         // created in this transaction.
                         if is_p2tr_only {
-                            if let Some(global_offset) = global_input_offset {
+                            if let Some(input_base) = input_base_prefee {
+                                let seed_key = input_base.saturating_add(inscription_offset);
+
                                 seed_offset_from_state(
                                     &mut inscribed_offsets,
-                                    global_offset,
+                                    seed_key,
                                     occupancy.clone(),
                                 );
 
                                 if log_this_tx {
-                                    if let Some(entry) = inscribed_offsets.get(&global_offset) {
+                                    if let Some(entry) = inscribed_offsets.get(&seed_key) {
                                         eprintln!(
                                             "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
                                             txid,
                                             input_index,
-                                            global_offset,
+                                            seed_key,
                                             entry.initial_cursed_or_vindicated,
                                             entry.count
                                         );

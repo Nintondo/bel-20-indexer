@@ -482,7 +482,7 @@ impl Parser<'_> {
 
                         let in_tx_count = per_sat_counts.get(&loc_key).copied().unwrap_or(0);
                         let total_before = base_count_from_db + in_tx_count;
-                        let per_sat_reinscription = total_before > 0 && (!initial_flag_db || total_before > 1);
+                        let per_sat_reinscription = total_before > 0;
                         per_sat_counts.insert(loc_key, in_tx_count.saturating_add(1));
                             // --- ord-style curse classification for p2tr-only coins ---
                             let mut curse: Option<Curse> = None;

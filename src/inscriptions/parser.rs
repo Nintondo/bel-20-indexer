@@ -285,6 +285,7 @@ impl Parser<'_> {
             //       initial was not
             //       cursed/vindicated  => Reinscription
             let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+            let mut per_sat_counts: HashMap<(OutPoint, u64), u32> = HashMap::new();
 
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
@@ -470,7 +471,19 @@ impl Parser<'_> {
 
                         if is_p2tr_only {
                             let pointer_raw = inscription_template.pointer_value;
-                            let mut reinscription_flag = had_previous_at_location;
+                        let loc_key = (location.outpoint, location.offset);
+
+                        // Satpoint-based multiplicity, using persisted OccupancyState count
+                        // plus per-tx increments to decide reinscription for BRC-20 gating.
+                        let (base_count_from_db, initial_flag_db) = offsets_map
+                            .get(&location.offset)
+                            .map(|state| (u32::from(state.count.max(1)), state.initial_cursed_or_vindicated))
+                            .unwrap_or((0, true));
+
+                        let in_tx_count = per_sat_counts.get(&loc_key).copied().unwrap_or(0);
+                        let total_before = base_count_from_db + in_tx_count;
+                        let per_sat_reinscription = total_before > 0 && (!initial_flag_db || total_before > 1);
+                        per_sat_counts.insert(loc_key, in_tx_count.saturating_add(1));
                             // --- ord-style curse classification for p2tr-only coins ---
                             let mut curse: Option<Curse> = None;
 
@@ -525,10 +538,6 @@ impl Parser<'_> {
                                 || inscription_template.unrecognized_even_field;
 
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
-                                if inscribed_offsets.contains_key(&global_input_offset) {
-                                    reinscription_flag = true;
-                                }
-
                                 let (initial_flag, count) = increment_inscription_count(
                                     &mut inscribed_offsets,
                                     global_input_offset,
@@ -558,7 +567,7 @@ impl Parser<'_> {
 
                             inscription_template.cursed_for_brc20 = cursed_for_brc20;
                             inscription_template.unbound = unbound;
-                            inscription_template.reinscription = reinscription_flag;
+                            inscription_template.reinscription = per_sat_reinscription;
                             inscription_template.vindicated = vindicated;
                         }
 

@@ -538,9 +538,14 @@ impl Parser<'_> {
                                 || inscription_template.unrecognized_even_field;
 
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
+                                // ord uses the pointer-adjusted offset (if present) for reinscription flag/insertion
+                                let target_offset = inscription_template.pointer_value.unwrap_or(global_input_offset);
+
+                                inscription_template.reinscription = inscribed_offsets.contains_key(&target_offset);
+
                                 let (initial_flag, count) = increment_inscription_count(
                                     &mut inscribed_offsets,
-                                    global_input_offset,
+                                    target_offset,
                                     base_cursed,
                                     Some(inscription_template.genesis),
                                 );
@@ -553,7 +558,7 @@ impl Parser<'_> {
                                         ),
                                         txid,
                                         input_index,
-                                        global_input_offset,
+                                        target_offset,
                                         pointer_raw,
                                         curse,
                                         base_cursed,
@@ -567,7 +572,6 @@ impl Parser<'_> {
 
                             inscription_template.cursed_for_brc20 = cursed_for_brc20;
                             inscription_template.unbound = unbound;
-                            inscription_template.reinscription = per_sat_reinscription;
                             inscription_template.vindicated = vindicated;
                         }
 

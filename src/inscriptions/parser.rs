@@ -345,7 +345,9 @@ impl Parser<'_> {
                                     .or_default()
                                     .entry(new_offset)
                                     .and_modify(|occ| {
-                                        occ.count = occ.count.saturating_add(occ_count);
+                                        // Do not accumulate historical multiplicity across moves; keep
+                                        // the current offset multiplicity only.
+                                        occ.count = occ_count;
                                     })
                                     .or_insert(OccupancyState {
                                         first_inscription: occupancy.first_inscription,

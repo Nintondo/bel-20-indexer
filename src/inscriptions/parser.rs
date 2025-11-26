@@ -284,8 +284,10 @@ impl Parser<'_> {
             //     * if count == 1 and
             //       initial was not
             //       cursed/vindicated  => Reinscription
+            // Per-input offset map for ord-style curses.
             let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
-            let mut per_sat_counts: HashMap<(OutPoint, u64), u32> = HashMap::new();
+            // Per-satpoint counter (outpoint, offset) for satpoint-based reinscription detection.
+            let mut location_inscription_count: HashMap<(OutPoint, u64), u32> = HashMap::new();
 
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
@@ -475,19 +477,14 @@ impl Parser<'_> {
                             let pointer_raw = inscription_template.pointer_value;
                         let loc_key = (location.outpoint, location.offset);
 
-                        // Satpoint-based multiplicity, using persisted OccupancyState count
-                        // plus per-tx increments to decide reinscription for BRC-20 gating.
-                        let (base_count_from_db, initial_flag_db) = offsets_map
-                            .get(&location.offset)
-                            .map(|state| (u32::from(state.count.max(1)), state.initial_cursed_or_vindicated))
-                            .unwrap_or((0, true));
-
-                        let in_tx_count = per_sat_counts.get(&loc_key).copied().unwrap_or(0);
+                        // Satpoint-based multiplicity: treat DB occupancy as present/not-present,
+                        // and use a per-tx counter to detect repeats within this transaction.
+                        let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
+                        let in_tx_count = location_inscription_count.get(&loc_key).copied().unwrap_or(0);
                         let total_before = base_count_from_db + in_tx_count;
-                        let per_sat_reinscription = total_before > 0;
-                        per_sat_counts.insert(loc_key, in_tx_count.saturating_add(1));
-                            // --- ord-style curse classification for p2tr-only coins ---
-                            let mut curse: Option<Curse> = None;
+
+                        // --- ord-style curse classification for p2tr-only coins ---
+                        let mut curse: Option<Curse> = None;
 
                             if inscription_template.unrecognized_even_field {
                                 curse = Some(Curse::UnrecognizedEvenField);
@@ -543,8 +540,6 @@ impl Parser<'_> {
                                 // ord uses the pointer-adjusted offset (if present) for reinscription flag/insertion
                                 let target_offset = inscription_template.pointer_value.unwrap_or(global_input_offset);
 
-                                inscription_template.reinscription = inscribed_offsets.contains_key(&target_offset);
-
                                 let (initial_flag, count) = increment_inscription_count(
                                     &mut inscribed_offsets,
                                     target_offset,
@@ -572,8 +567,20 @@ impl Parser<'_> {
                                 }
                             }
 
+                            // Satpoint-based reinscription flag for compatibility with feature/litecoin
+                            let per_sat_reinscription = total_before > 1
+                                || (total_before > 0
+                                    && !offsets_map
+                                        .get(&location.offset)
+                                        .map(|s| s.initial_cursed_or_vindicated)
+                                        .unwrap_or(false));
+
+                            // Update per-tx satpoint count after computing curse/flag
+                            *location_inscription_count.entry(loc_key).or_insert(0) += 1;
+
                             inscription_template.cursed_for_brc20 = cursed_for_brc20;
                             inscription_template.unbound = unbound;
+                            inscription_template.reinscription = per_sat_reinscription;
                             inscription_template.vindicated = vindicated;
                         }
 

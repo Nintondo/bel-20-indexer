@@ -439,7 +439,7 @@ pub struct AddressTokensArgs {
     pub offset: Option<OriginalTokenTickRest>,
     /// Limit of the number of tokens to return.
     #[serde(default = "utils::page_size_default")]
-    #[validate(range(min = 1, max = 100))]
+    #[validate(range(min = 1, max = 1000))]
     pub limit: usize,
     /// Search query by token tick
     pub search: Option<String>,

@@ -30,7 +30,7 @@ parking_lot = "0.12.3"
 dotenv = "0.15.0"
 tokio-stream = "0.1.16"
 axum-streams = { version = "0.20.0", features = ["json"] }
-nintypes = { version = "0.2.2", features = ["bellscoin", "schema"] }
+nintypes = { version = "0.2.11", features = ["bellscoin", "schema"] }
 validator = { version = "0.20.0", features = ["derive"] }
 thiserror = "2.0.12"
 nint-blk = { path = "./packages/new-blk-parser" }

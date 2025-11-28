@@ -99,3 +99,59 @@ impl<'a> DbBatch<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report_table_metrics<K, V>(name: &str, table: &RocksTable<K, V>)
+    where
+        K: Pebble,
+        V: Pebble,
+    {
+        let mut total_bytes: usize = 0;
+        let mut count: usize = 0;
+
+        for (key, value) in table.iter() {
+            let key_bytes = K::get_bytes(&key);
+            total_bytes += key_bytes.len();
+
+            let value_bytes = V::get_bytes(&value);
+            total_bytes += value_bytes.len();
+
+            count += 1;
+        }
+
+        let avg = if count > 0 {
+            total_bytes as f64 / count as f64
+        } else {
+            0.0
+        };
+
+        dbg!(name, count, total_bytes, avg);
+    }
+
+    #[test]
+    fn counts_entries_for_each_table() {
+        dotenv::dotenv().ok();
+
+        let db_path = std::env::var("DB_PATH").unwrap_or_else(|_| crate::DB_PATH.clone());
+        let db = DB::open(&db_path);
+
+        report_table_metrics("token_to_meta", &db.token_to_meta);
+        report_table_metrics("address_location_to_transfer", &db.address_location_to_transfer);
+        report_table_metrics("address_token_to_balance", &db.address_token_to_balance);
+        report_table_metrics("address_token_to_history", &db.address_token_to_history);
+        report_table_metrics("block_info", &db.block_info);
+        report_table_metrics("prevouts", &db.prevouts);
+        report_table_metrics("outpoint_to_partials", &db.outpoint_to_partials);
+        report_table_metrics("outpoint_to_inscription_offsets", &db.outpoint_to_inscription_offsets);
+        report_table_metrics("last_block", &db.last_block);
+        report_table_metrics("last_history_id", &db.last_history_id);
+        report_table_metrics("proof_of_history", &db.proof_of_history);
+        report_table_metrics("block_events", &db.block_events);
+        report_table_metrics("fullhash_to_address", &db.fullhash_to_address);
+        report_table_metrics("outpoint_to_event", &db.outpoint_to_event);
+        report_table_metrics("token_id_to_event", &db.token_id_to_event);
+    }
+}

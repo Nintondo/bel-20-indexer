@@ -1,9 +1,7 @@
-use bitcoin_hashes::sha256;
+use std::collections::HashMap;
 
 use super::*;
 use crate::inscriptions::utils::{PrevoutCache, PREVOUT_CACHE_CAPACITY};
-
-const FULLHASH_CACHE_CAPACITY: usize = 2_000_000;
 
 // Pre-FIB batching controls
 const PRE_FIB_BATCH_MAX_BLOCKS: usize = 1_000; // flush at most every N pre-FIB blocks
@@ -13,8 +11,6 @@ pub struct InscriptionIndexer {
     server: Arc<Server>,
     reorg_cache: Arc<parking_lot::Mutex<ReorgCache>>,
     prevout_cache: PrevoutCache,
-    fullhash_cache: std::collections::VecDeque<FullHash>,
-    fullhash_set: HashSet<FullHash>,
     // Pre-FIB batching
     pending_processed: Vec<ProcessedData>,
     pending_blocks: usize,
@@ -33,8 +29,6 @@ impl InscriptionIndexer {
             reorg_cache,
             server,
             prevout_cache: PrevoutCache::new(PREVOUT_CACHE_CAPACITY),
-            fullhash_cache: std::collections::VecDeque::new(),
-            fullhash_set: HashSet::new(),
             pending_processed: Vec::new(),
             pending_blocks: 0,
         }
@@ -169,35 +163,7 @@ impl InscriptionIndexer {
         let prev_block_height = block_height.checked_sub(1).unwrap_or_default();
         let prev_block_proof = self.server.db.proof_of_history.get(prev_block_height).unwrap_or(*DEFAULT_HASH);
 
-        let outpoint_fullhash_to_address = block
-            .txs
-            .iter()
-            .flat_map(|x| &x.value.outputs)
-            .filter_map(|x| {
-                x.script.address.as_ref().map(|address| {
-                    let fullhash: FullHash = sha256::Hash::hash(&x.out.script_pubkey).into();
-                    (fullhash, address.to_owned())
-                })
-            })
-            .collect::<HashMap<_, _>>();
-
         let prevouts = utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed, Some(&mut self.prevout_cache))?;
-
-        let mut new_fullhashes = Vec::new();
-        for (fullhash, address) in &outpoint_fullhash_to_address {
-            if !self.fullhash_set.contains(fullhash) {
-                self.fullhash_set.insert(*fullhash);
-                self.fullhash_cache.push_back(*fullhash);
-                new_fullhashes.push((*fullhash, address.to_owned()));
-                if self.fullhash_set.len() > FULLHASH_CACHE_CAPACITY {
-                    if let Some(old) = self.fullhash_cache.pop_front() {
-                        self.fullhash_set.remove(&old);
-                    }
-                }
-            }
-        }
-
-        to_write.processed.push(ProcessedData::FullHash { addresses: new_fullhashes });
 
         if block_height < self.server.indexer.coin.fib.unwrap_or_default() {
             to_write.processed.push(ProcessedData::BlockWithoutProof {
@@ -236,7 +202,10 @@ impl InscriptionIndexer {
             server: &self.server,
         };
 
-        parser.parse_block(block_height, block, &prevouts, &mut to_write.processed);
+        // Build a per-block map of txid -> tx so we can resolve script addresses for recipients
+        let tx_by_id: HashMap<Txid, _> = block.txs.iter().map(|tx| (tx.hash.into(), tx)).collect();
+
+        parser.parse_block(block_height, &block, &prevouts, &mut to_write.processed);
 
         token_cache.load_tokens_data(&self.server.db, &*runtime_guard)?;
 
@@ -295,18 +264,57 @@ impl InscriptionIndexer {
             })
             .collect();
 
-        let rest_addresses: AddressesFullHash = self
-            .server
-            .db
-            .fullhash_to_address
-            .multi_get_kv(fullhash_to_load.iter().filter(|x| !outpoint_fullhash_to_address.contains_key(x)), false)
-            .into_iter()
-            .map(|(k, v)| (*k, v))
-            .chain(outpoint_fullhash_to_address)
-            .collect::<HashMap<_, _>>()
-            .into();
+        // Resolve address strings for recipients in this block.
+        let mut new_block_addresses = HashMap::<FullHash, String>::new();
+        for (addr_token, history_value) in &to_write.history {
+            let addr = addr_token.address;
+            if addr == *OP_RETURN_HASH || new_block_addresses.contains_key(&addr) {
+                continue;
+            }
+
+            let outpoint = history_value.action.outpoint();
+            if let Some(tx) = tx_by_id.get(&outpoint.txid) {
+                if let Some(output) = tx.value.outputs.get(outpoint.vout as usize) {
+                    if let Some(address) = output.script.address.as_ref() {
+                        new_block_addresses.entry(addr).or_insert_with(|| address.to_owned());
+                    }
+                }
+            }
+        }
+
+        // Load already-known mappings for any BRC addresses we couldn't resolve from this block.
+        let hashes_to_load: Vec<FullHash> = fullhash_to_load
+            .iter()
+            .filter(|hash| !new_block_addresses.contains_key(*hash) && **hash != *OP_RETURN_HASH)
+            .copied()
+            .collect();
+
+        let existing: HashMap<FullHash, String> = if hashes_to_load.is_empty() {
+            HashMap::new()
+        } else {
+            self.server
+                .db
+                .fullhash_to_address
+                .multi_get_kv(hashes_to_load.iter(), false)
+                .into_iter()
+                .map(|(k, v)| (*k, v))
+                .collect()
+        };
+
+        let mut combined_addresses = existing;
+        for (hash, address) in &new_block_addresses {
+            combined_addresses.entry(*hash).or_insert_with(|| address.clone());
+        }
+
+        let rest_addresses: AddressesFullHash = combined_addresses.into();
 
         let new_proof = Server::generate_history_hash(prev_block_proof, &to_write.history, &rest_addresses)?;
+
+        if !new_block_addresses.is_empty() {
+            to_write.processed.push(ProcessedData::FullHash {
+                addresses: new_block_addresses.into_iter().collect(),
+            });
+        }
 
         to_write.processed.push(ProcessedData::History {
             block_number: block_height,

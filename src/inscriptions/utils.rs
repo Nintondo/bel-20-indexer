@@ -65,27 +65,29 @@ pub fn process_prevouts(
     data_to_write: &mut Vec<ProcessedData>,
     mut cache: Option<&mut PrevoutCache>,
 ) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
-    let prevouts = block
-        .txs
-        .iter()
-        .flat_map(|tx| {
-            let txid = tx.hash;
-            tx.value.outputs.iter().enumerate().map(move |(vout, txout)| {
-                (
-                    OutPoint {
-                        txid: txid.into(),
-                        vout: vout as u32,
-                    },
-                    TxOut {
-                        value: txout.out.value,
-                        script_pubkey: ScriptBuf::from_bytes(txout.out.script_pubkey.clone()),
-                    },
-                )
-            })
-        })
-        .filter(|(_, txout)| !txout.script_pubkey.is_provably_unspendable())
-        .map(|(outpoint, tx_out)| (outpoint, tx_out.into()))
-        .collect::<HashMap<_, TxPrevout>>();
+    // Pre-allocate prevouts HashMap based on the total number of outputs in the block.
+    let outputs_capacity: usize = block.txs.iter().map(|tx| tx.value.outputs.len()).sum();
+    let mut prevouts: HashMap<OutPoint, TxPrevout> = HashMap::with_capacity(outputs_capacity);
+
+    for tx in &block.txs {
+        let txid = tx.hash;
+        for (vout, txout) in tx.value.outputs.iter().enumerate() {
+            let outpoint = OutPoint {
+                txid: txid.into(),
+                vout: vout as u32,
+            };
+            let tx_out = TxOut {
+                value: txout.out.value,
+                script_pubkey: ScriptBuf::from_bytes(txout.out.script_pubkey.clone()),
+            };
+
+            if tx_out.script_pubkey.is_provably_unspendable() {
+                continue;
+            }
+
+            prevouts.insert(outpoint, tx_out.into());
+        }
+    }
 
     let txids_keys = block
         .txs
@@ -95,7 +97,7 @@ pub fn process_prevouts(
         .unique()
         .collect_vec();
 
-    let mut result = HashMap::new();
+    let mut result = HashMap::with_capacity(txids_keys.len());
 
     if !txids_keys.is_empty() {
         let mut missing_keys = Vec::new();

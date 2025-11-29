@@ -211,7 +211,7 @@ fn compute_cursed_for_brc20(coin: CoinType, base_cursed: bool, jubilant: bool) -
 }
 
 impl Parser<'_> {
-    pub fn parse_block(&mut self, height: u32, block: nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
+    pub fn parse_block(&mut self, height: u32, block: &nint_blk::proto::block::Block, prevouts: &HashMap<OutPoint, TxPrevout>, data_to_write: &mut Vec<ProcessedData>) {
         let coin = self.server.indexer.coin;
         let jubilant = height as usize >= coin.jubilee_height.unwrap_or_default();
         let is_p2tr_only = coin.only_p2tr;

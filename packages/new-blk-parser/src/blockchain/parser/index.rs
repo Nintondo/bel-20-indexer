@@ -182,13 +182,14 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange, coin:
     let mut block_index = IndexMap::<u64, Vec<BlockIndexRecord>>::with_capacity(900_000);
     let mut by_hash = HashMap::<sha256d::Hash, BlockIndexRecord>::with_capacity(900_000);
     let mut db_iter = DB::open(path, Options::default())?.new_iter()?;
-    let (mut key, mut value) = (vec![], vec![]);
 
     db_iter.seek(b"b");
     trace!(target: "blkindex", "Scanning block index at {}", path.display());
 
     while db_iter.valid() {
-        db_iter.current(&mut key, &mut value);
+        let Some((key, value)) = db_iter.current() else {
+            break;
+        };
 
         if !is_block_index_record(&key) {
             break;

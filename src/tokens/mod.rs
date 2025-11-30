@@ -11,3 +11,6 @@ pub use parser::{HistoryTokenAction, TokenCache};
 pub use proto::*;
 pub use runtime_state::RuntimeTokenState;
 pub use structs::*;
+
+#[cfg(test)]
+mod parser_tests;

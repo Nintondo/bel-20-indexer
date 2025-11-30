@@ -129,7 +129,7 @@ impl TokenCache {
         token_cache
     }
 
-    fn try_parse(content_type: &str, content: &[u8], coin: CoinType) -> Result<Brc4, Brc4ParseErr> {
+    pub(crate) fn try_parse(content_type: &str, content: &[u8], coin: CoinType) -> Result<Brc4, Brc4ParseErr> {
         // Dogecoin wonky bugfix
         if coin.name == nint_blk::Dogecoin::NAME {
             if !content_type.starts_with("text/plain") && !content_type.starts_with("application/json") {
@@ -141,33 +141,40 @@ impl TokenCache {
             };
         }
 
-        let Ok(data) = String::from_utf8(content.to_vec()) else {
-            return Err(Brc4ParseErr::InvalidUtf8);
-        };
+        // Validate UTF-8 first to preserve existing error semantics.
+        let data = core::str::from_utf8(content).map_err(|_| Brc4ParseErr::InvalidUtf8)?;
 
-        let data = serde_json::from_str::<serde_json::Value>(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?;
-
-        let brc_name = data
-            .as_object()
-            .ok_or(Brc4ParseErr::WrongProtocol)?
-            .get("p")
-            .ok_or(Brc4ParseErr::WrongProtocol)?
-            .as_str()
-            .ok_or(Brc4ParseErr::WrongProtocol)?;
-
-        if brc_name != coin.brc_name {
+        // Cheap byte-level prefilters to skip obviously irrelevant payloads without full JSON work.
+        if content.len() < 4 || !content.windows(3).any(|w| w == b"\"p\"") {
+            return Err(Brc4ParseErr::WrongProtocol);
+        }
+        if !content.windows(coin.brc_name.len()).any(|w| w.eq_ignore_ascii_case(coin.brc_name.as_bytes())) {
             return Err(Brc4ParseErr::WrongProtocol);
         }
 
-        let brc4 = serde_json::from_str::<Brc4>(&serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?).map_err(|error| match error.to_string().as_str() {
+        #[derive(Serialize, Deserialize)]
+        struct Brc4Envelope {
+            #[serde(rename = "p")]
+            protocol: String,
+            #[serde(flatten)]
+            inner: Brc4,
+        }
+
+        let envelope = serde_json::from_str::<Brc4Envelope>(data).map_err(|error| match error.to_string().as_str() {
             "Invalid decimal: empty" => Brc4ParseErr::DecimalEmpty,
             "Invalid decimal: overflow from too many digits" => Brc4ParseErr::DecimalOverflow,
             "value cannot start from + or -" => Brc4ParseErr::DecimalPlusMinus,
             "value cannot start or end with ." => Brc4ParseErr::DecimalDotStartEnd,
             "value cannot contain spaces" => Brc4ParseErr::DecimalSpaces,
             "invalid digit found in string" => Brc4ParseErr::InvalidDigit,
-            msg => Brc4ParseErr::Unknown(msg.to_string()),
+            _ => Brc4ParseErr::WrongProtocol,
         })?;
+
+        if envelope.protocol != coin.brc_name {
+            return Err(Brc4ParseErr::WrongProtocol);
+        }
+
+        let brc4 = envelope.inner;
 
         match &brc4 {
             Brc4::Mint { proto } if !proto.amt.is_zero() => Ok(brc4),
@@ -180,26 +187,26 @@ impl TokenCache {
     /// Parses token action from the InscriptionTemplate.
     pub fn parse_token_action(&mut self, inc: &InscriptionTemplate, height: u32, created: u32) -> Option<TransferProto> {
         // Optional per-tx debug: set DEBUG_TXS=txid1,txid2 to trace token gating/decisions.
-        let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
-            .ok()
-            .map(|s| {
-                s.split(',')
-                    .filter_map(|t| Txid::from_str(t.trim()).ok())
-                    .collect()
-            })
-            .unwrap_or_default();
-        let log_this_tx = debug_txids.contains(&inc.genesis.txid);
+        // let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
+        //     .ok()
+        //     .map(|s| {
+        //         s.split(',')
+        //             .filter_map(|t| Txid::from_str(t.trim()).ok())
+        //             .collect()
+        //     })
+        //     .unwrap_or_default();
+        // let log_this_tx = debug_txids.contains(&inc.genesis.txid);
 
         // skip to not add invalid token creation in token_cache
         if inc.owner.is_op_return_hash() || inc.leaked {
-            if log_this_tx {
-                eprintln!(
-                    "[DEBUG_TX] token-skip tx={} reason=owner_opreturn_or_leaked owner_opret={} leaked={}",
-                    inc.genesis.txid,
-                    inc.owner.is_op_return_hash(),
-                    inc.leaked
-                );
-            }
+            // if log_this_tx {
+            //     eprintln!(
+            //         "[DEBUG_TX] token-skip tx={} reason=owner_opreturn_or_leaked owner_opret={} leaked={}",
+            //         inc.genesis.txid,
+            //         inc.owner.is_op_return_hash(),
+            //         inc.leaked
+            //     );
+            // }
             return None;
         }
 
@@ -208,55 +215,59 @@ impl TokenCache {
         // ord/OPI-style gating for BRC20 inscriptions on p2tr-only coins.
         // Make behaviour coin-specific so that:
         //  - BTC (brc-20) keeps existing logic: reject cursed or unbound inscriptions.
-        //  - LTC (ltc-20) matches ord/ord20: reject only pre-jubilee curses, allow unbound.
         if coin.only_p2tr {
-            match coin.brc_name {
-                // Litecoin mainnet/testnet: emulate ord/ord20 behaviour.
-                "ltc-20" => {
-                    if inc.cursed_for_brc20 {
-                        if log_this_tx {
-                            eprintln!(
-                                "[DEBUG_TX] token-skip tx={} reason=cursed_for_brc20 ltc20",
-                                inc.genesis.txid
-                            );
-                        }
-                        return None;
-                    }
-                }
-                // Any other p2tr coin: keep conservative behaviour.
-                _ => {
-                    if inc.cursed_for_brc20 || inc.unbound {
-                        if log_this_tx {
-                            eprintln!(
-                                "[DEBUG_TX] token-skip tx={} reason=cursed_or_unbound cursed={} unbound={}",
-                                inc.genesis.txid,
-                                inc.cursed_for_brc20,
-                                inc.unbound
-                            );
-                        }
-                        return None;
-                    }
-                }
+            if inc.cursed_for_brc20 || inc.unbound {
+                // if log_this_tx {
+                //     eprintln!(
+                //         "[DEBUG_TX] token-skip tx={} reason=cursed_or_unbound cursed={} unbound={}",
+                //             inc.genesis.txid,
+                //             inc.cursed_for_brc20,
+                //             inc.unbound
+                //     );
+                // }
+                return None;
             }
-        }
 
-            // let content_type = inc.content_type.as_ref()?;
-            // let content = inc.content.as_ref()?;
-
-            // if !Self::is_valid_brc20_like_ord(content_type, content, inc.cursed_for_brc20, coin) {
-            //     return None;
+            // match coin.brc_name {
+            //     // Litecoin mainnet/testnet: emulate ord/ord20 behaviour.
+            //     "ltc-20" => {
+            //         if inc.cursed_for_brc20 {
+            //             if log_this_tx {
+            //                 eprintln!(
+            //                     "[DEBUG_TX] token-skip tx={} reason=cursed_for_brc20 ltc20",
+            //                     inc.genesis.txid
+            //                 );
+            //             }
+            //             return None;
+            //         }
+            //     }
+            //     // Any other p2tr coin: keep conservative behaviour.
+            //     _ => {
+            //         if inc.cursed_for_brc20 || inc.unbound {
+            //             if log_this_tx {
+            //                 eprintln!(
+            //                     "[DEBUG_TX] token-skip tx={} reason=cursed_or_unbound cursed={} unbound={}",
+            //                     inc.genesis.txid,
+            //                     inc.cursed_for_brc20,
+            //                     inc.unbound
+            //                 );
+            //             }
+            //             return None;
+            //         }
+            //     }
             // }
+        }
 
         let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, coin) {
             Ok(ok) => ok,
             Err(err) => {
-                if log_this_tx {
-                    eprintln!(
-                        "[DEBUG_TX] token-skip tx={} reason=try_parse err={:?}",
-                        inc.genesis.txid,
-                        err
-                    );
-                }
+                // if log_this_tx {
+                //     eprintln!(
+                //         "[DEBUG_TX] token-skip tx={} reason=try_parse err={:?}",
+                //         inc.genesis.txid,
+                //         err
+                //     );
+                // }
                 return None;
             }
         };
@@ -284,17 +295,17 @@ impl TokenCache {
                 })
             }
             Brc4::Mint { proto } => {
-                if log_this_tx {
-                    eprintln!(
-                        "[DEBUG_TX] token-mint tx={} tick={:?} amt={:?} owner_opret={} cursed={} unbound={}",
-                        inc.genesis.txid,
-                        proto.tick,
-                        proto.amt,
-                        inc.owner.is_op_return_hash(),
-                        inc.cursed_for_brc20,
-                        inc.unbound
-                    );
-                }
+                // if log_this_tx {
+                //     eprintln!(
+                //         "[DEBUG_TX] token-mint tx={} tick={:?} amt={:?} owner_opret={} cursed={} unbound={}",
+                //         inc.genesis.txid,
+                //         proto.tick,
+                //         proto.amt,
+                //         inc.owner.is_op_return_hash(),
+                //         inc.cursed_for_brc20,
+                //         inc.unbound
+                //     );
+                // }
                 self.token_actions.push(TokenAction::Mint {
                     owner: inc.owner,
                     proto,
@@ -303,14 +314,14 @@ impl TokenCache {
                 });
             }
             Brc4::Transfer { proto } => {
-                if log_this_tx {
-                    eprintln!(
-                        "[DEBUG_TX] token-transfer tx={} tick={:?} amt={:?}",
-                        inc.genesis.txid,
-                        proto.tick,
-                        proto.amt
-                    );
-                }
+                // if log_this_tx {
+                //     eprintln!(
+                //         "[DEBUG_TX] token-transfer tx={} tick={:?} amt={:?}",
+                //         inc.genesis.txid,
+                //         proto.tick,
+                //         proto.amt
+                //     );
+                // }
                 self.token_actions.push(TokenAction::Transfer {
                     location: inc.location,
                     owner: inc.owner,

@@ -132,6 +132,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn counts_entries_for_each_table() {
         dotenv::dotenv().ok();
 

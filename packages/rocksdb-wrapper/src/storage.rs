@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+
 use super::*;
 
 #[derive(Clone)]
@@ -14,19 +15,25 @@ impl RocksDB {
         opts.create_missing_column_families(true);
 
         // Use more background threads (adjust 8 to your core count)
-        opts.increase_parallelism(8);
+        opts.increase_parallelism(12);
         #[allow(unused_must_use)]
         {
             // If available in your rocksdb version
             opts.set_max_background_jobs(8);
         }
 
-        // Optimize write path for ~2 GiB of RocksDB memory
-        opts.optimize_level_style_compaction(4 * 1024 * 1024 * 1024);
+         opts.set_max_subcompactions(4);
+
+
+
+        // Optimize write path for ~8 GiB of RocksDB memory
+        opts.optimize_level_style_compaction(8 * 1024 * 1024 * 1024);
+
+         
 
         // Bigger memtables and dynamic level sizes
-        opts.set_write_buffer_size(512 * 1024 * 1024); // 512 MiB per memtable
-        opts.set_max_write_buffer_number(8);
+        opts.set_write_buffer_size(4 * 1024 * 1024 * 1024); // 4 GB per memtable
+        opts.set_max_write_buffer_number(2);
         opts.set_level_compaction_dynamic_level_bytes(true);
 
         // Larger SSTables → fewer compactions
@@ -35,6 +42,8 @@ impl RocksDB {
         // Smoother fsync
         opts.set_bytes_per_sync(4 * 1024 * 1024);
         opts.set_wal_bytes_per_sync(4 * 1024 * 1024);
+
+
         
 
         let mut block_opts = rocksdb::BlockBasedOptions::default();
@@ -45,10 +54,18 @@ impl RocksDB {
 
         // Bloom filter: ~10 bits/key, not full index
         block_opts.set_bloom_filter(10.0, false);
+        block_opts.set_index_type(rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
+
+
+        block_opts.set_cache_index_and_filter_blocks(true);
+        block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
+        block_opts.set_partition_filters(true);
+
 
         opts.set_block_based_table_factory(&block_opts);
 
         opts.set_max_open_files(-1); // keep all files open, if OS limits allow
+
 
         
 

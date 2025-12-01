@@ -8,6 +8,7 @@
 ```bash
 cargo r -r
 ```
+RUSTFLAGS="-C target-cpu=native" 
 
 ### Steps to index using blk files (faster in 5-20 times)
 

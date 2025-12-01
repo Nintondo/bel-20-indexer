@@ -203,11 +203,13 @@ fn seed_offset_from_state(
 }
 
 fn compute_cursed_for_brc20(coin: CoinType, base_cursed: bool, jubilant: bool) -> bool {
-    if coin.brc_name == "ltc-20" {
-        base_cursed && !jubilant
-    } else {
-        base_cursed
-    }
+
+    // if coin.brc_name == "ltc-20" {
+    //     base_cursed && !jubilant
+    // } else {
+    //     base_cursed
+    // }
+    base_cursed
 }
 
 impl Parser<'_> {
@@ -244,15 +246,15 @@ impl Parser<'_> {
             let txid: Txid = tx.hash.into();
 
             // Optional ad-hoc debug: set DEBUG_TXS=txid1,txid2 to trace reinscription/token decisions.
-            let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
-                .ok()
-                .map(|s| {
-                    s.split(',')
-                        .filter_map(|t| Txid::from_str(t.trim()).ok())
-                        .collect()
-                })
-                .unwrap_or_default();
-            let log_this_tx = debug_txids.contains(&txid);
+            // let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
+            //     .ok()
+            //     .map(|s| {
+            //         s.split(',')
+            //             .filter_map(|t| Txid::from_str(t.trim()).ok())
+            //             .collect()
+            //     })
+            //     .unwrap_or_default();
+            // let log_this_tx = debug_txids.contains(&txid);
 
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
@@ -322,18 +324,18 @@ impl Parser<'_> {
                                     occupancy.clone(),
                                 );
 
-                                if log_this_tx {
-                                    if let Some(entry) = inscribed_offsets.get(&seed_key) {
-                                        eprintln!(
-                                            "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
-                                            txid,
-                                            input_index,
-                                            seed_key,
-                                            entry.initial_cursed_or_vindicated,
-                                            entry.count
-                                        );
-                                    }
-                                }
+                                // if log_this_tx {
+                                //     if let Some(entry) = inscribed_offsets.get(&seed_key) {
+                                //         eprintln!(
+                                //             "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
+                                //             txid,
+                                //             input_index,
+                                //             seed_key,
+                                //             entry.initial_cursed_or_vindicated,
+                                //             entry.count
+                                //         );
+                                //     }
+                                // }
                             }
                         }
 
@@ -547,24 +549,24 @@ impl Parser<'_> {
                                     Some(inscription_template.genesis),
                                 );
 
-                                if log_this_tx {
-                                    eprintln!(
-                                        concat!(
-                                            "[DEBUG_TX] new-inscr tx={} input={} base={} ptr={:?} ",
-                                            "curse={:?} base_cursed={} initial_flag={} count={} owner_opret={} location_offset={}"
-                                        ),
-                                        txid,
-                                        input_index,
-                                        target_offset,
-                                        pointer_raw,
-                                        curse,
-                                        base_cursed,
-                                        initial_flag,
-                                        count,
-                                        inscription_template.owner == *OP_RETURN_HASH,
-                                        location.offset,
-                                    );
-                                }
+                                // if log_this_tx {
+                                //     eprintln!(
+                                //         concat!(
+                                //             "[DEBUG_TX] new-inscr tx={} input={} base={} ptr={:?} ",
+                                //             "curse={:?} base_cursed={} initial_flag={} count={} owner_opret={} location_offset={}"
+                                //         ),
+                                //         txid,
+                                //         input_index,
+                                //         target_offset,
+                                //         pointer_raw,
+                                //         curse,
+                                //         base_cursed,
+                                //         initial_flag,
+                                //         count,
+                                //         inscription_template.owner == *OP_RETURN_HASH,
+                                //         location.offset,
+                                //     );
+                                // }
                             }
 
                             // Satpoint-based reinscription flag for compatibility with feature/litecoin

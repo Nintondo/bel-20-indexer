@@ -60,7 +60,7 @@ impl ProcessedData {
                 batch.put(&server.db.block_info, &block_number, &block_info);
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
-                if let Some(reorg_cache) = reorg_cache.as_mut() {
+                if let Some(rcg) = reorg_cache.as_mut() {
                     let prevouts = server
                         .db
                         .prevouts
@@ -70,7 +70,7 @@ impl ProcessedData {
                         .map(|(v, k)| (*k, v.unwrap_or_else(|| *to_write.get(k).unwrap())))
                         .collect();
 
-                    reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
+                    rcg.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
                 }
 
                 batch.extend(&server.db.prevouts, to_write.iter().map(|(k, v)| (k, v)));
@@ -108,8 +108,8 @@ impl ProcessedData {
                     })
                     .collect_vec();
 
-                if let Some(reorg_cache) = reorg_cache.as_mut() {
-                    reorg_cache.push_token_entry(TokenHistoryEntry::RemoveHistory {
+                if let Some(rcg) = reorg_cache.as_mut() {
+                    rcg.push_token_entry(TokenHistoryEntry::RemoveHistory {
                         height: *block_number,
                         last_history_id: server.db.last_history_id.get(()).unwrap_or_default(),
                         outpoint_to_event: outpoint_to_event.iter().map(|x| x.0).collect(),
@@ -130,7 +130,7 @@ impl ProcessedData {
                 transfers_to_write,
                 transfers_to_remove,
             } => {
-                if let Some(reorg_cache) = reorg_cache.as_mut() {
+                if let Some(rcg) = reorg_cache.as_mut() {
                     // Deploys
                     {
                         let deploys = server
@@ -143,8 +143,26 @@ impl ProcessedData {
 
                         let new_deploys = metas.iter().filter(|x| !deploys.contains_key(&x.0)).map(|x| x.0.clone()).collect_vec();
 
-                        reorg_cache.push_token_entry(TokenHistoryEntry::DeploysToRemove(new_deploys));
-                        reorg_cache.push_token_entry(TokenHistoryEntry::DeploysToRestore(deploys.clone().into_iter().collect()));
+                        rcg.push_token_entry(TokenHistoryEntry::DeploysToRemove(new_deploys.clone()));
+                        rcg.push_token_entry(TokenHistoryEntry::DeploysToRestore(deploys.clone().into_iter().collect()));
+
+                        // Build new deploy_id -> tick entries (for this block)
+                        let meta_map: HashMap<LowerCaseTokenTick, TokenMetaDB> = metas.iter().cloned().collect();
+                        let deploy_map_new: Vec<(InscriptionId, LowerCaseTokenTick)> = new_deploys
+                            .iter()
+                            .filter_map(|tick| meta_map.get(tick).map(|m| (m.genesis, tick.clone())))
+                            .collect();
+
+                        // Record reorg actions if applicable
+                        if !deploy_map_new.is_empty() {
+                            rcg.push_token_entry(TokenHistoryEntry::DeployMapToRemove(deploy_map_new.iter().map(|x| x.0).collect()));
+                            rcg.push_token_entry(TokenHistoryEntry::DeployMapToRestore(deploy_map_new.clone()));
+                        }
+
+                        // Persist new deploy map entries
+                        if !deploy_map_new.is_empty() {
+                            batch.extend(&server.db.deploy_id_to_tick, deploy_map_new.iter().map(|(k, v)| (k, v)));
+                        }
                     }
 
                     // Balances
@@ -159,8 +177,8 @@ impl ProcessedData {
 
                         let new_balances = balances.iter().filter(|x| !balances_before.contains_key(&x.0)).map(|x| x.0).collect_vec();
 
-                        reorg_cache.push_token_entry(TokenHistoryEntry::BalancesBefore(balances_before.into_iter().collect()));
-                        reorg_cache.push_token_entry(TokenHistoryEntry::BalancesToRemove(new_balances));
+                        rcg.push_token_entry(TokenHistoryEntry::BalancesBefore(balances_before.into_iter().collect()));
+                        rcg.push_token_entry(TokenHistoryEntry::BalancesToRemove(new_balances));
                     }
 
                     // Transfers
@@ -174,8 +192,8 @@ impl ProcessedData {
                             .collect_vec();
                         let to_remove_transfers = transfers_to_write.iter().map(|x| x.0.clone()).collect_vec();
 
-                        reorg_cache.push_token_entry(TokenHistoryEntry::RestoreTransfers(to_restore_transfers));
-                        reorg_cache.push_token_entry(TokenHistoryEntry::RemoveTransfers(to_remove_transfers));
+                        rcg.push_token_entry(TokenHistoryEntry::RestoreTransfers(to_restore_transfers));
+                        rcg.push_token_entry(TokenHistoryEntry::RemoveTransfers(to_remove_transfers));
                     }
                 }
 

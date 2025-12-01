@@ -365,23 +365,25 @@ pub struct AddressTokenIdDB {
 
 impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
     type Inner = Self;
-    const FIXED_SIZE: Option<usize> = Some(32 + 4 + 8);
 
     fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
-        let mut result = Vec::with_capacity(Self::FIXED_SIZE.unwrap());
+        let tick_bytes = v.token.as_bytes();
+        let mut result = Vec::with_capacity(32 + 1 + tick_bytes.len() + 8);
         result.extend(v.address);
-        result.extend(v.token.0);
+        result.push(tick_bytes.len() as u8);
+        result.extend(tick_bytes);
         result.extend(v.id.to_be_bytes());
-
         Cow::Owned(result)
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        let address: FullHash = v[..32].try_into().anyhow()?;
-        let token = OriginalTokenTick(v[32..v.len() - 8].try_into().anyhow()?);
-        let id = u64::from_be_bytes(v[v.len() - 8..].try_into().anyhow()?);
-
-        Ok(Self { address, id, token })
+        let bytes = v.into_owned();
+        let address: FullHash = bytes[..32].try_into().anyhow()?;
+        let mut idx = 32;
+        let len = bytes[idx] as usize; idx += 1;
+        let token = OriginalTokenTick::try_from(bytes[idx..idx+len].to_vec())?; idx += len;
+        let id = u64::from_be_bytes(bytes[idx..idx+8].try_into().anyhow()?);
+        Ok(Self { address, token, id })
     }
 }
 
@@ -395,15 +397,19 @@ impl rocksdb_wrapper::Pebble for TokenId {
     type Inner = Self;
 
     fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
-        let mut result = Vec::with_capacity(4 + 8);
-        result.extend(v.token.0);
+        let tb = v.token.as_bytes();
+        let mut result = Vec::with_capacity(1 + tb.len() + 8);
+        result.push(tb.len() as u8);
+        result.extend(tb);
         result.extend(v.id.to_be_bytes());
         Cow::Owned(result)
     }
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        let token = OriginalTokenTick(v[..4].try_into().anyhow()?);
-        let id = u64::from_be_bytes(v[4..].try_into().anyhow()?);
+        let b = v.into_owned();
+        let len = b[0] as usize;
+        let token = OriginalTokenTick::try_from(b[1..1+len].to_vec())?;
+        let id = u64::from_be_bytes(b[1+len..1+len+8].try_into().anyhow()?);
         Ok(Self { token, id })
     }
 }
@@ -427,16 +433,19 @@ impl rocksdb_wrapper::Pebble for AddressToken {
     type Inner = Self;
 
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
-        Ok(Self {
-            address: v[..32].try_into().anyhow()?,
-            token: OriginalTokenTick(v[32..].try_into().expect("Expected [u8;4], but got more")),
-        })
+        let b = v.into_owned();
+        let address: FullHash = b[..32].try_into().anyhow()?;
+        let len = b[32] as usize;
+        let token = OriginalTokenTick::try_from(b[33..33+len].to_vec())?;
+        Ok(Self { address, token })
     }
 
     fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]> {
-        let mut result = Vec::with_capacity(32 + 4);
+        let tb = v.token.as_bytes();
+        let mut result = Vec::with_capacity(32 + 1 + tb.len());
         result.extend(v.address);
-        result.extend(v.token.0);
+        result.push(tb.len() as u8);
+        result.extend(tb);
         Cow::Owned(result)
     }
 }
@@ -466,6 +475,7 @@ pub struct DeployProtoDB {
     pub max: Fixed128,
     pub lim: Fixed128,
     pub dec: u8,
+    pub self_mint: bool,
     pub supply: Fixed128,
     pub transfer_count: u64,
     pub mint_count: u64,
@@ -477,10 +487,10 @@ pub struct DeployProtoDB {
 
 impl DeployProtoDB {
     pub fn is_completed(&self) -> bool {
-        self.supply == Fixed128::from(self.max)
+        if self.max.is_zero() { false } else { self.supply == Fixed128::from(self.max) }
     }
     pub fn mint_percent(&self) -> Fixed128 {
-        self.supply * 100 / self.max
+        if self.max.is_zero() { Fixed128::ZERO } else { self.supply * 100 / self.max }
     }
 }
 

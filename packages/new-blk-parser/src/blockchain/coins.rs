@@ -17,6 +17,8 @@ pub trait Coin {
     const FIB: Option<u32>;
     /// Jubilee height
     const JUBILEE_HEIGHT: Option<usize>;
+    /// Activation height for self-mint and 5-byte tickers
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize>;
     /// BRC-20 protocol name
     const BRC_NAME: &'static str;
     const ONLY_P2RT: bool;
@@ -33,6 +35,7 @@ impl Coin for Bitcoin {
     };
     const FIB: Option<u32> = Some(767_430);
     const JUBILEE_HEIGHT: Option<usize> = Some(824_544);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = Some(837_090);
     const BRC_NAME: &'static str = "brc-20";
     const ONLY_P2RT: bool = true;
 }
@@ -47,6 +50,7 @@ impl Coin for BitcoinTestnet {
     };
     const FIB: Option<u32> = Some(2_413_343);
     const JUBILEE_HEIGHT: Option<usize> = Some(2_544_192);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "brc-20";
     const ONLY_P2RT: bool = true;
 }
@@ -61,6 +65,7 @@ impl Coin for Litecoin {
     };
     const FIB: Option<u32> = Some(2_424_429);
     const JUBILEE_HEIGHT: Option<usize> = Some(2_608_704);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "ltc-20";
     const ONLY_P2RT: bool = true;
 }
@@ -75,6 +80,7 @@ impl Coin for LitecoinTestnet {
     };
     const FIB: Option<u32> = Some(2_669_127);
     const JUBILEE_HEIGHT: Option<usize> = Some(3_096_576);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "ltc-20";
     const ONLY_P2RT: bool = true;
 }
@@ -89,6 +95,7 @@ impl Coin for Dogecoin {
     };
     const FIB: Option<u32> = Some(4_609_001);
     const JUBILEE_HEIGHT: Option<usize> = Some(usize::MAX);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "drc-20";
     const ONLY_P2RT: bool = false;
     const USES_AUX_POW: bool = true;
@@ -104,6 +111,7 @@ impl Coin for DogecoinTestnet {
     };
     const FIB: Option<u32> = Some(4_260_001);
     const JUBILEE_HEIGHT: Option<usize> = Some(usize::MAX);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "drc-20";
     const ONLY_P2RT: bool = false;
     const USES_AUX_POW: bool = true;
@@ -119,6 +127,7 @@ impl Coin for Bellscoin {
     };
     const FIB: Option<u32> = Some(26_371);
     const JUBILEE_HEIGHT: Option<usize> = Some(133_000);
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "bel-20";
     const ONLY_P2RT: bool = false;
     const USES_AUX_POW: bool = true;
@@ -134,6 +143,7 @@ impl Coin for BellscoinTestnet {
     };
     const FIB: Option<u32> = None;
     const JUBILEE_HEIGHT: Option<usize> = None;
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "bel-20";
     const ONLY_P2RT: bool = false;
     const USES_AUX_POW: bool = true;
@@ -149,6 +159,7 @@ impl Coin for Pepecoin {
     };
     const FIB: Option<u32> = None;
     const JUBILEE_HEIGHT: Option<usize> = None;
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "prc-20";
     const ONLY_P2RT: bool = false;
     const USES_AUX_POW: bool = true;
@@ -164,6 +175,7 @@ impl Coin for PepecoinTestnet {
     };
     const FIB: Option<u32> = None;
     const JUBILEE_HEIGHT: Option<usize> = None;
+    const SELF_MINT_ACTIVATION_HEIGHT: Option<usize> = None;
     const BRC_NAME: &'static str = "prc-20";
     const ONLY_P2RT: bool = false;
     const USES_AUX_POW: bool = true;
@@ -178,6 +190,7 @@ pub struct CoinType {
     pub bech32: &'static str,
     pub brc_name: &'static str,
     pub jubilee_height: Option<usize>,
+    pub self_mint_activation_height: Option<usize>,
     pub fib: Option<u32>,
     pub only_p2tr: bool,
     pub uses_aux_pow: bool,
@@ -200,6 +213,7 @@ impl<T: Coin> From<T> for CoinType {
             script_address: config.script_address,
             brc_name: T::BRC_NAME,
             jubilee_height: T::JUBILEE_HEIGHT,
+            self_mint_activation_height: T::SELF_MINT_ACTIVATION_HEIGHT,
             fib: T::FIB,
             only_p2tr: T::ONLY_P2RT,
             uses_aux_pow: T::USES_AUX_POW,

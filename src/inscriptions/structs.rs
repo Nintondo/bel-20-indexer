@@ -1,4 +1,4 @@
-use bellscoin::Script;
+use bellscoin::{Script, Txid};
 use nint_blk::CoinType;
 
 use super::*;
@@ -106,6 +106,49 @@ impl Inscription {
         ];
 
         Some(u64::from_le_bytes(pointer))
+    }
+
+    pub fn parents(&self) -> Vec<InscriptionId> {
+        self
+            .parents
+            .iter()
+            .filter_map(|parent| Self::inscription_id_field(Some(parent)))
+            .collect()
+    }
+
+    fn inscription_id_field(field: Option<&[u8]>) -> Option<InscriptionId> {
+        let value = field.as_ref()?;
+
+        if value.len() < Txid::LEN {
+            return None;
+        }
+
+        if value.len() > Txid::LEN + 4 {
+            return None;
+        }
+
+        let (txid, index) = value.split_at(Txid::LEN);
+
+        if let Some(last) = index.last() {
+            // Accept fixed length encoding with 4 bytes (with potential trailing zeroes)
+            // or variable length (no trailing zeroes)
+            if index.len() != 4 && *last == 0 {
+                return None;
+            }
+        }
+
+        let txid = Txid::from_slice(txid).ok()?;
+
+        let index = [
+            index.first().copied().unwrap_or(0),
+            index.get(1).copied().unwrap_or(0),
+            index.get(2).copied().unwrap_or(0),
+            index.get(3).copied().unwrap_or(0),
+        ];
+
+        let index = u32::from_le_bytes(index);
+
+        Some(InscriptionId { txid, index })
     }
 }
 

@@ -53,11 +53,23 @@ where
     let val = <Cow<str> as serde::Deserialize>::deserialize(deserializer)?;
     let val = val.as_bytes().to_vec();
 
-    if val.len() != 4 {
-        return Err(Error::custom("invalid token tick"));
+    match OriginalTokenTick::try_from(val) {
+        Ok(v) => Ok(v),
+        Err(_) => Err(Error::custom("invalid token tick")),
     }
+}
 
-    Ok(val.try_into().unwrap())
+fn bool_from_string_default_false<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::<String>::deserialize(deserializer)?;
+    Ok(match s.as_deref() {
+        Some("true") => true,
+        Some("false") => false,
+        None => false,
+        _ => return Err(Error::custom("self_mint must be a string 'true' or 'false'")),
+    })
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -97,6 +109,8 @@ pub struct DeployProtoWrapper {
     #[serde(with = ":: serde_with :: As :: < DisplayFromStr >")]
     #[serde(default = "DeployProto::default_dec")]
     pub dec: u8,
+    #[serde(default, deserialize_with = "bool_from_string_default_false")]
+    pub self_mint: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -110,6 +124,8 @@ pub struct DeployProto {
     #[serde(with = ":: serde_with :: As :: < DisplayFromStr >")]
     #[serde(default = "DeployProto::default_dec")]
     pub dec: u8,
+    #[serde(default, deserialize_with = "bool_from_string_default_false")]
+    pub self_mint: bool,
 }
 
 impl DeployProto {

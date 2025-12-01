@@ -62,7 +62,7 @@ pub fn tokens_docs(op: TransformOperation) -> TransformOperation {
 pub async fn token(State(server): State<Arc<Server>>, Query(args): Query<types::TokenArgs>) -> ApiResult<impl IntoApiResponse> {
     args.validate().bad_request_from_error()?;
 
-    let lower_case_token_tick: LowerCaseTokenTick = args.tick.into();
+    let lower_case_token_tick: LowerCaseTokenTick = args.tick.clone().into();
     let token = server
         .db
         .token_to_meta
@@ -184,10 +184,11 @@ pub async fn token_events(
 
         Ok(Json(v))
     } else {
-        let from = TokenId { id: 0, token: token.into() };
+    let token_db: OriginalTokenTick = token.clone().into();
+    let from = TokenId { id: 0, token: token_db };
 
         let offset = args.offset.unwrap_or(u64::MAX);
-        let to = TokenId { id: offset, token: token.into() };
+    let to = TokenId { id: offset, token: token_db };
 
         let keys = server.db.token_id_to_event.range(&from..&to, true).take(args.limit).map(|x| x.1).collect_vec();
         let history = server

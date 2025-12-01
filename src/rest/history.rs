@@ -22,7 +22,7 @@ pub async fn subscribe(State(server): State<Arc<Server>>, Json(payload): Json<ty
                                     continue;
                                 }
 
-                                if !tokens.is_empty() && !tokens.contains(&address_token.token.into()) {
+                                if !tokens.is_empty() && !tokens.contains(&LowerCaseTokenTick::from(&address_token.token)) {
                                     continue;
                                 }
 

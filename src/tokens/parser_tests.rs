@@ -29,7 +29,7 @@ fn try_parse_accepts_valid_deploy() {
     let parsed = TokenCache::try_parse(ct(), content, coin()).unwrap();
     match parsed {
         Brc4::Deploy { proto } => {
-            assert_eq!(proto.tick, OriginalTokenTick(*b"abcd"));
+            assert_eq!(format!("{}", proto.tick), "abcd");
         }
         _ => panic!("expected deploy"),
     }

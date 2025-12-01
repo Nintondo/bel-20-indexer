@@ -669,6 +669,7 @@ impl Parser<'_> {
         };
 
         let content_type = inscription.content_type().map(|x| x.to_owned());
+        let parents_ids = inscription.parents();
 
         let pointer = inscription.pointer();
 
@@ -685,6 +686,7 @@ impl Parser<'_> {
             },
             owner: FullHash::ZERO,
             value: 0,
+            parents: parents_ids,
             leaked: false,
              // ord/OPI compatibility fields, filled from meta and inscription
              input_index: meta.input_index,

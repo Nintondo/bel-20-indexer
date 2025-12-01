@@ -86,6 +86,9 @@ pub struct TokenCache {
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
 
     pub server: Arc<Server>,
+
+    /// Mapping of deploy InscriptionId -> lower-case tick
+    pub deploy_map: HashMap<InscriptionId, LowerCaseTokenTick>,
 }
 
 impl TokenCache {
@@ -97,6 +100,7 @@ impl TokenCache {
             token_actions: Vec::new(),
             tokens: HashMap::new(),
             valid_transfers: BTreeMap::new(),
+            deploy_map: HashMap::new(),
         };
 
         let transfers_to_remove: HashSet<_> = prevouts
@@ -124,6 +128,15 @@ impl TokenCache {
             .valid_transfers
             .iter()
             .map(|(location, (_, proto))| (*location, proto.clone()))
+            .collect();
+
+        // Preload deploy mapping for parent checks
+        token_cache.deploy_map = token_cache
+            .server
+            .db
+            .deploy_id_to_tick
+            .iter()
+            .map(|(k, v)| (k, v))
             .collect();
 
         token_cache
@@ -179,8 +192,17 @@ impl TokenCache {
         match &brc4 {
             Brc4::Mint { proto } if !proto.amt.is_zero() => Ok(brc4),
             Brc4::Transfer { proto } if !proto.amt.is_zero() => Ok(brc4),
-            Brc4::Deploy { proto } if proto.dec <= DeployProto::MAX_DEC && !proto.lim.unwrap_or(proto.max).is_zero() && !proto.max.is_zero() => Ok(brc4),
-            _ => Err(Brc4ParseErr::WrongProtocol),
+            Brc4::Deploy { proto } => {
+                let dec_ok = proto.dec <= DeployProto::MAX_DEC;
+                let ok = if proto.max.is_zero() {
+                    // For max=0, only self_mint tokens allowed and lim must be present and > 0
+                    proto.self_mint && proto.lim.is_some() && !proto.lim.unwrap().is_zero()
+                } else {
+                    !proto.max.is_zero() && !proto.lim.unwrap_or(proto.max).is_zero()
+                };
+                if dec_ok && ok { Ok(brc4) } else { Err(Brc4ParseErr::WrongProtocol) }
+            }
+            &Brc4::Mint { .. } | &Brc4::Transfer { .. } => Err(Brc4ParseErr::WrongProtocol),
         }
     }
 
@@ -276,6 +298,18 @@ impl TokenCache {
             Brc4::Deploy { proto } => {
                 let v = proto;
 
+                // Activation and policy checks
+                let act = coin.self_mint_activation_height;
+                let is_5_byte = v.tick.len() == 5;
+                // 5-byte tickers only active on/after activation height and must be self_mint
+                if is_5_byte {
+                    if !act.map(|h| (height as usize) >= h).unwrap_or(false) { return None; }
+                    if !v.self_mint { return None; }
+                } else {
+                    // 4-byte: if self_mint=true, require activation height
+                    if v.self_mint && !act.map(|h| (height as usize) >= h).unwrap_or(false) { return None; }
+                }
+
                 self.token_actions.push(TokenAction::Deploy {
                     genesis: inc.genesis,
                     proto: DeployProtoDB {
@@ -283,6 +317,7 @@ impl TokenCache {
                         max: v.max,
                         lim: v.lim.unwrap_or(v.max),
                         dec: v.dec,
+                        self_mint: v.self_mint,
                         supply: Fixed128::ZERO,
                         transfer_count: 0,
                         mint_count: 0,
@@ -311,6 +346,7 @@ impl TokenCache {
                     proto,
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
+                    parents: inc.parents.clone(),
                 });
             }
             Brc4::Transfer { proto } => {
@@ -442,6 +478,8 @@ impl TokenCache {
                     let DeployProtoDB { tick, max, lim, dec, .. } = proto.clone();
                     if let std::collections::hash_map::Entry::Vacant(e) = self.tokens.entry(tick.into()) {
                         e.insert(TokenMeta { genesis, proto });
+                        // Remember mapping for parent validation within the same block
+                        self.deploy_map.insert(genesis, LowerCaseTokenTick::from(tick));
 
                         history.push(HistoryTokenAction::Deploy {
                             tick,
@@ -454,7 +492,7 @@ impl TokenCache {
                         });
                     }
                 }
-                TokenAction::Mint { owner, proto, txid, vout } => {
+                TokenAction::Mint { owner, proto, txid, vout, parents } => {
                     let MintProto { tick, amt } = proto;
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;
@@ -467,6 +505,7 @@ impl TokenCache {
                         mint_count,
                         transactions,
                         tick,
+                        self_mint,
                         ..
                     } = &mut token.proto;
 
@@ -478,11 +517,29 @@ impl TokenCache {
                         continue;
                     }
 
-                    if *supply == *max {
-                        continue;
+                    // Self-mint parent check
+                    if *self_mint {
+                        // Require that parents contains the deploy genesis id of this token
+                        let expected = token.genesis;
+                        let has_parent = parents.iter().any(|p| *p == expected)
+                            || parents
+                                .iter()
+                                .any(|p| self.deploy_map.get(p).map(|t| *t == LowerCaseTokenTick::from(*tick)).unwrap_or(false));
+                        if !has_parent {
+                            continue;
+                        }
                     }
-                    let amt = amt.min(*max - *supply);
-                    *supply += amt;
+
+                    if !max.is_zero() {
+                        if *supply == *max {
+                            continue;
+                        }
+                        let amt = amt.min(*max - *supply);
+                        *supply += amt;
+                    } else {
+                        // unlimited supply for self_mint tokens
+                        *supply += amt;
+                    }
                     *transactions += 1;
 
                     let key = AddressToken { address: owner, token: *tick };

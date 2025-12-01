@@ -60,8 +60,8 @@ pub enum Brc4Error {
 }
 
 /// Token tick in the original case (same as in the deploy)
-#[derive(Clone, Copy, Hash, Eq, PartialEq)]
-pub struct OriginalTokenTickRest([u8; 4]);
+#[derive(Clone, Hash, Eq, PartialEq)]
+pub struct OriginalTokenTickRest(pub Vec<u8>);
 
 impl schemars::JsonSchema for OriginalTokenTickRest {
     fn schema_name() -> Cow<'static, str> {
@@ -91,11 +91,12 @@ impl<'de> Deserialize<'de> for OriginalTokenTickRest {
     where
         D: Deserializer<'de>,
     {
-        let bytes: [u8; 4] = String::deserialize(deserializer)?
-            .as_bytes()
-            .try_into()
-            .map_err(|_| serde::de::Error::custom("Invalid tick length"))?;
-        Ok(Self(bytes))
+        let s = String::deserialize(deserializer)?;
+        let b = s.as_bytes();
+        if !(b.len() == 4 || b.len() == 5) {
+            return Err(serde::de::Error::custom("Invalid tick length"));
+        }
+        Ok(Self(b.to_vec()))
     }
 }
 
@@ -119,32 +120,66 @@ impl AsRef<[u8]> for OriginalTokenTickRest {
 
 impl From<OriginalTokenTick> for OriginalTokenTickRest {
     fn from(value: OriginalTokenTick) -> Self {
-        Self(value.0)
+        Self(value.as_bytes().to_vec())
     }
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash, Default, Serialize, Deserialize)]
-pub struct OriginalTokenTick(pub [u8; 4]);
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OriginalTokenTick {
+    Bytes4([u8; 4]),
+    Bytes5([u8; 5]),
+}
+
+impl OriginalTokenTick {
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            OriginalTokenTick::Bytes4(v) => v,
+            OriginalTokenTick::Bytes5(v) => v,
+        }
+    }
+    pub fn len(&self) -> usize {
+        match self {
+            OriginalTokenTick::Bytes4(_) => 4,
+            OriginalTokenTick::Bytes5(_) => 5,
+        }
+    }
+}
+
+impl PartialOrd for OriginalTokenTick {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.as_bytes().cmp(other.as_bytes()))
+    }
+}
+
+impl Ord for OriginalTokenTick {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_bytes().cmp(other.as_bytes())
+    }
+}
 
 impl TryFrom<Vec<u8>> for OriginalTokenTick {
     type Error = anyhow::Error;
-
     fn try_from(v: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(Self(v.try_into().map_err(|_| anyhow::Error::msg("Invalid byte length"))?))
+        match v.len() {
+            4 => Ok(OriginalTokenTick::Bytes4(v.try_into().map_err(|_| anyhow::Error::msg("Invalid length"))?)),
+            5 => Ok(OriginalTokenTick::Bytes5(v.try_into().map_err(|_| anyhow::Error::msg("Invalid length"))?)),
+            _ => anyhow::bail!("Invalid tick length"),
+        }
     }
 }
 
 impl From<OriginalTokenTickRest> for OriginalTokenTick {
     fn from(value: OriginalTokenTickRest) -> Self {
-        Self(value.0)
+        OriginalTokenTick::try_from(value.0).expect("Invalid tick length")
     }
 }
 
 impl From<[u8; 4]> for OriginalTokenTick {
     fn from(v: [u8; 4]) -> Self {
-        Self(v)
+        OriginalTokenTick::Bytes4(v)
     }
 }
+
 impl std::fmt::Debug for OriginalTokenTick {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self, f)
@@ -152,25 +187,31 @@ impl std::fmt::Debug for OriginalTokenTick {
 }
 impl Display for OriginalTokenTick {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", String::from_utf8_lossy(&self.0))
+        write!(f, "{}", String::from_utf8_lossy(self.as_bytes()))
     }
 }
 impl FromStr for OriginalTokenTick {
     type Err = anyhow::Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(s.as_bytes().try_into().anyhow_with("Invalid tick")?))
+        OriginalTokenTick::try_from(s.as_bytes().to_vec())
     }
 }
+
 impl From<OriginalTokenTick> for LowerCaseTokenTick {
     fn from(value: OriginalTokenTick) -> Self {
-        LowerCaseTokenTick::from(value.0)
+        LowerCaseTokenTick::from(value.as_bytes())
     }
 }
 
 impl From<&OriginalTokenTick> for LowerCaseTokenTick {
     fn from(value: &OriginalTokenTick) -> Self {
-        LowerCaseTokenTick::from(&value.0)
+        LowerCaseTokenTick::from(value.as_bytes())
+    }
+}
+
+impl Default for OriginalTokenTick {
+    fn default() -> Self {
+        OriginalTokenTick::Bytes4([0u8; 4])
     }
 }
 
@@ -256,7 +297,7 @@ pub enum TokenAction {
     /// Deploy new token action.
     Deploy { genesis: InscriptionId, proto: DeployProtoDB, owner: FullHash },
     /// Mint new token action.
-    Mint { owner: FullHash, proto: MintProto, txid: Txid, vout: u32 },
+    Mint { owner: FullHash, proto: MintProto, txid: Txid, vout: u32, parents: Vec<InscriptionId> },
     /// Transfer token action.
     Transfer {
         location: Location,
@@ -298,6 +339,7 @@ pub struct InscriptionTemplate {
     pub owner: FullHash,
     pub value: u64,
     pub content: Option<Vec<u8>>,
+    pub parents: Vec<InscriptionId>,
     pub leaked: bool,
     // ord/OPI compatibility fields (used for p2tr coins)
     pub input_index: u32,

@@ -70,6 +70,9 @@ fn main() {
     dotenv::dotenv().ok();
     utils::init_logger();
 
+    // Initialize performance metrics timing
+    INDEXING_METRICS.init();
+
     dbg!(&*BLK_DIR, &*URL, &*USER, &*PASS, &*SERVER_URL,);
 
     let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).unwrap();

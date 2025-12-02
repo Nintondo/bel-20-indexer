@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 
-
 use super::*;
 
 #[derive(Clone)]
@@ -10,69 +9,92 @@ pub struct RocksDB {
 
 impl RocksDB {
     pub fn open_db(path: &str, tables: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
-        let mut opts = rocksdb::Options::default();
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
+        // Collect CF names up front so we can attach per-CF options.
+        let table_names: Vec<String> = tables.into_iter().map(|t| t.as_ref().to_string()).collect();
 
-        // Use more background threads (adjust 8 to your core count)
-        opts.increase_parallelism(12);
+        // DB-wide options (WAL, parallelism, etc.).
+        let mut db_opts = rocksdb::Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
+
+        db_opts.increase_parallelism(12);
         #[allow(unused_must_use)]
         {
-            // If available in your rocksdb version
-            opts.set_max_background_jobs(8);
+            db_opts.set_max_background_jobs(8);
         }
+        db_opts.set_max_open_files(-1); // keep all files open, if OS limits allow
 
-         opts.set_max_subcompactions(4);
+        // Baseline CF options shared by most column families.
+        let mut base_cf_opts = rocksdb::Options::default();
 
+        // Use more background threads for compaction at the CF level.
+        base_cf_opts.increase_parallelism(12);
+        #[allow(unused_must_use)]
+        {
+            base_cf_opts.set_max_background_jobs(8);
+        }
+        base_cf_opts.set_max_subcompactions(4);
 
+        // Optimize write path for ~8 GiB of RocksDB memory.
+        base_cf_opts.optimize_level_style_compaction(8 * 1024 * 1024 * 1024);
 
-        // Optimize write path for ~8 GiB of RocksDB memory
-        opts.optimize_level_style_compaction(8 * 1024 * 1024 * 1024);
+        // Bigger memtables and dynamic level sizes.
+        base_cf_opts.set_write_buffer_size(4 * 1024 * 1024 * 1024); // 4 GB per memtable
+        base_cf_opts.set_max_write_buffer_number(2);
+        base_cf_opts.set_level_compaction_dynamic_level_bytes(true);
 
-         
+        // Larger SSTables → fewer compactions.
+        base_cf_opts.set_target_file_size_base(128 * 1024 * 1024); // 128 MiB files
 
-        // Bigger memtables and dynamic level sizes
-        opts.set_write_buffer_size(4 * 1024 * 1024 * 1024); // 4 GB per memtable
-        opts.set_max_write_buffer_number(2);
-        opts.set_level_compaction_dynamic_level_bytes(true);
+        // Smoother fsync.
+        base_cf_opts.set_bytes_per_sync(4 * 1024 * 1024);
+        base_cf_opts.set_wal_bytes_per_sync(4 * 1024 * 1024);
 
-        // Larger SSTables → fewer compactions
-        opts.set_target_file_size_base(128 * 1024 * 1024); // 128 MiB files
-
-        // Smoother fsync
-        opts.set_bytes_per_sync(4 * 1024 * 1024);
-        opts.set_wal_bytes_per_sync(4 * 1024 * 1024);
-
-
-        
+        // Shared block cache and block-based options.
+        let block_cache = rocksdb::Cache::new_lru_cache(4 * 1024 * 1024 * 1024);
 
         let mut block_opts = rocksdb::BlockBasedOptions::default();
-
-        // 8 GiB LRU block cache (tune up/down as you like)
-        let block_cache = rocksdb::Cache::new_lru_cache(8 * 1024 * 1024 * 1024);
         block_opts.set_block_cache(&block_cache);
-
-        // Bloom filter: ~10 bits/key, not full index
         block_opts.set_bloom_filter(10.0, false);
         block_opts.set_index_type(rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
-
-
         block_opts.set_cache_index_and_filter_blocks(true);
         block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
         block_opts.set_partition_filters(true);
+        base_cf_opts.set_block_based_table_factory(&block_opts);
 
+        // Hot CFs (prevouts, outpoint_to_inscription_offsets) get lighter compression
+        // and prefix-based bloom filters keyed by the 32-byte txid prefix, but reuse
+        // the same shared block cache.
+        let block_cache_hot = rocksdb::Cache::new_lru_cache(8 * 1024 * 1024 * 1024);
 
-        opts.set_block_based_table_factory(&block_opts);
+        let mut hot_cf_opts = base_cf_opts.clone();
+        hot_cf_opts.set_compression_type(rocksdb::DBCompressionType::None);
+        hot_cf_opts.set_prefix_extractor(rocksdb::SliceTransform::create_fixed_prefix(32));
 
-        opts.set_max_open_files(-1); // keep all files open, if OS limits allow
+        let mut hot_block_opts = rocksdb::BlockBasedOptions::default();
+        hot_block_opts.set_block_cache(&block_cache_hot);
+        hot_block_opts.set_bloom_filter(10.0, false);
+        hot_block_opts.set_index_type(rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
+        hot_block_opts.set_cache_index_and_filter_blocks(true);
+        hot_block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
+        hot_block_opts.set_partition_filters(true);
+        hot_block_opts.set_whole_key_filtering(false);
+        hot_cf_opts.set_block_based_table_factory(&hot_block_opts);
 
+        let cf_descriptors: Vec<rocksdb::ColumnFamilyDescriptor> = table_names
+            .into_iter()
+            .map(|name| {
+                let opts = match name.as_str() {
+                    "prevouts" | "outpoint_to_inscription_offsets" => hot_cf_opts.clone(),
+                    _ => base_cf_opts.clone(),
+                };
+                rocksdb::ColumnFamilyDescriptor::new(name, opts)
+            })
+            .collect();
 
-        
-
-        
-
-
-        let db = rocksdb::OptimisticTransactionDB::open_cf(&opts, path, tables).unwrap().arc();
+        let db = rocksdb::OptimisticTransactionDB::open_cf_descriptors(&db_opts, path, cf_descriptors)
+            .unwrap()
+            .arc();
         Self { db }
     }
 
@@ -128,7 +150,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .into_iter()
             .map(|x| {
                 x.unwrap()
-                    .map(|x| V::from_bytes(Cow::Owned((*x).to_vec())).unwrap_or_else(|e| _panic("multi_get", &self.cf, e)))
+                    .map(|x| V::from_bytes(Cow::Borrowed(x.as_ref())).unwrap_or_else(|e| _panic("multi_get", &self.cf, e)))
             })
             .collect()
     }
@@ -142,7 +164,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             .into_iter()
             .map(|x| {
                 x.unwrap()
-                    .map(|x| V::from_bytes(Cow::Owned((*x).to_vec())).unwrap_or_else(|e| _panic("multi_get", &self.cf, e)))
+                    .map(|x| V::from_bytes(Cow::Borrowed(x.as_ref())).unwrap_or_else(|e| _panic("multi_get", &self.cf, e)))
             })
             .zip(keys_bytes.into_iter().map(|x| x.0))
             .filter_map(|(v, k)| {

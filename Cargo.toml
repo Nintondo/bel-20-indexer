@@ -46,3 +46,4 @@ aide = { version = "0.15.0", features = [
     "scalar",
 ] }
 schemars = "0.9.0"
+hashbrown = "0.14"

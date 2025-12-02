@@ -1,9 +1,9 @@
 use bellscoin::{consensus, OutPoint, Txid};
 
 use super::*;
+use crate::tokens::InscriptionId;
 use inscriptions::structs::Part;
 use std::collections::BTreeMap;
-use crate::tokens::InscriptionId;
 
 #[derive(Clone, Eq, PartialEq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -306,22 +306,14 @@ impl rocksdb_wrapper::Pebble for InscriptionOffsets {
                 match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, LegacyOffsetOccupancy>>::from_bytes(Cow::Borrowed(&bytes)) {
                     Ok(map) => Ok(map
                         .into_iter()
-                        .map(|(offset, legacy)| {
-                            (
-                                offset,
-                                OccupancyState::from_legacy(legacy.initial_cursed, legacy.count.max(1)),
-                            )
-                        })
+                        .map(|(offset, legacy)| (offset, OccupancyState::from_legacy(legacy.initial_cursed, legacy.count.max(1))))
                         .collect()),
                     Err(_) => match rocksdb_wrapper::UsingSerde::<BTreeMap<u64, bool>>::from_bytes(Cow::Borrowed(&bytes)) {
-                        Ok(map) => Ok(map
-                            .into_iter()
-                            .map(|(offset, flag)| (offset, OccupancyState::from_legacy(flag, 1)))
-                            .collect()),
+                        Ok(map) => Ok(map.into_iter().map(|(offset, flag)| (offset, OccupancyState::from_legacy(flag, 1))).collect()),
                         Err(_) => Err(err_new),
                     },
                 }
-            },
+            }
         }
     }
 }
@@ -380,9 +372,11 @@ impl rocksdb_wrapper::Pebble for AddressTokenIdDB {
         let bytes = v.into_owned();
         let address: FullHash = bytes[..32].try_into().anyhow()?;
         let mut idx = 32;
-        let len = bytes[idx] as usize; idx += 1;
-        let token = OriginalTokenTick::try_from(bytes[idx..idx+len].to_vec())?; idx += len;
-        let id = u64::from_be_bytes(bytes[idx..idx+8].try_into().anyhow()?);
+        let len = bytes[idx] as usize;
+        idx += 1;
+        let token = OriginalTokenTick::try_from(bytes[idx..idx + len].to_vec())?;
+        idx += len;
+        let id = u64::from_be_bytes(bytes[idx..idx + 8].try_into().anyhow()?);
         Ok(Self { address, token, id })
     }
 }
@@ -408,8 +402,8 @@ impl rocksdb_wrapper::Pebble for TokenId {
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
         let b = v.into_owned();
         let len = b[0] as usize;
-        let token = OriginalTokenTick::try_from(b[1..1+len].to_vec())?;
-        let id = u64::from_be_bytes(b[1+len..1+len+8].try_into().anyhow()?);
+        let token = OriginalTokenTick::try_from(b[1..1 + len].to_vec())?;
+        let id = u64::from_be_bytes(b[1 + len..1 + len + 8].try_into().anyhow()?);
         Ok(Self { token, id })
     }
 }
@@ -436,7 +430,7 @@ impl rocksdb_wrapper::Pebble for AddressToken {
         let b = v.into_owned();
         let address: FullHash = b[..32].try_into().anyhow()?;
         let len = b[32] as usize;
-        let token = OriginalTokenTick::try_from(b[33..33+len].to_vec())?;
+        let token = OriginalTokenTick::try_from(b[33..33 + len].to_vec())?;
         Ok(Self { address, token })
     }
 
@@ -487,10 +481,18 @@ pub struct DeployProtoDB {
 
 impl DeployProtoDB {
     pub fn is_completed(&self) -> bool {
-        if self.max.is_zero() { false } else { self.supply == Fixed128::from(self.max) }
+        if self.max.is_zero() {
+            false
+        } else {
+            self.supply == Fixed128::from(self.max)
+        }
     }
     pub fn mint_percent(&self) -> Fixed128 {
-        if self.max.is_zero() { Fixed128::ZERO } else { self.supply * 100 / self.max }
+        if self.max.is_zero() {
+            Fixed128::ZERO
+        } else {
+            self.supply * 100 / self.max
+        }
     }
 }
 

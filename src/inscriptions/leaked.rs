@@ -1,6 +1,7 @@
 use nint_blk::proto::{tx::EvaluatedTx, Hashed};
 
 use super::*;
+use hashbrown::HashMap;
 
 #[derive(Clone)]
 pub enum LeakedInscription {

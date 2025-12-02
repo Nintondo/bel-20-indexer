@@ -19,6 +19,8 @@ impl VarUint {
     }
 
     pub fn read_from<R: Read + ?Sized>(reader: &mut R) -> io::Result<VarUint> {
+        use crate::timing::BLOCK_READ_METRICS;
+        let start = std::time::Instant::now();
         let first = reader.read_u8()?; // read first length byte
         let vint = match first {
             0x00..=0xfc => VarUint::from(first),
@@ -26,6 +28,7 @@ impl VarUint {
             0xfe => VarUint::from(reader.read_u32::<LittleEndian>()?),
             0xff => VarUint::from(reader.read_u64::<LittleEndian>()?),
         };
+        BLOCK_READ_METRICS.record_varint(start.elapsed());
         Ok(vint)
     }
 }

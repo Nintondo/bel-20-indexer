@@ -297,7 +297,13 @@ pub enum TokenAction {
     /// Deploy new token action.
     Deploy { genesis: InscriptionId, proto: DeployProtoDB, owner: FullHash },
     /// Mint new token action.
-    Mint { owner: FullHash, proto: MintProto, txid: Txid, vout: u32, parents: Vec<InscriptionId> },
+    Mint {
+        owner: FullHash,
+        proto: MintProto,
+        txid: Txid,
+        vout: u32,
+        parents: Vec<InscriptionId>,
+    },
     /// Transfer token action.
     Transfer {
         location: Location,

@@ -1,6 +1,7 @@
 use nint_blk::{Coin, CoinType};
 
 use super::{proto::*, structs::*, *};
+use hashbrown::{HashMap, hash_map::Entry};
 use std::collections::HashSet;
 
 type Tickers = HashSet<LowerCaseTokenTick>;
@@ -402,10 +403,8 @@ impl TokenCache {
         let keys: Vec<_> = users
             .into_iter()
             .filter_map(|(address, tick)| {
-                Some(AddressToken {
-                    address,
-                    token: self.tokens.get(&tick.into())?.proto.tick,
-                })
+                let tick_lc: LowerCaseTokenTick = tick.into();
+                Some(AddressToken { address, token: self.tokens.get(&tick_lc)?.proto.tick })
             })
             .collect();
 
@@ -473,10 +472,11 @@ impl TokenCache {
             match action {
                 TokenAction::Deploy { genesis, proto, owner } => {
                     let DeployProtoDB { tick, max, lim, dec, .. } = proto.clone();
-                    if let std::collections::hash_map::Entry::Vacant(e) = self.tokens.entry(tick.into()) {
+                    let tick_lc: LowerCaseTokenTick = tick.into();
+                    if let Entry::Vacant(e) = self.tokens.entry(tick_lc.clone()) {
                         e.insert(TokenMeta { genesis, proto });
                         // Remember mapping for parent validation within the same block
-                        self.deploy_map.insert(genesis, LowerCaseTokenTick::from(tick));
+                        self.deploy_map.insert(genesis, tick_lc);
 
                         history.push(HistoryTokenAction::Deploy {
                             tick,
@@ -497,7 +497,8 @@ impl TokenCache {
                     parents,
                 } => {
                     let MintProto { tick, amt } = proto;
-                    let Some(token) = self.tokens.get_mut(&tick.into()) else {
+                    let tick_lc: LowerCaseTokenTick = tick.into();
+                    let Some(token) = self.tokens.get_mut(&tick_lc) else {
                         continue;
                     };
                     let DeployProtoDB {
@@ -573,7 +574,8 @@ impl TokenCache {
 
                     let TransferProto { tick, amt } = proto;
 
-                    let Some(token) = self.tokens.get_mut(&tick.into()) else {
+                    let tick_lc: LowerCaseTokenTick = tick.into();
+                    let Some(token) = self.tokens.get_mut(&tick_lc) else {
                         continue;
                     };
                     let DeployProtoDB {
@@ -627,7 +629,8 @@ impl TokenCache {
                         continue;
                     };
 
-                    let token = self.tokens.get_mut(&tick.into()).expect("Tick must exist");
+                    let tick_lc: LowerCaseTokenTick = tick.into();
+                    let token = self.tokens.get_mut(&tick_lc).expect("Tick must exist");
 
                     let DeployProtoDB { transactions, tick, .. } = &mut token.proto;
 

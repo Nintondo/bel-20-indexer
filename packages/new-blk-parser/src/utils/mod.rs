@@ -7,11 +7,10 @@ pub use client::{Auth, Client};
 pub use range::BlockHeightRange;
 
 pub fn arr_to_hex(data: &[u8]) -> String {
-    data.iter()
-        .fold(String::with_capacity(data.len() * 2), |mut output, b| {
-            write!(output, "{b:02x?}").unwrap();
-            output
-        })
+    data.iter().fold(String::with_capacity(data.len() * 2), |mut output, b| {
+        write!(output, "{b:02x?}").unwrap();
+        output
+    })
 }
 
 /// Calculates merkle root for the whole block
@@ -30,13 +29,9 @@ pub fn merkle_root(hashes: Vec<sha256d::Hash>) -> sha256d::Hash {
         // If the length is odd, take the last hash twice
         if hashes.len() % 2 == 1 {
             let last_hash = hashes.last().unwrap();
-            new_hashes.push(sha256d::Hash::hash(
-                &[&last_hash[..], &last_hash[..]].concat(),
-            ));
+            new_hashes.push(sha256d::Hash::hash(&[&last_hash[..], &last_hash[..]].concat()));
         }
         hashes = new_hashes;
     }
-    *hashes
-        .first()
-        .expect("unable to calculate merkle root on empty hashes")
+    *hashes.first().expect("unable to calculate merkle root on empty hashes")
 }

@@ -32,9 +32,6 @@ impl From<BlockId> for (u64, sha256d::Hash) {
 
 impl From<(&u64, &sha256d::Hash)> for BlockId {
     fn from((height, hash): (&u64, &sha256d::Hash)) -> Self {
-        Self {
-            height: *height,
-            hash: *hash,
-        }
+        Self { height: *height, hash: *hash }
     }
 }

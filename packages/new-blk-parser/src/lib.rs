@@ -17,8 +17,9 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{
     blockchain::{
@@ -30,12 +31,26 @@ use crate::{
 };
 
 mod blockchain;
+pub mod timing;
 mod utils;
 
 pub use blockchain::*;
+pub use timing::BLOCK_READ_METRICS;
 pub use utils::{Auth, Client};
 
-const BOUNDED_CHANNEL_SIZE: usize = 30;
+const BOUNDED_CHANNEL_SIZE: usize = 1024;
+
+static SCRIPT_EVAL_ENABLED: AtomicBool = AtomicBool::new(true);
+
+#[inline]
+pub fn set_script_eval_enabled(enabled: bool) {
+    SCRIPT_EVAL_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+#[inline]
+pub fn is_script_eval_enabled() -> bool {
+    SCRIPT_EVAL_ENABLED.load(Ordering::Relaxed)
+}
 
 type Result<T> = std::result::Result<T, anyhow::Error>;
 
@@ -95,15 +110,22 @@ impl Indexer {
             .unwrap();
 
             let max_height = chain.max_height();
+            let fib_height = self.coin.fib.unwrap_or(0) as u64;
 
             for height in last_height..=max_height {
                 if self.token.is_cancelled() {
                     return;
                 }
 
+                // Skip heavy script evaluation for pre-FIB blocks; inscriptions
+                // logic never inspects addresses there.
+                set_script_eval_enabled(height >= fib_height);
+
+                let read_start = Instant::now();
                 let Some(block) = chain.get_block(height).unwrap() else {
                     break;
                 };
+                BLOCK_READ_METRICS.record(read_start.elapsed());
 
                 let event = BlockEvent {
                     id: BlockId { height, hash: block.header.hash },
@@ -165,6 +187,9 @@ impl Indexer {
                         while checkpoint.height() < best_height {
                             let next_height = checkpoint.height() + 1;
                             let next_hash = self.client.get_block_hash(next_height).unwrap();
+                            // Apply the same pre-FIB optimization when tailing
+                            // blocks via RPC.
+                            set_script_eval_enabled(next_height >= fib_height);
                             let block = self.client.get_block(&next_hash).unwrap();
 
                             // Guard if reorg happened in the mid of loop
@@ -201,6 +226,9 @@ impl Indexer {
                     continue;
                 }
             }
+
+            // Default back to full evaluation once the parsing loop exits.
+            set_script_eval_enabled(true);
         });
 
         rx

@@ -184,11 +184,11 @@ pub async fn token_events(
 
         Ok(Json(v))
     } else {
-    let token_db: OriginalTokenTick = token.clone().into();
-    let from = TokenId { id: 0, token: token_db };
+        let token_db: OriginalTokenTick = token.clone().into();
+        let from = TokenId { id: 0, token: token_db };
 
         let offset = args.offset.unwrap_or(u64::MAX);
-    let to = TokenId { id: offset, token: token_db };
+        let to = TokenId { id: offset, token: token_db };
 
         let keys = server.db.token_id_to_event.range(&from..&to, true).take(args.limit).map(|x| x.1).collect_vec();
         let history = server

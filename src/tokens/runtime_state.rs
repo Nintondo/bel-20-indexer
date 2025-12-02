@@ -10,17 +10,9 @@ pub struct RuntimeTokenState {
 
 impl RuntimeTokenState {
     pub fn from_db(db: &DB) -> Self {
-        let tokens = db
-            .token_to_meta
-            .iter()
-            .map(|(k, v)| (k, TokenMeta::from(v)))
-            .collect();
+        let tokens = db.token_to_meta.iter().map(|(k, v)| (k, TokenMeta::from(v))).collect();
 
-        let balances = db
-            .address_token_to_balance
-            .iter()
-            .map(|(k, v)| (k, v))
-            .collect();
+        let balances = db.address_token_to_balance.iter().map(|(k, v)| (k, v)).collect();
 
         // Build both primary map and secondary index in a single pass.
         let mut valid_transfers = BTreeMap::<Location, (FullHash, TransferProtoDB)>::new();

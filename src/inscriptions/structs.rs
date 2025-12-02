@@ -109,11 +109,7 @@ impl Inscription {
     }
 
     pub fn parents(&self) -> Vec<InscriptionId> {
-        self
-            .parents
-            .iter()
-            .filter_map(|parent| Self::inscription_id_field(Some(parent)))
-            .collect()
+        self.parents.iter().filter_map(|parent| Self::inscription_id_field(Some(parent))).collect()
     }
 
     fn inscription_id_field(field: Option<&[u8]>) -> Option<InscriptionId> {

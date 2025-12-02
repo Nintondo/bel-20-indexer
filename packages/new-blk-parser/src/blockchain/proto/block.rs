@@ -17,17 +17,8 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new(
-        size: u32,
-        header: BlockHeader,
-        aux_pow_extension: Option<AuxPowExtension>,
-        tx_count: VarUint,
-        txs: Vec<RawTx>,
-    ) -> Block {
-        let txs = txs
-            .into_par_iter()
-            .map(|raw| Hashed::double_sha256(EvaluatedTx::from(raw)))
-            .collect();
+    pub fn new(size: u32, header: BlockHeader, aux_pow_extension: Option<AuxPowExtension>, tx_count: VarUint, txs: Vec<RawTx>) -> Block {
+        let txs = txs.into_par_iter().map(|raw| Hashed::double_sha256(EvaluatedTx::from(raw))).collect();
         Block {
             size,
             header: Hashed::double_sha256(header),
@@ -39,11 +30,7 @@ impl Block {
 
     /// Computes merkle root for all containing transactions
     pub fn compute_merkle_root(&self) -> sha256d::Hash {
-        let hashes = self
-            .txs
-            .iter()
-            .map(|tx| tx.hash)
-            .collect::<Vec<sha256d::Hash>>();
+        let hashes = self.txs.iter().map(|tx| tx.hash).collect::<Vec<sha256d::Hash>>();
         utils::merkle_root(hashes)
     }
 
@@ -55,10 +42,7 @@ impl Block {
         if merkle_root == self.header.value.merkle_root {
             Ok(())
         } else {
-            let msg = format!(
-                "Invalid merkle_root!\n  -> expected: {}\n  -> got: {}\n",
-                &self.header.value.merkle_root, &merkle_root
-            );
+            let msg = format!("Invalid merkle_root!\n  -> expected: {}\n  -> got: {}\n", &self.header.value.merkle_root, &merkle_root);
             anyhow::bail!("{}", msg);
         }
     }
@@ -66,10 +50,7 @@ impl Block {
 
 impl fmt::Debug for Block {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Block")
-            .field("header", &self.header)
-            .field("tx_count", &self.tx_count)
-            .finish()
+        fmt.debug_struct("Block").field("header", &self.header).field("tx_count", &self.tx_count).finish()
     }
 }
 

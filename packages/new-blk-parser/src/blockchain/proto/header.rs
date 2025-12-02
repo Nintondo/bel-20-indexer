@@ -1,6 +1,7 @@
 use super::*;
 
-use proto::ToRaw;
+use proto::{Hashable, ToRaw};
+use std::io::Write;
 
 /// Block Header definition. Exact 80 bytes long
 #[derive(Clone)]
@@ -23,6 +24,18 @@ impl ToRaw for BlockHeader {
         bytes.extend(&self.bits.to_le_bytes());
         bytes.extend(&self.nonce.to_le_bytes());
         bytes
+    }
+}
+
+impl Hashable for BlockHeader {
+    #[inline]
+    fn hash_to_engine<W: Write>(&self, engine: &mut W) {
+        let _ = engine.write_all(&self.version.to_le_bytes());
+        let _ = engine.write_all(self.prev_hash.as_byte_array());
+        let _ = engine.write_all(self.merkle_root.as_byte_array());
+        let _ = engine.write_all(&self.timestamp.to_le_bytes());
+        let _ = engine.write_all(&self.bits.to_le_bytes());
+        let _ = engine.write_all(&self.nonce.to_le_bytes());
     }
 }
 

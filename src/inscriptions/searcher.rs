@@ -4,6 +4,7 @@ use nint_blk::proto::{
 };
 
 use super::*;
+use hashbrown::HashMap;
 
 pub struct InscriptionSearcher {}
 

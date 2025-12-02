@@ -4,11 +4,13 @@ mod address_fullhash;
 mod fullhash;
 mod logging;
 mod progress;
+pub mod timing;
 
 pub use address_fullhash::{fullhash_to_address_str, AddressesFullHash};
 pub use fullhash::{ComputeScriptHash, FullHash, IsOpReturnHash};
 pub use logging::init_logger;
 pub use progress::Progress;
+pub use timing::INDEXING_METRICS;
 
 macro_rules! load_env {
     ($var:expr) => {

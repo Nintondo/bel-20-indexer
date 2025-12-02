@@ -73,9 +73,7 @@ impl CheckPoint {
     /// - The `blocks` iterator contains multiple [`BlockId`]s of the same height.
     ///
     /// The error type is the last successful checkpoint constructed (if any).
-    pub fn from_block_ids(
-        block_ids: impl IntoIterator<Item = BlockId>,
-    ) -> Result<Self, Option<Self>> {
+    pub fn from_block_ids(block_ids: impl IntoIterator<Item = BlockId>) -> Result<Self, Option<Self>> {
         let mut blocks = block_ids.into_iter();
         let mut acc = CheckPoint::new(blocks.next().ok_or(None)?);
         for id in blocks {
@@ -90,10 +88,7 @@ impl CheckPoint {
     /// one you are pushing on to.
     pub fn push(self, block: BlockId) -> Result<Self, Self> {
         if self.height() < block.height {
-            Ok(Self(Arc::new(CPInner {
-                block,
-                prev: Some(self.0),
-            })))
+            Ok(Self(Arc::new(CPInner { block, prev: Some(self.0) })))
         } else {
             Err(self)
         }
@@ -171,8 +166,7 @@ impl CheckPoint {
             cp = cp.prev().expect("will break before genesis block");
         };
 
-        base.extend(core::iter::once(block_id).chain(tail.into_iter().rev()))
-            .expect("tail is in order")
+        base.extend(core::iter::once(block_id).chain(tail.into_iter().rev())).expect("tail is in order")
     }
 }
 
@@ -196,8 +190,6 @@ impl IntoIterator for CheckPoint {
     type IntoIter = CheckPointIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        CheckPointIter {
-            current: Some(self.0),
-        }
+        CheckPointIter { current: Some(self.0) }
     }
 }

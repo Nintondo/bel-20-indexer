@@ -40,10 +40,7 @@ impl Auth {
             Auth::None => Ok((None, None)),
             Auth::UserPass(u, p) => Ok((Some(u), Some(p))),
             Auth::CookieFile(path) => {
-                let line = BufReader::new(File::open(path)?)
-                    .lines()
-                    .next()
-                    .ok_or(Error::InvalidCookieFile)??;
+                let line = BufReader::new(File::open(path)?).lines().next().ok_or(Error::InvalidCookieFile)??;
                 let colon = line.find(':').ok_or(Error::InvalidCookieFile)?;
                 Ok((Some(line[..colon].into()), Some(line[colon + 1..].into())))
             }
@@ -71,20 +68,12 @@ impl Client {
     pub fn new(url: &str, auth: Auth, coin: CoinType, token: WaitToken) -> Result<Self> {
         let (user, pass) = auth.get_user_pass()?;
         jsonrpc::client::Client::simple_http(url, user, pass)
-            .map(|client| Client {
-                client,
-                coin,
-                token,
-            })
+            .map(|client| Client { client, coin, token })
             .map_err(|e| e.into())
     }
 
     /// Call an `cmd` rpc with given `args` list
-    fn call<T: serde::de::DeserializeOwned>(
-        &self,
-        cmd: &str,
-        args: &[serde_json::Value],
-    ) -> Result<T> {
+    fn call<T: serde::de::DeserializeOwned>(&self, cmd: &str, args: &[serde_json::Value]) -> Result<T> {
         let raw = serde_json::value::to_raw_value(args).unwrap();
 
         for _ in 0..10 {
@@ -117,9 +106,7 @@ impl Client {
         let block_hex: String = self.call("getblock", &[serde_json::to_value(hash)?, 0.into()])?;
         let block_bytes = hex::decode(block_hex)?;
         let mut block_cursor = std::io::Cursor::new(block_bytes);
-        block_cursor
-            .read_block(0, self.coin)
-            .map_err(|err| err.into())
+        block_cursor.read_block(0, self.coin).map_err(|err| err.into())
     }
 
     pub fn get_block_info(&self, hash: &sha256d::Hash) -> Result<GetBlockResult> {

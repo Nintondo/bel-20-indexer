@@ -1,7 +1,8 @@
 use super::*;
 
 use bellscoin::{OutPoint, Witness};
-use proto::{ToRaw, script, varuint::VarUint};
+use proto::{Hashable, ToRaw, script, varuint::VarUint};
+use std::io::Write;
 
 pub struct RawTx {
     pub version: u32,
@@ -26,20 +27,9 @@ pub struct EvaluatedTx {
 }
 
 impl EvaluatedTx {
-    pub fn new(
-        version: u32,
-        in_count: VarUint,
-        inputs: Vec<TxInput>,
-        out_count: VarUint,
-        outputs: Vec<TxOutput>,
-        locktime: u32,
-        coin: CoinType,
-    ) -> Self {
+    pub fn new(version: u32, in_count: VarUint, inputs: Vec<TxInput>, out_count: VarUint, outputs: Vec<TxOutput>, locktime: u32, coin: CoinType) -> Self {
         // Evaluate and wrap all outputs to process them later
-        let outputs = outputs
-            .into_par_iter()
-            .map(|o| EvaluatedTxOut::eval_script(o, coin))
-            .collect();
+        let outputs = outputs.into_par_iter().map(|o| EvaluatedTxOut::eval_script(o, coin)).collect();
         EvaluatedTx {
             version,
             in_count,
@@ -74,22 +64,13 @@ impl fmt::Debug for EvaluatedTx {
 impl From<RawTx> for EvaluatedTx {
     #[inline]
     fn from(tx: RawTx) -> Self {
-        Self::new(
-            tx.version,
-            tx.in_count,
-            tx.inputs,
-            tx.out_count,
-            tx.outputs,
-            tx.locktime,
-            tx.coin,
-        )
+        Self::new(tx.version, tx.in_count, tx.inputs, tx.out_count, tx.outputs, tx.locktime, tx.coin)
     }
 }
 
 impl ToRaw for EvaluatedTx {
     fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes =
-            Vec::with_capacity((4 + self.in_count.value + self.out_count.value + 4) as usize);
+        let mut bytes = Vec::with_capacity((4 + self.in_count.value + self.out_count.value + 4) as usize);
 
         // Serialize version
         bytes.extend(&self.version.to_le_bytes());
@@ -106,6 +87,38 @@ impl ToRaw for EvaluatedTx {
         // Serialize locktime
         bytes.extend(&self.locktime.to_le_bytes());
         bytes
+    }
+}
+
+impl Hashable for EvaluatedTx {
+    fn hash_to_engine<W: Write>(&self, engine: &mut W) {
+        // Version
+        let _ = engine.write_all(&self.version.to_le_bytes());
+
+        // Inputs (count + each input)
+        let _ = engine.write_all(&self.in_count.to_bytes());
+        for input in &self.inputs {
+            // OutPoint (txid + vout)
+            let _ = engine.write_all(&input.outpoint.txid.to_byte_array());
+            let _ = engine.write_all(&input.outpoint.vout.to_le_bytes());
+            // script length + script bytes
+            let _ = engine.write_all(&input.script_len.to_bytes());
+            let _ = engine.write_all(&input.script_sig);
+            // sequence
+            let _ = engine.write_all(&input.seq_no.to_le_bytes());
+        }
+
+        // Outputs (count + each output)
+        let _ = engine.write_all(&self.out_count.to_bytes());
+        for eval_out in &self.outputs {
+            let out = &eval_out.out;
+            let _ = engine.write_all(&out.value.to_le_bytes());
+            let _ = engine.write_all(&out.script_len.to_bytes());
+            let _ = engine.write_all(&out.script_pubkey);
+        }
+
+        // Locktime
+        let _ = engine.write_all(&self.locktime.to_le_bytes());
     }
 }
 
@@ -134,10 +147,7 @@ impl ToRaw for TxOutpoint {
 
 impl fmt::Debug for TxOutpoint {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("TxOutpoint")
-            .field("txid", &self.txid)
-            .field("index", &self.index)
-            .finish()
+        fmt.debug_struct("TxOutpoint").field("txid", &self.txid).field("index", &self.index).finish()
     }
 }
 
@@ -184,10 +194,18 @@ pub struct EvaluatedTxOut {
 impl EvaluatedTxOut {
     #[inline]
     pub fn eval_script(out: TxOutput, coin: CoinType) -> EvaluatedTxOut {
-        EvaluatedTxOut {
-            script: script::eval_from_bytes(&out.script_pubkey, coin),
-            out,
+        // For pre-FIB fast-sync we can skip full script evaluation, as
+        // inscriptions logic never inspects addresses or patterns there.
+        if !crate::is_script_eval_enabled() {
+            let script = script::EvaluatedScript::new(None, script::ScriptPattern::NotRecognised);
+            return EvaluatedTxOut { script, out };
         }
+
+        use crate::timing::BLOCK_READ_METRICS;
+        let start = std::time::Instant::now();
+        let script = script::eval_from_bytes(&out.script_pubkey, coin);
+        BLOCK_READ_METRICS.record_script_eval(start.elapsed());
+        EvaluatedTxOut { script, out }
     }
 }
 

@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use hashbrown::HashMap;
+use std::time::Instant;
 
 use super::*;
 use crate::inscriptions::utils::{PrevoutCache, PREVOUT_CACHE_CAPACITY};
+use crate::utils::timing::INDEXING_METRICS;
 
 // Pre-FIB batching controls
 const PRE_FIB_BATCH_MAX_BLOCKS: usize = 1_000; // flush at most every N pre-FIB blocks
@@ -34,11 +36,14 @@ impl InscriptionIndexer {
         }
     }
     pub fn handle(&mut self, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
-        // Decide whether we’re in the pre-FIB fast-sync region
+        let handle_start = Instant::now();
+        INDEXING_METRICS.note_task_start(handle_start);
+
+        // Decide whether we're in the pre-FIB fast-sync region
         let fib = self.server.indexer.coin.fib.unwrap_or_default();
         let is_pre_fib = block_height < fib;
 
-        // If we’re switching to immediate-commit mode (post-FIB or near tip), flush any pending pre-FIB batch first
+        // If we're switching to immediate-commit mode (post-FIB or near tip), flush any pending pre-FIB batch first
         if (!is_pre_fib || handle_reorgs) && !self.pending_processed.is_empty() {
             self.flush_pending_batch()?;
         }
@@ -67,11 +72,17 @@ impl InscriptionIndexer {
                 self.flush_pending_batch()?;
             }
 
-            // Build processed data for this block, but don’t commit to DB yet
+            // Build processed data for this block, but don't commit to DB yet
             let mut to_write = DataToWrite::default();
             self.handle_block(&mut to_write, block_height, block, false)?;
             self.pending_blocks += 1;
             self.pending_processed.extend(to_write.processed);
+
+            // Record timing for pre-FIB blocks
+            INDEXING_METRICS.record_block_handle(handle_start.elapsed());
+            INDEXING_METRICS.note_task_end(Instant::now());
+            INDEXING_METRICS.maybe_print(5);
+
             // No events/history pre-FIB
             return Ok(());
         }
@@ -99,6 +110,7 @@ impl InscriptionIndexer {
             }
         });
 
+        let db_write_start = Instant::now();
         let mut db_batch = DbBatch::new(&self.server.db);
 
         // write/remove data from block
@@ -108,7 +120,9 @@ impl InscriptionIndexer {
 
         // Commit DB changes before emitting events, preserving original ordering semantics.
         db_batch.write();
+        INDEXING_METRICS.record_db_write(db_write_start.elapsed());
 
+        let event_emit_start = Instant::now();
         if let Some((metas, balances, transfers_to_write, transfers_to_remove)) = tokens_delta {
             let mut rt = self.server.token_state.lock();
             rt.apply_tokens_delta(metas, balances, transfers_to_write, transfers_to_remove);
@@ -117,10 +131,18 @@ impl InscriptionIndexer {
         for event in to_write.block_events {
             self.server.event_sender.send(event).ok();
         }
+        INDEXING_METRICS.record_event_emit(event_emit_start.elapsed());
 
+        let history_start = Instant::now();
         if self.server.raw_event_sender.send(to_write.history).is_err() && !self.server.token.is_cancelled() {
             panic!("Failed to send raw event");
         }
+        INDEXING_METRICS.record_history_send(history_start.elapsed());
+
+        // Record total block handle time
+        INDEXING_METRICS.record_block_handle(handle_start.elapsed());
+        INDEXING_METRICS.note_task_end(Instant::now());
+        INDEXING_METRICS.maybe_print(5);
 
         Ok(())
     }
@@ -134,12 +156,16 @@ impl InscriptionIndexer {
             return Ok(());
         }
 
+        let flush_start = Instant::now();
+        let db_write_start = Instant::now();
         let mut db_batch = DbBatch::new(&self.server.db);
         for data in &self.pending_processed {
             // No reorg journal for deep sync; pass None
             data.write(&self.server, None, &mut db_batch);
         }
         db_batch.write();
+        INDEXING_METRICS.record_db_write(db_write_start.elapsed());
+        INDEXING_METRICS.record_prefib_flush(flush_start.elapsed());
 
         self.pending_processed.clear();
         self.pending_blocks = 0;
@@ -163,7 +189,9 @@ impl InscriptionIndexer {
         let prev_block_height = block_height.checked_sub(1).unwrap_or_default();
         let prev_block_proof = self.server.db.proof_of_history.get(prev_block_height).unwrap_or(*DEFAULT_HASH);
 
-        let prevouts = utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed, Some(&mut self.prevout_cache))?;
+        let prevout_start = Instant::now();
+        let prevouts = utils::process_prevouts(self.server.db.clone(), &block, &mut to_write.processed, &mut self.prevout_cache)?;
+        INDEXING_METRICS.record_prevout_process(prevout_start.elapsed());
 
         if block_height < self.server.indexer.coin.fib.unwrap_or_default() {
             to_write.processed.push(ProcessedData::BlockWithoutProof {
@@ -188,8 +216,10 @@ impl InscriptionIndexer {
             return Ok(());
         }
 
+        let token_cache_load_start = Instant::now();
         let runtime_guard = self.server.token_state.lock();
-        let mut token_cache = TokenCache::load(&prevouts, self.server.clone(), &*runtime_guard);
+        let mut token_cache = TokenCache::load(prevouts, self.server.clone(), &*runtime_guard);
+        INDEXING_METRICS.record_token_cache_load(token_cache_load_start.elapsed());
 
         let transfers_to_remove = token_cache
             .valid_transfers
@@ -205,12 +235,15 @@ impl InscriptionIndexer {
         // Build a per-block map of txid -> tx so we can resolve script addresses for recipients
         let tx_by_id: HashMap<Txid, _> = block.txs.iter().map(|tx| (tx.hash.into(), tx)).collect();
 
-        parser.parse_block(block_height, &block, &prevouts, &mut to_write.processed);
+        let parse_start = Instant::now();
+        parser.parse_block(block_height, &block, prevouts, &mut to_write.processed);
+        INDEXING_METRICS.record_block_parse(parse_start.elapsed());
 
         token_cache.load_tokens_data(&self.server.db, &*runtime_guard)?;
 
         let mut fullhash_to_load = HashSet::new();
 
+        let token_process_start = Instant::now();
         to_write.history = token_cache
             .process_token_actions(&self.server.holders)
             .into_iter()
@@ -263,6 +296,7 @@ impl InscriptionIndexer {
                 results
             })
             .collect();
+        INDEXING_METRICS.record_token_cache_process(token_process_start.elapsed());
 
         // Resolve address strings for recipients in this block.
         let mut new_block_addresses = HashMap::<FullHash, String>::new();
@@ -306,7 +340,8 @@ impl InscriptionIndexer {
             combined_addresses.entry(*hash).or_insert_with(|| address.clone());
         }
 
-        let rest_addresses: AddressesFullHash = combined_addresses.into();
+        let rest_addresses: AddressesFullHash =
+            std::collections::HashMap::from_iter(combined_addresses.into_iter()).into();
 
         let new_proof = Server::generate_history_hash(prev_block_proof, &to_write.history, &rest_addresses)?;
 

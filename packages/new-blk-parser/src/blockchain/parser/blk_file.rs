@@ -4,7 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use parser::reader::{BlockchainRead, XorReader};
 use proto::block::Block;
 
-const READER_BUFSIZE: usize = 32 * 1024;
+const READER_BUFSIZE: usize = 512 * 1024;
 
 /// Holds all necessary data about a raw blk file
 pub struct BlkFile {
@@ -16,11 +16,7 @@ pub struct BlkFile {
 impl BlkFile {
     #[inline]
     fn new(path: PathBuf, xor_key: Option<Vec<u8>>) -> BlkFile {
-        BlkFile {
-            path,
-            xor_key,
-            reader: None,
-        }
+        BlkFile { path, xor_key, reader: None }
     }
 
     /// Opens the file handle (does nothing if the file has been opened already)
@@ -82,11 +78,7 @@ impl BlkFile {
         }
 
         trace!(target: "blkfile", "Found {} blk files", collected.len());
-        if collected.is_empty() {
-            anyhow::bail!("No blk files found!")
-        } else {
-            Ok(collected)
-        }
+        if collected.is_empty() { anyhow::bail!("No blk files found!") } else { Ok(collected) }
     }
 
     /// Reads the XOR key to decrypt the blk files
@@ -119,9 +111,7 @@ impl BlkFile {
     fn parse_blk_index(file_name: &str, prefix: &str, ext: &str) -> Option<u64> {
         if file_name.starts_with(prefix) && file_name.ends_with(ext) {
             // Parse blk_index, this means we extract 42 from blk000042.dat
-            file_name[prefix.len()..(file_name.len() - ext.len())]
-                .parse::<u64>()
-                .ok()
+            file_name[prefix.len()..(file_name.len() - ext.len())].parse::<u64>().ok()
         } else {
             None
         }

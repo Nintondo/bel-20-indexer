@@ -1,4 +1,6 @@
 use super::*;
+use std::io::Write;
+pub use hashbrown;
 
 pub mod block;
 pub mod header;
@@ -13,27 +15,35 @@ pub trait ToRaw {
     fn to_bytes(&self) -> Vec<u8>;
 }
 
+/// Trait for types that can stream their serialized form into a SHA256d engine
+/// without allocating a temporary Vec.
+pub trait Hashable {
+    fn hash_to_engine<W: Write>(&self, engine: &mut W);
+}
+
 /// Wrapper to hold a 32 byte verification hash along the data type T
 pub struct Hashed<T> {
     pub hash: sha256d::Hash,
     pub value: T,
 }
 
-impl<T: ToRaw> Hashed<T> {
+impl<T: Hashable> Hashed<T> {
     /// encapsulates T and creates double sha256 as hash
     #[inline]
     pub fn double_sha256(value: T) -> Hashed<T> {
-        let hash = sha256d::Hash::hash(&value.to_bytes());
+        use crate::timing::BLOCK_READ_METRICS;
+        let start = std::time::Instant::now();
+        let mut engine = sha256d::Hash::engine();
+        value.hash_to_engine(&mut engine);
+        let hash = sha256d::Hash::from_engine(engine);
+        BLOCK_READ_METRICS.record_hash(start.elapsed());
         Hashed { hash, value }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Hashed<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("Hashed")
-            .field("hash", &self.hash)
-            .field("value", &self.value)
-            .finish()
+        fmt.debug_struct("Hashed").field("hash", &self.hash).field("value", &self.value).finish()
     }
 }
 

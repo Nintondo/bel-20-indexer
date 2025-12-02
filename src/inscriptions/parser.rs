@@ -14,9 +14,12 @@ use crate::inscriptions::{
     structs::{InscriptionMeta, ParsedInscription, Part},
 };
 use crate::tokens::InscriptionId;
+use crate::utils::timing::INDEXING_METRICS;
 
 use super::*;
-use std::collections::HashSet;
+use hashbrown::HashMap;
+use rayon::prelude::*;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Curse {
@@ -108,15 +111,13 @@ mod tests {
 
         // First inscription at this input offset is allowed.
         assert!(!is_reinscription(&inscribed_offsets, global_offset));
-        let (initial_flag_first, count_first) =
-            increment_inscription_count(&mut inscribed_offsets, global_offset, false, None);
+        let (initial_flag_first, count_first) = increment_inscription_count(&mut inscribed_offsets, global_offset, false, None);
         assert!(!initial_flag_first);
         assert_eq!(count_first, 1);
 
         // Second inscription (same input offset, whether pointered or not) is cursed.
         assert!(is_reinscription(&inscribed_offsets, global_offset));
-        let (initial_flag_second, count_second) =
-            increment_inscription_count(&mut inscribed_offsets, global_offset, true, None);
+        let (initial_flag_second, count_second) = increment_inscription_count(&mut inscribed_offsets, global_offset, true, None);
         assert!(!initial_flag_second);
         assert_eq!(count_second, 2);
 
@@ -168,13 +169,11 @@ fn increment_inscription_count(
     base_cursed: bool,
     candidate_first: Option<InscriptionId>,
 ) -> (bool, u8) {
-    let entry = inscribed_offsets
-        .entry(global_input_offset)
-        .or_insert_with(|| InscribedOffsetState {
-            first_inscription: candidate_first.clone(),
-            initial_cursed_or_vindicated: base_cursed,
-            count: 0,
-        });
+    let entry = inscribed_offsets.entry(global_input_offset).or_insert_with(|| InscribedOffsetState {
+        first_inscription: candidate_first.clone(),
+        initial_cursed_or_vindicated: base_cursed,
+        count: 0,
+    });
 
     if entry.first_inscription.is_none() && candidate_first.is_some() {
         entry.first_inscription = candidate_first;
@@ -185,14 +184,8 @@ fn increment_inscription_count(
     (initial_flag, entry.count)
 }
 
-fn seed_offset_from_state(
-    inscribed_offsets: &mut BTreeMap<u64, InscribedOffsetState>,
-    global_input_offset: u64,
-    state: OccupancyState,
-) {
-    let entry = inscribed_offsets
-        .entry(global_input_offset)
-        .or_insert_with(|| InscribedOffsetState::from_occupancy(&state));
+fn seed_offset_from_state(inscribed_offsets: &mut BTreeMap<u64, InscribedOffsetState>, global_input_offset: u64, state: OccupancyState) {
+    let entry = inscribed_offsets.entry(global_input_offset).or_insert_with(|| InscribedOffsetState::from_occupancy(&state));
     entry.bump(state.count.max(1));
     if entry.first_inscription.is_none() {
         entry.first_inscription = state.first_inscription;
@@ -203,7 +196,6 @@ fn seed_offset_from_state(
 }
 
 fn compute_cursed_for_brc20(coin: CoinType, base_cursed: bool, jubilant: bool) -> bool {
-
     // if coin.brc_name == "ltc-20" {
     //     base_cursed && !jubilant
     // } else {
@@ -219,17 +211,22 @@ impl Parser<'_> {
         let is_p2tr_only = coin.only_p2tr;
 
         // Hold inscription's partials from db and new in the block
+        let load_partials_start = Instant::now();
         let mut outpoint_to_partials = Self::load_partials(self.server, prevouts.keys().cloned().collect());
+        INDEXING_METRICS.record_block_parse_partials(load_partials_start.elapsed());
 
         // Hold inscription's partials to remove from db
         let partials_to_remove: Vec<_> = outpoint_to_partials.iter().map(|x| (*x.0, x.1.clone())).collect();
 
+        let load_offsets_start = Instant::now();
         let mut inscription_outpoint_to_offsets = Self::load_inscription_outpoint_to_offsets(self.server, prevouts.keys().cloned().collect());
+        INDEXING_METRICS.record_block_parse_offsets(load_offsets_start.elapsed());
 
         let prev_offsets = inscription_outpoint_to_offsets.iter().map(|(k, v)| (*k, v.clone())).collect_vec();
 
         let mut leaked: Option<LeakedInscriptions> = None;
 
+        let tx_loop_start = Instant::now();
         for tx in &block.txs {
             if tx.value.is_coinbase() {
                 leaked = Some(LeakedInscriptions::new(Hashed {
@@ -256,6 +253,7 @@ impl Parser<'_> {
             //     .unwrap_or_default();
             // let log_this_tx = debug_txids.contains(&txid);
 
+            let tx_offsets_start = Instant::now();
             let inputs_cum = InscriptionSearcher::calc_offsets(tx, prevouts).expect("failed to find all txos to calculate offsets");
 
             // Additionally compute pre-fee cumulative input offsets (ord's total_input_value).
@@ -265,9 +263,9 @@ impl Parser<'_> {
             let mut acc_prefee: u64 = 0;
             for txin in &tx.value.inputs {
                 inputs_cum_prefee.push(acc_prefee);
-                acc_prefee = acc_prefee
-                    .saturating_add(prevouts.get(&txin.outpoint).map(|pv| pv.value).unwrap_or(0));
+                acc_prefee = acc_prefee.saturating_add(prevouts.get(&txin.outpoint).map(|pv| pv.value).unwrap_or(0));
             }
+            INDEXING_METRICS.record_block_parse_tx_offsets(tx_offsets_start.elapsed());
 
             // For ord-style reinscription detection (p2tr-only coins), track how many
             // inscriptions we have already seen at each *input offset* in this
@@ -291,6 +289,7 @@ impl Parser<'_> {
             // Per-satpoint counter (outpoint, offset) for satpoint-based reinscription detection.
             let mut location_inscription_count: HashMap<(OutPoint, u64), u32> = HashMap::new();
 
+            let inputs_loop_start = Instant::now();
             for (input_index, txin) in tx.value.inputs.iter().enumerate() {
                 // handle inscription moves
                 if let Some(inscription_offsets) = inscription_outpoint_to_offsets.remove(&txin.outpoint) {
@@ -318,11 +317,7 @@ impl Parser<'_> {
                             if let Some(input_base) = input_base_prefee {
                                 let seed_key = input_base.saturating_add(inscription_offset);
 
-                                seed_offset_from_state(
-                                    &mut inscribed_offsets,
-                                    seed_key,
-                                    occupancy.clone(),
-                                );
+                                seed_offset_from_state(&mut inscribed_offsets, seed_key, occupancy.clone());
 
                                 // if log_this_tx {
                                 //     if let Some(entry) = inscribed_offsets.get(&seed_key) {
@@ -385,6 +380,7 @@ impl Parser<'_> {
 
                 // handle inscription creation
                 if jubilant || input_index == 0 {
+                    let mut new_inscription_timer = Some(Instant::now());
                     let mut partials = outpoint_to_partials.remove(&txin.outpoint).unwrap_or(Partials {
                         genesis_txid: txid,
                         inscription_index: 0,
@@ -418,7 +414,12 @@ impl Parser<'_> {
                     );
 
                     let inscription_templates = match parsed_result {
-                        ParsedInscriptionResult::None => continue,
+                        ParsedInscriptionResult::None => {
+                            if let Some(start) = new_inscription_timer.take() {
+                                INDEXING_METRICS.record_block_parse_tx_new(start.elapsed());
+                            }
+                            continue;
+                        }
                         ParsedInscriptionResult::Partials => {
                             if partials.genesis_txid == txid {
                                 partials.inscription_index = inscription_index_in_tx;
@@ -426,6 +427,9 @@ impl Parser<'_> {
                             }
                             if tx.value.outputs.get(input_index).is_some() {
                                 outpoint_to_partials.insert(OutPoint { txid, vout: input_index as u32 }, partials);
+                            }
+                            if let Some(start) = new_inscription_timer.take() {
+                                INDEXING_METRICS.record_block_parse_tx_new(start.elapsed());
                             }
                             continue;
                         }
@@ -468,6 +472,9 @@ impl Parser<'_> {
 
                             // skip inscription which was created into occupied offset
                             if !inscription_template.leaked && is_reinscription_legacy {
+                                if let Some(start) = new_inscription_timer.take() {
+                                    INDEXING_METRICS.record_block_parse_tx_new(start.elapsed());
+                                }
                                 continue;
                             }
                         }
@@ -477,16 +484,16 @@ impl Parser<'_> {
 
                         if is_p2tr_only {
                             let pointer_raw = inscription_template.pointer_value;
-                        let loc_key = (location.outpoint, location.offset);
+                            let loc_key = (location.outpoint, location.offset);
 
-                        // Satpoint-based multiplicity: treat DB occupancy as present/not-present,
-                        // and use a per-tx counter to detect repeats within this transaction.
-                        let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
-                        let in_tx_count = location_inscription_count.get(&loc_key).copied().unwrap_or(0);
-                        let total_before = base_count_from_db + in_tx_count;
+                            // Satpoint-based multiplicity: treat DB occupancy as present/not-present,
+                            // and use a per-tx counter to detect repeats within this transaction.
+                            let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
+                            let in_tx_count = location_inscription_count.get(&loc_key).copied().unwrap_or(0);
+                            let total_before = base_count_from_db + in_tx_count;
 
-                        // --- ord-style curse classification for p2tr-only coins ---
-                        let mut curse: Option<Curse> = None;
+                            // --- ord-style curse classification for p2tr-only coins ---
+                            let mut curse: Option<Curse> = None;
 
                             if inscription_template.unrecognized_even_field {
                                 curse = Some(Curse::UnrecognizedEvenField);
@@ -515,10 +522,7 @@ impl Parser<'_> {
                             }
 
                             // Jubilee + unbound logic.
-                            let input_value = prevouts
-                                .get(&tx.value.inputs[input_index].outpoint)
-                                .map(|pv| pv.value)
-                                .unwrap_or(0);
+                            let input_value = prevouts.get(&tx.value.inputs[input_index].outpoint).map(|pv| pv.value).unwrap_or(0);
 
                             // Base cursed flag used for ord-style reinscription logic.
                             // This mirrors ord's notion of "cursed or vindicated" – it is true
@@ -534,20 +538,13 @@ impl Parser<'_> {
                             let cursed_for_brc20 = compute_cursed_for_brc20(coin, base_cursed, jubilant);
 
                             let vindicated = base_cursed && jubilant;
-                            let unbound = input_value == 0
-                                || matches!(curse, Some(Curse::UnrecognizedEvenField))
-                                || inscription_template.unrecognized_even_field;
+                            let unbound = input_value == 0 || matches!(curse, Some(Curse::UnrecognizedEvenField)) || inscription_template.unrecognized_even_field;
 
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
                                 // ord uses the pointer-adjusted offset (if present) for reinscription flag/insertion
                                 let target_offset = inscription_template.pointer_value.unwrap_or(global_input_offset);
 
-                                let (initial_flag, count) = increment_inscription_count(
-                                    &mut inscribed_offsets,
-                                    target_offset,
-                                    base_cursed,
-                                    Some(inscription_template.genesis),
-                                );
+                                let (initial_flag, count) = increment_inscription_count(&mut inscribed_offsets, target_offset, base_cursed, Some(inscription_template.genesis));
 
                                 // if log_this_tx {
                                 //     eprintln!(
@@ -570,12 +567,8 @@ impl Parser<'_> {
                             }
 
                             // Satpoint-based reinscription flag for compatibility with feature/litecoin
-                            let per_sat_reinscription = total_before > 1
-                                || (total_before > 0
-                                    && !offsets_map
-                                        .get(&location.offset)
-                                        .map(|s| s.initial_cursed_or_vindicated)
-                                        .unwrap_or(false));
+                            let per_sat_reinscription =
+                                total_before > 1 || (total_before > 0 && !offsets_map.get(&location.offset).map(|s| s.initial_cursed_or_vindicated).unwrap_or(false));
 
                             // Update per-tx satpoint count after computing curse/flag
                             *location_inscription_count.entry(loc_key).or_insert(0) += 1;
@@ -588,10 +581,7 @@ impl Parser<'_> {
 
                         // Persist multiplicity and initial cursed/vindicated flag for this location.
                         if !had_previous_at_location {
-                            offsets_map.insert(
-                                location.offset,
-                                OccupancyState::new(inscription_template.genesis, base_cursed_for_location),
-                            );
+                            offsets_map.insert(location.offset, OccupancyState::new(inscription_template.genesis, base_cursed_for_location));
                         } else {
                             offsets_map.entry(location.offset).and_modify(|occ| {
                                 occ.count = occ.count.saturating_add(1);
@@ -601,9 +591,14 @@ impl Parser<'_> {
                         // handle token deploy|mint|transfer creation
                         self.token_cache.parse_token_action(&inscription_template, height, block.header.value.timestamp);
                     }
+                    if let Some(start) = new_inscription_timer.take() {
+                        INDEXING_METRICS.record_block_parse_tx_new(start.elapsed());
+                    }
                 }
             }
+            INDEXING_METRICS.record_block_parse_tx_inputs(inputs_loop_start.elapsed());
         }
+        INDEXING_METRICS.record_block_parse_tx_loop(tx_loop_start.elapsed());
 
         leaked.unwrap().get_leaked_inscriptions().for_each(|location| {
             inscription_outpoint_to_offsets
@@ -634,14 +629,32 @@ impl Parser<'_> {
             .collect()
     }
 
-    fn load_inscription_outpoint_to_offsets(server: &Server, outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, OccupancyState>> {
-        server
-            .db
-            .outpoint_to_inscription_offsets
-            .multi_get_kv(outpoints.iter(), false)
-            .into_iter()
-            .map(|(k, v)| (*k, v))
-            .collect()
+    fn load_inscription_outpoint_to_offsets(server: &Server, mut outpoints: Vec<OutPoint>) -> HashMap<OutPoint, BTreeMap<u64, OccupancyState>> {
+        outpoints.sort_unstable_by(|a, b| a.txid.cmp(&b.txid).then(a.vout.cmp(&b.vout)));
+
+        let table = &server.db.outpoint_to_inscription_offsets;
+        const CHUNK: usize = 1024;
+
+        if outpoints.len() <= CHUNK {
+            return table
+                .multi_get_kv(outpoints.iter(), false)
+                .into_iter()
+                .map(|(k, v)| (*k, v))
+                .collect();
+        }
+
+        let chunked: Vec<Vec<(OutPoint, BTreeMap<u64, OccupancyState>)>> = outpoints
+            .par_chunks(CHUNK)
+            .map(|chunk| {
+                table
+                    .multi_get_kv(chunk.iter(), false)
+                    .into_iter()
+                    .map(|(k, v)| (*k, v))
+                    .collect()
+            })
+            .collect();
+
+        chunked.into_iter().flatten().collect()
     }
 
     fn parse_inscription(payload: ParseInscription, leaked: &mut LeakedInscriptions) -> ParsedInscriptionResult {
@@ -690,20 +703,20 @@ impl Parser<'_> {
             value: 0,
             parents: parents_ids,
             leaked: false,
-             // ord/OPI compatibility fields, filled from meta and inscription
-             input_index: meta.input_index,
-             envelope_offset: meta.envelope_offset,
-             duplicate_field: meta.duplicate_field,
-             incomplete_field: meta.incomplete_field,
-             unrecognized_even_field: meta.unrecognized_even_field,
-             has_pointer: meta.has_pointer,
-             pushnum: meta.pushnum,
-             stutter: meta.stutter,
-             cursed_for_brc20: false,
-             unbound: false,
-             reinscription: false,
-             vindicated: false,
-             pointer_value: None,
+            // ord/OPI compatibility fields, filled from meta and inscription
+            input_index: meta.input_index,
+            envelope_offset: meta.envelope_offset,
+            duplicate_field: meta.duplicate_field,
+            incomplete_field: meta.incomplete_field,
+            unrecognized_even_field: meta.unrecognized_even_field,
+            has_pointer: meta.has_pointer,
+            pushnum: meta.pushnum,
+            stutter: meta.stutter,
+            cursed_for_brc20: false,
+            unbound: false,
+            reinscription: false,
+            vindicated: false,
+            pointer_value: None,
         };
 
         let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)

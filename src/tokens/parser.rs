@@ -191,7 +191,9 @@ impl TokenCache {
                 } else {
                     !proto.lim.unwrap_or(proto.max).is_zero()
                 };
-                if dec_ok && ok {
+                // 5-byte tickers must be self_mint
+                let tick_len_ok = if proto.tick.len() == 5 { proto.self_mint } else { true };
+                if dec_ok && ok && tick_len_ok {
                     Ok(brc4)
                 } else {
                     Err(Brc4ParseErr::WrongProtocol)

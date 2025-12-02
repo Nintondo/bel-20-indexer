@@ -169,6 +169,9 @@ impl InscriptionIndexer {
 
         self.pending_processed.clear();
         self.pending_blocks = 0;
+        // After a successful pre-FIB batch flush, drop the in-memory prevout cache
+        // so that batching can resume instead of staying near capacity.
+        self.prevout_cache.clear();
         Ok(())
     }
 

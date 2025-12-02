@@ -26,6 +26,13 @@ impl PrevoutCache {
     }
 
     #[inline]
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.order.clear();
+        self.result_scratch.clear();
+    }
+
+    #[inline]
     pub fn get(&self, key: &OutPoint) -> Option<TxPrevout> {
         self.map.get(key).copied()
     }

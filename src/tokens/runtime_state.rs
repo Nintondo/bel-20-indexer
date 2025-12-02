@@ -6,21 +6,15 @@ pub struct RuntimeTokenState {
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
     // Secondary index: (address, outpoint) -> all locations with active transfers
     pub transfers_by_outpoint: HashMap<AddressOutPoint, Vec<Location>>,
+    // Deploy InscriptionId -> lower-case tick cache (for parent checks)
+    pub deploy_map: HashMap<InscriptionId, LowerCaseTokenTick>,
 }
 
 impl RuntimeTokenState {
     pub fn from_db(db: &DB) -> Self {
-        let tokens = db
-            .token_to_meta
-            .iter()
-            .map(|(k, v)| (k, TokenMeta::from(v)))
-            .collect();
+        let tokens = db.token_to_meta.iter().map(|(k, v)| (k, TokenMeta::from(v))).collect();
 
-        let balances = db
-            .address_token_to_balance
-            .iter()
-            .map(|(k, v)| (k, v))
-            .collect();
+        let balances = db.address_token_to_balance.iter().collect();
 
         // Build both primary map and secondary index in a single pass.
         let mut valid_transfers = BTreeMap::<Location, (FullHash, TransferProtoDB)>::new();
@@ -40,11 +34,19 @@ impl RuntimeTokenState {
             transfers_by_outpoint.entry(key).or_default().push(loc);
         }
 
+        // Load deploy mapping once into memory (avoid RocksDB scans during parsing)
+        let deploy_map = db
+            .deploy_id_to_tick
+            .iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect::<HashMap<InscriptionId, LowerCaseTokenTick>>();
+
         Self {
             tokens,
             balances,
             valid_transfers,
             transfers_by_outpoint,
+            deploy_map,
         }
     }
 
@@ -56,7 +58,10 @@ impl RuntimeTokenState {
         transfers_to_remove: &[AddressLocation],
     ) {
         for (tick, meta_db) in metas {
+            // Update in-memory token metas
             self.tokens.insert(tick.clone(), TokenMeta::from(meta_db.clone()));
+            // Keep deploy map in sync (idempotent if already present)
+            self.deploy_map.insert(meta_db.genesis, tick.clone());
         }
 
         for (key, balance) in balances {

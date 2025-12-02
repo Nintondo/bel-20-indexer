@@ -76,90 +76,6 @@ fn is_reinscription(inscribed_offsets: &BTreeMap<u64, InscribedOffsetState>, glo
         .unwrap_or(false)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    #[test]
-    fn spend_with_multiple_existing_inscriptions_curses_reinscription() {
-        // UTXO already carried two inscriptions at the same input offset.
-        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
-        inscribed_offsets.insert(
-            10,
-            InscribedOffsetState {
-                first_inscription: None,
-                initial_cursed_or_vindicated: true,
-                count: 2,
-            },
-        );
-
-        assert!(is_reinscription(&inscribed_offsets, 10));
-
-        // Any curse should mark BRC-20 invalid for non-LTC coins.
-        let coin = CoinType::default(); // Bitcoin settings, only_p2tr = true
-        assert!(compute_cursed_for_brc20(coin, true, false));
-    }
-
-    #[test]
-    fn repeated_inscriptions_in_same_tx_are_cursed_even_with_pointer() {
-        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
-        let global_offset = 0;
-
-        // First inscription at this input offset is allowed.
-        assert!(!is_reinscription(&inscribed_offsets, global_offset));
-        let (initial_flag_first, count_first) =
-            increment_inscription_count(&mut inscribed_offsets, global_offset, false, None);
-        assert!(!initial_flag_first);
-        assert_eq!(count_first, 1);
-
-        // Second inscription (same input offset, whether pointered or not) is cursed.
-        assert!(is_reinscription(&inscribed_offsets, global_offset));
-        let (initial_flag_second, count_second) =
-            increment_inscription_count(&mut inscribed_offsets, global_offset, true, None);
-        assert!(!initial_flag_second);
-        assert_eq!(count_second, 2);
-
-        // A pointer-based inscription would still hash to the same input offset key.
-        assert!(is_reinscription(&inscribed_offsets, global_offset));
-    }
-
-    #[test]
-    fn brc20_gating_rejects_reinscriptions() {
-        let coin = CoinType::default(); // brc-20
-        assert!(compute_cursed_for_brc20(coin, true, false));
-
-        // For ltc-20, curses before jubilee are rejected; after jubilee they are vindicated.
-        let ltc_coin = CoinType {
-            brc_name: "ltc-20",
-            ..CoinType::default()
-        };
-        assert!(compute_cursed_for_brc20(ltc_coin, true, false));
-        assert!(!compute_cursed_for_brc20(ltc_coin, true, true));
-    }
-
-    #[test]
-    fn cursed_first_inscription_allows_one_reinscription() {
-        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
-        seed_offset_from_state(&mut inscribed_offsets, 0, OccupancyState::from_legacy(true, 1));
-
-        assert!(!is_reinscription(&inscribed_offsets, 0));
-
-        // After recording the second inscription, the next attempt (third overall)
-        // becomes a cursed reinscription.
-        let _ = increment_inscription_count(&mut inscribed_offsets, 0, true, None);
-        assert!(is_reinscription(&inscribed_offsets, 0));
-    }
-
-    #[test]
-    fn blessed_first_inscription_curses_second() {
-        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
-        seed_offset_from_state(&mut inscribed_offsets, 0, OccupancyState::from_legacy(false, 1));
-
-        assert!(is_reinscription(&inscribed_offsets, 0));
-    }
-}
-
 // Increment the inscription counter for a given input offset, preserving the
 // initial cursed/vindicated flag. Returns the stored tuple after increment.
 fn increment_inscription_count(
@@ -168,13 +84,11 @@ fn increment_inscription_count(
     base_cursed: bool,
     candidate_first: Option<InscriptionId>,
 ) -> (bool, u8) {
-    let entry = inscribed_offsets
-        .entry(global_input_offset)
-        .or_insert_with(|| InscribedOffsetState {
-            first_inscription: candidate_first.clone(),
-            initial_cursed_or_vindicated: base_cursed,
-            count: 0,
-        });
+    let entry = inscribed_offsets.entry(global_input_offset).or_insert_with(|| InscribedOffsetState {
+        first_inscription: candidate_first,
+        initial_cursed_or_vindicated: base_cursed,
+        count: 0,
+    });
 
     if entry.first_inscription.is_none() && candidate_first.is_some() {
         entry.first_inscription = candidate_first;
@@ -185,14 +99,8 @@ fn increment_inscription_count(
     (initial_flag, entry.count)
 }
 
-fn seed_offset_from_state(
-    inscribed_offsets: &mut BTreeMap<u64, InscribedOffsetState>,
-    global_input_offset: u64,
-    state: OccupancyState,
-) {
-    let entry = inscribed_offsets
-        .entry(global_input_offset)
-        .or_insert_with(|| InscribedOffsetState::from_occupancy(&state));
+fn seed_offset_from_state(inscribed_offsets: &mut BTreeMap<u64, InscribedOffsetState>, global_input_offset: u64, state: OccupancyState) {
+    let entry = inscribed_offsets.entry(global_input_offset).or_insert_with(|| InscribedOffsetState::from_occupancy(&state));
     entry.bump(state.count.max(1));
     if entry.first_inscription.is_none() {
         entry.first_inscription = state.first_inscription;
@@ -246,11 +154,7 @@ impl Parser<'_> {
             // Optional ad-hoc debug: set DEBUG_TXS=txid1,txid2 to trace reinscription/token decisions.
             let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
                 .ok()
-                .map(|s| {
-                    s.split(',')
-                        .filter_map(|t| Txid::from_str(t.trim()).ok())
-                        .collect()
-                })
+                .map(|s| s.split(',').filter_map(|t| Txid::from_str(t.trim()).ok()).collect())
                 .unwrap_or_default();
             let log_this_tx = debug_txids.contains(&txid);
 
@@ -263,8 +167,7 @@ impl Parser<'_> {
             let mut acc_prefee: u64 = 0;
             for txin in &tx.value.inputs {
                 inputs_cum_prefee.push(acc_prefee);
-                acc_prefee = acc_prefee
-                    .saturating_add(prevouts.get(&txin.outpoint).map(|pv| pv.value).unwrap_or(0));
+                acc_prefee = acc_prefee.saturating_add(prevouts.get(&txin.outpoint).map(|pv| pv.value).unwrap_or(0));
             }
 
             // For ord-style reinscription detection (p2tr-only coins), track how many
@@ -316,21 +219,13 @@ impl Parser<'_> {
                             if let Some(input_base) = input_base_prefee {
                                 let seed_key = input_base.saturating_add(inscription_offset);
 
-                                seed_offset_from_state(
-                                    &mut inscribed_offsets,
-                                    seed_key,
-                                    occupancy.clone(),
-                                );
+                                seed_offset_from_state(&mut inscribed_offsets, seed_key, occupancy.clone());
 
                                 if log_this_tx {
                                     if let Some(entry) = inscribed_offsets.get(&seed_key) {
                                         eprintln!(
                                             "[DEBUG_TX] seed-old tx={} input={} global_offset={} initial_cursed={} count={}",
-                                            txid,
-                                            input_index,
-                                            seed_key,
-                                            entry.initial_cursed_or_vindicated,
-                                            entry.count
+                                            txid, input_index, seed_key, entry.initial_cursed_or_vindicated, entry.count
                                         );
                                     }
                                 }
@@ -432,7 +327,7 @@ impl Parser<'_> {
                                 inscription_template.genesis.index = inscription_index_in_tx;
                                 inscription_index_in_tx += 1;
                             }
-                            vec![inscription_template]
+                            vec![*inscription_template]
                         }
                         ParsedInscriptionResult::Many(mut inscription_templates) => {
                             if partials.genesis_txid == txid {
@@ -475,16 +370,16 @@ impl Parser<'_> {
 
                         if is_p2tr_only {
                             let pointer_raw = inscription_template.pointer_value;
-                        let loc_key = (location.outpoint, location.offset);
+                            let loc_key = (location.outpoint, location.offset);
 
-                        // Satpoint-based multiplicity: treat DB occupancy as present/not-present,
-                        // and use a per-tx counter to detect repeats within this transaction.
-                        let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
-                        let in_tx_count = location_inscription_count.get(&loc_key).copied().unwrap_or(0);
-                        let total_before = base_count_from_db + in_tx_count;
+                            // Satpoint-based multiplicity: treat DB occupancy as present/not-present,
+                            // and use a per-tx counter to detect repeats within this transaction.
+                            let base_count_from_db = if had_previous_at_location { 1 } else { 0 };
+                            let in_tx_count = location_inscription_count.get(&loc_key).copied().unwrap_or(0);
+                            let total_before = base_count_from_db + in_tx_count;
 
-                        // --- ord-style curse classification for p2tr-only coins ---
-                        let mut curse: Option<Curse> = None;
+                            // --- ord-style curse classification for p2tr-only coins ---
+                            let mut curse: Option<Curse> = None;
 
                             if inscription_template.unrecognized_even_field {
                                 curse = Some(Curse::UnrecognizedEvenField);
@@ -513,10 +408,7 @@ impl Parser<'_> {
                             }
 
                             // Jubilee + unbound logic.
-                            let input_value = prevouts
-                                .get(&tx.value.inputs[input_index].outpoint)
-                                .map(|pv| pv.value)
-                                .unwrap_or(0);
+                            let input_value = prevouts.get(&tx.value.inputs[input_index].outpoint).map(|pv| pv.value).unwrap_or(0);
 
                             // Base cursed flag used for ord-style reinscription logic.
                             // This mirrors ord's notion of "cursed or vindicated" – it is true
@@ -532,20 +424,13 @@ impl Parser<'_> {
                             let cursed_for_brc20 = compute_cursed_for_brc20(coin, base_cursed, jubilant);
 
                             let vindicated = base_cursed && jubilant;
-                            let unbound = input_value == 0
-                                || matches!(curse, Some(Curse::UnrecognizedEvenField))
-                                || inscription_template.unrecognized_even_field;
+                            let unbound = input_value == 0 || matches!(curse, Some(Curse::UnrecognizedEvenField)) || inscription_template.unrecognized_even_field;
 
                             if let Some(global_input_offset) = inputs_cum_prefee.get(input_index).copied() {
                                 // ord uses the pointer-adjusted offset (if present) for reinscription flag/insertion
                                 let target_offset = inscription_template.pointer_value.unwrap_or(global_input_offset);
 
-                                let (initial_flag, count) = increment_inscription_count(
-                                    &mut inscribed_offsets,
-                                    target_offset,
-                                    base_cursed,
-                                    Some(inscription_template.genesis),
-                                );
+                                let (initial_flag, count) = increment_inscription_count(&mut inscribed_offsets, target_offset, base_cursed, Some(inscription_template.genesis));
 
                                 if log_this_tx {
                                     eprintln!(
@@ -568,12 +453,8 @@ impl Parser<'_> {
                             }
 
                             // Satpoint-based reinscription flag for compatibility with feature/litecoin
-                            let per_sat_reinscription = total_before > 1
-                                || (total_before > 0
-                                    && !offsets_map
-                                        .get(&location.offset)
-                                        .map(|s| s.initial_cursed_or_vindicated)
-                                        .unwrap_or(false));
+                            let per_sat_reinscription =
+                                total_before > 1 || (total_before > 0 && !offsets_map.get(&location.offset).map(|s| s.initial_cursed_or_vindicated).unwrap_or(false));
 
                             // Update per-tx satpoint count after computing curse/flag
                             *location_inscription_count.entry(loc_key).or_insert(0) += 1;
@@ -586,10 +467,7 @@ impl Parser<'_> {
 
                         // Persist multiplicity and initial cursed/vindicated flag for this location.
                         if !had_previous_at_location {
-                            offsets_map.insert(
-                                location.offset,
-                                OccupancyState::new(inscription_template.genesis, base_cursed_for_location),
-                            );
+                            offsets_map.insert(location.offset, OccupancyState::new(inscription_template.genesis, base_cursed_for_location));
                         } else {
                             offsets_map.entry(location.offset).and_modify(|occ| {
                                 occ.count = occ.count.saturating_add(1);
@@ -648,8 +526,8 @@ impl Parser<'_> {
         match parsed {
             ParsedInscription::None => ParsedInscriptionResult::None,
             ParsedInscription::Partial => ParsedInscriptionResult::Partials,
-            ParsedInscription::Single(inscription, meta) => Self::convert_to_template(&payload, inscription, meta, leaked)
-                .map(ParsedInscriptionResult::Single)
+            ParsedInscription::Single(v) => Self::convert_to_template(&payload, v.0, v.1, leaked)
+                .map(|x| ParsedInscriptionResult::Single(Box::new(x)))
                 .unwrap_or(ParsedInscriptionResult::None),
             ParsedInscription::Many(inscriptions) => ParsedInscriptionResult::Many(
                 inscriptions
@@ -688,20 +566,20 @@ impl Parser<'_> {
             value: 0,
             parents: parents_ids,
             leaked: false,
-             // ord/OPI compatibility fields, filled from meta and inscription
-             input_index: meta.input_index,
-             envelope_offset: meta.envelope_offset,
-             duplicate_field: meta.duplicate_field,
-             incomplete_field: meta.incomplete_field,
-             unrecognized_even_field: meta.unrecognized_even_field,
-             has_pointer: meta.has_pointer,
-             pushnum: meta.pushnum,
-             stutter: meta.stutter,
-             cursed_for_brc20: false,
-             unbound: false,
-             reinscription: false,
-             vindicated: false,
-             pointer_value: None,
+            // ord/OPI compatibility fields, filled from meta and inscription
+            input_index: meta.input_index,
+            envelope_offset: meta.envelope_offset,
+            duplicate_field: meta.duplicate_field,
+            incomplete_field: meta.incomplete_field,
+            unrecognized_even_field: meta.unrecognized_even_field,
+            has_pointer: meta.has_pointer,
+            pushnum: meta.pushnum,
+            stutter: meta.stutter,
+            cursed_for_brc20: false,
+            unbound: false,
+            reinscription: false,
+            vindicated: false,
+            pointer_value: None,
         };
 
         let Ok((mut vout, mut offset)) = InscriptionSearcher::get_output_index_by_input(payload.inputs_cum.get(payload.input_index as usize).copied(), &payload.tx.value.outputs)
@@ -736,5 +614,87 @@ impl Parser<'_> {
         inscription_template.value = tx_out.out.value;
 
         Some(inscription_template)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn spend_with_multiple_existing_inscriptions_curses_reinscription() {
+        // UTXO already carried two inscriptions at the same input offset.
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        inscribed_offsets.insert(
+            10,
+            InscribedOffsetState {
+                first_inscription: None,
+                initial_cursed_or_vindicated: true,
+                count: 2,
+            },
+        );
+
+        assert!(is_reinscription(&inscribed_offsets, 10));
+
+        // Any curse should mark BRC-20 invalid for non-LTC coins.
+        let coin = CoinType::default(); // Bitcoin settings, only_p2tr = true
+        assert!(compute_cursed_for_brc20(coin, true, false));
+    }
+
+    #[test]
+    fn repeated_inscriptions_in_same_tx_are_cursed_even_with_pointer() {
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        let global_offset = 0;
+
+        // First inscription at this input offset is allowed.
+        assert!(!is_reinscription(&inscribed_offsets, global_offset));
+        let (initial_flag_first, count_first) = increment_inscription_count(&mut inscribed_offsets, global_offset, false, None);
+        assert!(!initial_flag_first);
+        assert_eq!(count_first, 1);
+
+        // Second inscription (same input offset, whether pointered or not) is cursed.
+        assert!(is_reinscription(&inscribed_offsets, global_offset));
+        let (initial_flag_second, count_second) = increment_inscription_count(&mut inscribed_offsets, global_offset, true, None);
+        assert!(!initial_flag_second);
+        assert_eq!(count_second, 2);
+
+        // A pointer-based inscription would still hash to the same input offset key.
+        assert!(is_reinscription(&inscribed_offsets, global_offset));
+    }
+
+    #[test]
+    fn brc20_gating_rejects_reinscriptions() {
+        let coin = CoinType::default(); // brc-20
+        assert!(compute_cursed_for_brc20(coin, true, false));
+
+        // For ltc-20, curses before jubilee are rejected; after jubilee they are vindicated.
+        let ltc_coin = CoinType {
+            brc_name: "ltc-20",
+            ..CoinType::default()
+        };
+        assert!(compute_cursed_for_brc20(ltc_coin, true, false));
+        assert!(!compute_cursed_for_brc20(ltc_coin, true, true));
+    }
+
+    #[test]
+    fn cursed_first_inscription_allows_one_reinscription() {
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        seed_offset_from_state(&mut inscribed_offsets, 0, OccupancyState::from_legacy(true, 1));
+
+        assert!(!is_reinscription(&inscribed_offsets, 0));
+
+        // After recording the second inscription, the next attempt (third overall)
+        // becomes a cursed reinscription.
+        let _ = increment_inscription_count(&mut inscribed_offsets, 0, true, None);
+        assert!(is_reinscription(&inscribed_offsets, 0));
+    }
+
+    #[test]
+    fn blessed_first_inscription_curses_second() {
+        let mut inscribed_offsets: BTreeMap<u64, InscribedOffsetState> = BTreeMap::new();
+        seed_offset_from_state(&mut inscribed_offsets, 0, OccupancyState::from_legacy(false, 1));
+
+        assert!(is_reinscription(&inscribed_offsets, 0));
     }
 }

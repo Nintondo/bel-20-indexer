@@ -35,7 +35,7 @@ pub struct InscriptionMeta {
 pub enum ParsedInscription {
     None,
     Partial,
-    Single(Inscription, InscriptionMeta),
+    Single(Box<(Inscription, InscriptionMeta)>),
     Many(Vec<(Inscription, InscriptionMeta)>),
 }
 
@@ -109,11 +109,7 @@ impl Inscription {
     }
 
     pub fn parents(&self) -> Vec<InscriptionId> {
-        self
-            .parents
-            .iter()
-            .filter_map(|parent| Self::inscription_id_field(Some(parent)))
-            .collect()
+        self.parents.iter().filter_map(|parent| Self::inscription_id_field(Some(parent))).collect()
     }
 
     fn inscription_id_field(field: Option<&[u8]>) -> Option<InscriptionId> {
@@ -233,7 +229,7 @@ impl InscriptionParser {
                         stutter: false,
                     };
 
-                    return ParsedInscription::Single(inscription, meta);
+                    return ParsedInscription::Single(Box::new((inscription, meta)));
                 }
 
                 if push_datas.len() < 2 {

@@ -36,8 +36,8 @@ impl PrevoutCache {
     }
 
     pub fn insert(&mut self, key: OutPoint, value: TxPrevout) {
-        if self.map.contains_key(&key) {
-            self.map.insert(key, value);
+        if let std::collections::hash_map::Entry::Occupied(mut e) = self.map.entry(key) {
+            e.insert(value);
             return;
         }
         self.map.insert(key, value);
@@ -59,12 +59,7 @@ impl PrevoutCache {
     }
 }
 
-pub fn process_prevouts(
-    db: Arc<DB>,
-    block: &Block,
-    data_to_write: &mut Vec<ProcessedData>,
-    mut cache: Option<&mut PrevoutCache>,
-) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
+pub fn process_prevouts(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>, mut cache: Option<&mut PrevoutCache>) -> anyhow::Result<HashMap<OutPoint, TxPrevout>> {
     // Pre-allocate prevouts HashMap based on the total number of outputs in the block.
     let outputs_capacity: usize = block.txs.iter().map(|tx| tx.value.outputs.len()).sum();
     let mut prevouts: HashMap<OutPoint, TxPrevout> = HashMap::with_capacity(outputs_capacity);
@@ -128,7 +123,7 @@ pub fn process_prevouts(
                     }
                     None => {
                         if let Some(value) = prevouts.get(key) {
-                        if let Some(cache) = cache.as_deref_mut() {
+                            if let Some(cache) = cache.as_deref_mut() {
                                 cache.insert(*key, *value);
                             }
                             result.insert(*key, *value);

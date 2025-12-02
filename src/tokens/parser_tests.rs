@@ -1,6 +1,6 @@
 use super::parser::TokenCache;
 use super::proto::Brc4;
-use super::structs::{Brc4ParseErr, OriginalTokenTick};
+use super::structs::Brc4ParseErr;
 use nint_blk::CoinType;
 
 fn coin() -> CoinType {

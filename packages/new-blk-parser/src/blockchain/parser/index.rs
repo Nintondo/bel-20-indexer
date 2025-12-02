@@ -119,9 +119,7 @@ impl BlockIndexRecord {
     fn from(key: &[u8], values: &[u8], coin: CoinType) -> Result<Option<Self>> {
         let mut reader = Cursor::new(values);
 
-        let block_hash: [u8; 32] = key
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("leveldb: malformed blockhash"))?;
+        let block_hash: [u8; 32] = key.try_into().map_err(|_| anyhow::anyhow!("leveldb: malformed blockhash"))?;
         let _version = read_varint(&mut reader)?;
         let height = read_varint(&mut reader)?;
         let status = read_varint(&mut reader)?;
@@ -199,10 +197,7 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange, coin:
             // Do not filter out parents early; only apply upper-bound filter here.
             if record.height <= range.end.unwrap_or(u64::MAX) {
                 let level = record.status & BLOCK_VALID_MASK;
-                if (record.status & BLOCK_HAVE_DATA) != 0
-                    && (record.status & BLOCK_FAILED_MASK) == 0
-                    && level >= BLOCK_VALID_TRANSACTIONS
-                {
+                if (record.status & BLOCK_HAVE_DATA) != 0 && (record.status & BLOCK_FAILED_MASK) == 0 && level >= BLOCK_VALID_TRANSACTIONS {
                     // Store into hash index and per-height index
                     by_hash.insert(record.block_hash, record.clone());
                     block_index.entry(record.height).or_default().push(record);
@@ -237,34 +232,32 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange, coin:
 
     // Sort candidate tips by cumulative work (desc), tie-breakers: height desc, validity desc, then disk order
     let mut candidates: Vec<(sha256d::Hash, f64)> = cw_log2.iter().map(|(h, w)| (*h, *w)).collect();
-    candidates.sort_by(|(ha, wa), (hb, wb)| {
-        match wb.partial_cmp(wa).unwrap_or(Ordering::Equal) {
-            Ordering::Equal => {
-                let a = by_hash.get(ha).unwrap();
-                let b = by_hash.get(hb).unwrap();
-                match b.height.cmp(&a.height) {
-                    Ordering::Equal => {
-                        let la = a.status & BLOCK_VALID_MASK;
-                        let lb = b.status & BLOCK_VALID_MASK;
-                        match lb.cmp(&la) {
-                            Ordering::Equal => match a.blk_index.cmp(&b.blk_index) {
-                                Ordering::Equal => a.data_offset.cmp(&b.data_offset),
-                                o => o,
-                            },
+    candidates.sort_by(|(ha, wa), (hb, wb)| match wb.partial_cmp(wa).unwrap_or(Ordering::Equal) {
+        Ordering::Equal => {
+            let a = by_hash.get(ha).unwrap();
+            let b = by_hash.get(hb).unwrap();
+            match b.height.cmp(&a.height) {
+                Ordering::Equal => {
+                    let la = a.status & BLOCK_VALID_MASK;
+                    let lb = b.status & BLOCK_VALID_MASK;
+                    match lb.cmp(&la) {
+                        Ordering::Equal => match a.blk_index.cmp(&b.blk_index) {
+                            Ordering::Equal => a.data_offset.cmp(&b.data_offset),
                             o => o,
-                        }
+                        },
+                        o => o,
                     }
-                    o => o,
                 }
+                o => o,
             }
-            o => o,
         }
+        o => o,
     });
 
-    if let Some((best_hash, best_work)) = candidates.first().copied() {
-        if let Some(best) = by_hash.get(&best_hash) {
-            trace!(target: "blkindex", "Best tip candidate: height={} work_log2={:.6} status={} file={} offset={}", best.height, best_work, best.status, best.blk_index, best.data_offset);
-        }
+    if let Some((best_hash, best_work)) = candidates.first().copied()
+        && let Some(best) = by_hash.get(&best_hash)
+    {
+        trace!(target: "blkindex", "Best tip candidate: height={} work_log2={:.6} status={} file={} offset={}", best.height, best_work, best.status, best.blk_index, best.data_offset);
     }
 
     // Try candidates by work until a fully linked chain down to min_height is found
@@ -276,14 +269,9 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange, coin:
             trace!(target: "blkindex", "Built chain back from tip height {} down to {} ({} entries)", chain_tip, chain_start, chain.len());
 
             // Drop the start-1 sentinel from the public map
-            let out = chain
-                .into_iter()
-                .filter(|(h, _)| *h >= range.start)
-                .map(|(h, r)| (h, r.into()))
-                .collect();
+            let out = chain.into_iter().filter(|(h, _)| *h >= range.start).map(|(h, r)| (h, r.into())).collect();
             return Ok(out);
-        }
-        else {
+        } else {
             let st = by_hash.get(&h).unwrap();
             trace!(target: "blkindex", "Candidate failed to link: tip height {} hash {}", st.height, st.block_hash);
         }
@@ -336,11 +324,7 @@ fn skip_mweb_extension(reader: &mut Cursor<&[u8]>) -> Result<()> {
     Ok(())
 }
 
-fn try_build_by_hash(
-    by_hash: &HashMap<sha256d::Hash, BlockIndexRecord>,
-    start: &BlockIndexRecord,
-    min_height: u64,
-) -> Option<BTreeMap<u64, BlockIndexRecord>> {
+fn try_build_by_hash(by_hash: &HashMap<sha256d::Hash, BlockIndexRecord>, start: &BlockIndexRecord, min_height: u64) -> Option<BTreeMap<u64, BlockIndexRecord>> {
     let mut chain = BTreeMap::new();
     chain.insert(start.height, start.clone());
     let mut cur = start.clone();

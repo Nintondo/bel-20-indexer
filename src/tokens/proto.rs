@@ -2,9 +2,6 @@ use super::*;
 
 use serde::de::Error;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Protocol(pub Brc4Value, pub Option<Brc4ActionErr>);
-
 fn bel_20_validate<'de, D>(val: &str) -> Result<Fixed128, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -98,21 +95,6 @@ pub struct MintProto {
     pub amt: Fixed128,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct DeployProtoWrapper {
-    #[serde(deserialize_with = "bel_20_tick")]
-    pub tick: OriginalTokenTick,
-    #[serde(deserialize_with = "bel_20_decimal")]
-    pub max: Fixed128,
-    #[serde(default, deserialize_with = "bel_20_option_decimal")]
-    pub lim: Option<Fixed128>,
-    #[serde(with = ":: serde_with :: As :: < DisplayFromStr >")]
-    #[serde(default = "DeployProto::default_dec")]
-    pub dec: u8,
-    #[serde(default, deserialize_with = "bool_from_string_default_false")]
-    pub self_mint: bool,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeployProto {
     #[serde(deserialize_with = "bel_20_tick")]
@@ -142,34 +124,4 @@ pub struct TransferProto {
     pub tick: OriginalTokenTick,
     #[serde(deserialize_with = "bel_20_decimal")]
     pub amt: Fixed128,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Brc4Value {
-    Mint { tick: OriginalTokenTick, amt: Fixed128 },
-    Transfer { tick: OriginalTokenTick, amt: Fixed128 },
-    Deploy { tick: OriginalTokenTick, max: Fixed128, lim: Fixed128, dec: u8 },
-}
-
-impl From<&DeployProto> for Brc4Value {
-    fn from(v: &DeployProto) -> Self {
-        Self::Deploy {
-            tick: v.tick,
-            max: v.max,
-            lim: v.lim.unwrap_or(v.max),
-            dec: v.dec,
-        }
-    }
-}
-
-impl From<&MintProto> for Brc4Value {
-    fn from(v: &MintProto) -> Self {
-        Self::Mint { tick: v.tick, amt: v.amt }
-    }
-}
-
-impl From<&TransferProto> for Brc4Value {
-    fn from(v: &TransferProto) -> Self {
-        Self::Transfer { tick: v.tick, amt: v.amt }
-    }
 }

@@ -1,42 +1,9 @@
 use super::*;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TokenBalanceRest {
-    pub tick: OriginalTokenTickRest,
-    pub balance: Fixed128,
-    pub transferable_balance: Fixed128,
-    pub transfers: Vec<TokenTransfer>,
-    pub transfers_count: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TokenProtoRest {
-    pub genesis: InscriptionId,
-    pub tick: OriginalTokenTickRest,
-    pub max: u64,
-    pub lim: u64,
-    pub dec: u8,
-    pub supply: Fixed128,
-    pub mint_count: u64,
-    pub transfer_count: u64,
-    pub holders: usize,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, PartialOrd, Ord, Eq)]
 pub struct AddressOutPoint {
     pub address: FullHash,
     pub outpoint: OutPoint,
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum Brc4ActionErr {
-    NotDeployed,
-    AlreadyDeployed,
-    ReachDecBound,
-    ReachLimBound,
-    SupplyMinted,
-    InsufficientBalance,
-    Transferred,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -51,12 +18,6 @@ pub enum Brc4ParseErr {
     InvalidDigit,
     InvalidUtf8,
     Unknown(String),
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub enum Brc4Error {
-    Action(Brc4ActionErr),
-    Parse(Brc4ParseErr),
 }
 
 /// Token tick in the original case (same as in the deploy)
@@ -145,15 +106,15 @@ impl OriginalTokenTick {
     }
 }
 
-impl PartialOrd for OriginalTokenTick {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.as_bytes().cmp(other.as_bytes()))
-    }
-}
-
 impl Ord for OriginalTokenTick {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_bytes().cmp(other.as_bytes())
+    }
+}
+
+impl PartialOrd for OriginalTokenTick {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -297,7 +258,13 @@ pub enum TokenAction {
     /// Deploy new token action.
     Deploy { genesis: InscriptionId, proto: DeployProtoDB, owner: FullHash },
     /// Mint new token action.
-    Mint { owner: FullHash, proto: MintProto, txid: Txid, vout: u32, parents: Vec<InscriptionId> },
+    Mint {
+        owner: FullHash,
+        proto: MintProto,
+        txid: Txid,
+        vout: u32,
+        parents: Vec<InscriptionId>,
+    },
     /// Transfer token action.
     Transfer {
         location: Location,

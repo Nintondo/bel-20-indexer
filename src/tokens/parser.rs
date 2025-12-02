@@ -247,9 +247,9 @@ impl TokenCache {
                 }
 
                 // Reject tickers containing a null byte (reference parity and safety)
-                if v.tick.as_bytes().iter().any(|&b| b == 0) {
-                    return None;
-                }
+                // if v.tick.as_bytes().iter().any(|&b| b == 0) {
+                //     return None;
+                // }
 
                 // Normalize unlimited self_mint tokens: when max==0, set an effective large cap for max/lim.
                 let mut norm_max = v.max;

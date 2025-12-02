@@ -17,38 +17,29 @@ impl RocksDB {
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
 
-        db_opts.increase_parallelism(12);
-        #[allow(unused_must_use)]
-        {
-            db_opts.set_max_background_jobs(8);
-        }
+        db_opts.increase_parallelism(16);
+        db_opts.set_max_background_jobs(8);
         db_opts.set_max_open_files(-1); // keep all files open, if OS limits allow
+
+        db_opts.set_max_subcompactions(4);
 
         // Baseline CF options shared by most column families.
         let mut base_cf_opts = rocksdb::Options::default();
 
-        // Use more background threads for compaction at the CF level.
-        base_cf_opts.increase_parallelism(12);
-        #[allow(unused_must_use)]
-        {
-            base_cf_opts.set_max_background_jobs(8);
-        }
-        base_cf_opts.set_max_subcompactions(4);
-
-        // Optimize write path for ~8 GiB of RocksDB memory.
-        base_cf_opts.optimize_level_style_compaction(8 * 1024 * 1024 * 1024);
+        // Optimize write path for ~4 GiB of RocksDB memory.
+        base_cf_opts.optimize_level_style_compaction(4 * 1024 * 1024 * 1024);
 
         // Bigger memtables and dynamic level sizes.
-        base_cf_opts.set_write_buffer_size(4 * 1024 * 1024 * 1024); // 4 GB per memtable
-        base_cf_opts.set_max_write_buffer_number(2);
-        base_cf_opts.set_level_compaction_dynamic_level_bytes(true);
+        base_cf_opts.set_write_buffer_size(128 * 1024 * 1024); // 128 MB
+        base_cf_opts.set_max_write_buffer_number(8);
+        base_cf_opts.set_min_write_buffer_number_to_merge(2);  // Flush 2 at a time if needed
 
         // Larger SSTables → fewer compactions.
         base_cf_opts.set_target_file_size_base(128 * 1024 * 1024); // 128 MiB files
 
         // Smoother fsync.
-        base_cf_opts.set_bytes_per_sync(4 * 1024 * 1024);
-        base_cf_opts.set_wal_bytes_per_sync(4 * 1024 * 1024);
+        base_cf_opts.set_bytes_per_sync(2 * 1024 * 1024);
+        base_cf_opts.set_wal_bytes_per_sync(2 * 1024 * 1024);
 
         // Shared block cache and block-based options.
         let block_cache = rocksdb::Cache::new_lru_cache(4 * 1024 * 1024 * 1024);
@@ -56,11 +47,13 @@ impl RocksDB {
         let mut block_opts = rocksdb::BlockBasedOptions::default();
         block_opts.set_block_cache(&block_cache);
         block_opts.set_bloom_filter(10.0, false);
-        block_opts.set_index_type(rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
-        block_opts.set_cache_index_and_filter_blocks(true);
-        block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
         block_opts.set_partition_filters(true);
+        block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);        
+        block_opts.set_cache_index_and_filter_blocks(true);
+        block_opts.set_data_block_index_type(rocksdb::DataBlockIndexType::BinaryAndHash);
+
         base_cf_opts.set_block_based_table_factory(&block_opts);
+
 
         // Hot CFs (prevouts, outpoint_to_inscription_offsets) get lighter compression
         // and prefix-based bloom filters keyed by the 32-byte txid prefix, but reuse
@@ -68,18 +61,20 @@ impl RocksDB {
         let block_cache_hot = rocksdb::Cache::new_lru_cache(8 * 1024 * 1024 * 1024);
 
         let mut hot_cf_opts = base_cf_opts.clone();
-        hot_cf_opts.set_compression_type(rocksdb::DBCompressionType::None);
         hot_cf_opts.set_prefix_extractor(rocksdb::SliceTransform::create_fixed_prefix(32));
+        hot_cf_opts.set_memtable_prefix_bloom_ratio(0.2);
 
         let mut hot_block_opts = rocksdb::BlockBasedOptions::default();
         hot_block_opts.set_block_cache(&block_cache_hot);
         hot_block_opts.set_bloom_filter(10.0, false);
-        hot_block_opts.set_index_type(rocksdb::BlockBasedIndexType::TwoLevelIndexSearch);
-        hot_block_opts.set_cache_index_and_filter_blocks(true);
-        hot_block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
         hot_block_opts.set_partition_filters(true);
-        hot_block_opts.set_whole_key_filtering(false);
+        hot_block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);        
+        hot_block_opts.set_cache_index_and_filter_blocks(true);
+        hot_block_opts.set_data_block_index_type(rocksdb::DataBlockIndexType::BinaryAndHash);
+        hot_block_opts.set_whole_key_filtering(true);
+
         hot_cf_opts.set_block_based_table_factory(&hot_block_opts);
+
 
         let cf_descriptors: Vec<rocksdb::ColumnFamilyDescriptor> = table_names
             .into_iter()

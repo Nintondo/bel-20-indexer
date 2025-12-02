@@ -2,15 +2,6 @@ use nintypes::common::inscriptions::Outpoint;
 
 use super::*;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct AddressTokenBalance {
-    pub tick: OriginalTokenTickRest,
-    pub balance: Fixed128,
-    pub transferable_balance: Fixed128,
-    pub transfers: Vec<TokenTransfer>,
-    pub transfers_count: u64,
-}
-
 #[derive(Deserialize, Validate, schemars::JsonSchema)]
 pub struct TokenEventsArgs {
     /// Offset by event id

@@ -52,13 +52,13 @@ impl ProcessedData {
                 block_info,
                 block_proof,
             } => {
-                batch.put(&server.db.last_block, &(), &block_number);
-                batch.put(&server.db.block_info, &block_number, &block_info);
-                batch.put(&server.db.proof_of_history, &block_number, &block_proof);
+                batch.put(&server.db.last_block, &(), block_number);
+                batch.put(&server.db.block_info, block_number, block_info);
+                batch.put(&server.db.proof_of_history, block_number, block_proof);
             }
             ProcessedData::BlockWithoutProof { block_number, block_info } => {
-                batch.put(&server.db.last_block, &(), &block_number);
-                batch.put(&server.db.block_info, &block_number, &block_info);
+                batch.put(&server.db.last_block, &(), block_number);
+                batch.put(&server.db.block_info, block_number, block_info);
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
                 if let Some(rcg) = reorg_cache.as_mut() {
@@ -74,7 +74,7 @@ impl ProcessedData {
                     rcg.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
                 }
 
-                batch.extend(&server.db.prevouts, to_write.iter().map(|(k, v)| (k, v)));
+                batch.extend(&server.db.prevouts, to_write.iter());
                 batch.remove_batch(&server.db.prevouts, to_remove.iter());
             }
             ProcessedData::FullHash { addresses } => {
@@ -120,8 +120,8 @@ impl ProcessedData {
                 }
 
                 batch.extend(&server.db.token_id_to_event, token_id_to_event.iter().map(|(k, v)| (*k, *v)));
-                batch.put(&server.db.block_events, &block_number, &block_events);
-                batch.put(&server.db.last_history_id, &(), &last_history_id);
+                batch.put(&server.db.block_events, block_number, &block_events);
+                batch.put(&server.db.last_history_id, &(), last_history_id);
                 batch.extend(&server.db.outpoint_to_event, outpoint_to_event.iter().map(|(k, v)| (k, *v)));
                 batch.extend(&server.db.address_token_to_history, history.iter().map(|(k, v)| (k, v)));
             }

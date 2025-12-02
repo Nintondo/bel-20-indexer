@@ -254,10 +254,10 @@ pub fn get_block_index(path: &Path, range: crate::utils::BlockHeightRange, coin:
         o => o,
     });
 
-    if let Some((best_hash, best_work)) = candidates.first().copied() {
-        if let Some(best) = by_hash.get(&best_hash) {
-            trace!(target: "blkindex", "Best tip candidate: height={} work_log2={:.6} status={} file={} offset={}", best.height, best_work, best.status, best.blk_index, best.data_offset);
-        }
+    if let Some((best_hash, best_work)) = candidates.first().copied()
+        && let Some(best) = by_hash.get(&best_hash)
+    {
+        trace!(target: "blkindex", "Best tip candidate: height={} work_log2={:.6} status={} file={} offset={}", best.height, best_work, best.status, best.blk_index, best.data_offset);
     }
 
     // Try candidates by work until a fully linked chain down to min_height is found

@@ -218,7 +218,7 @@ impl InscriptionIndexer {
 
         let token_cache_load_start = Instant::now();
         let runtime_guard = self.server.token_state.lock();
-        let mut token_cache = TokenCache::load(prevouts, self.server.clone(), &*runtime_guard);
+        let mut token_cache = TokenCache::load(prevouts, self.server.clone(), &runtime_guard);
         INDEXING_METRICS.record_token_cache_load(token_cache_load_start.elapsed());
 
         let transfers_to_remove = token_cache
@@ -239,7 +239,7 @@ impl InscriptionIndexer {
         parser.parse_block(block_height, &block, prevouts, &mut to_write.processed);
         INDEXING_METRICS.record_block_parse(parse_start.elapsed());
 
-        token_cache.load_tokens_data(&self.server.db, &*runtime_guard)?;
+        token_cache.load_tokens_data(&self.server.db, &runtime_guard)?;
 
         let mut fullhash_to_load = HashSet::new();
 
@@ -384,6 +384,6 @@ impl InscriptionIndexer {
 pub enum ParsedInscriptionResult {
     None,
     Partials,
-    Single(InscriptionTemplate),
+    Single(Box<InscriptionTemplate>),
     Many(Vec<InscriptionTemplate>),
 }

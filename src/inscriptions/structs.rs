@@ -35,7 +35,7 @@ pub struct InscriptionMeta {
 pub enum ParsedInscription {
     None,
     Partial,
-    Single(Inscription, InscriptionMeta),
+    Single(Box<(Inscription, InscriptionMeta)>),
     Many(Vec<(Inscription, InscriptionMeta)>),
 }
 
@@ -229,7 +229,7 @@ impl InscriptionParser {
                         stutter: false,
                     };
 
-                    return ParsedInscription::Single(inscription, meta);
+                    return ParsedInscription::Single(Box::new((inscription, meta)));
                 }
 
                 if push_datas.len() < 2 {

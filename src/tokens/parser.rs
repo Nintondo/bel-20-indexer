@@ -127,8 +127,8 @@ impl TokenCache {
 
         token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
 
-        // Preload deploy mapping for parent checks
-        token_cache.deploy_map = token_cache.server.db.deploy_id_to_tick.iter().map(|(k, v)| (k.into(), v)).collect();
+        // Preload deploy mapping for parent checks from runtime cache
+        token_cache.deploy_map = runtime.deploy_map.iter().map(|(k, v)| (*k, v.clone())).collect();
 
         token_cache
     }
@@ -185,11 +185,12 @@ impl TokenCache {
             Brc4::Transfer { proto } if !proto.amt.is_zero() => Ok(brc4),
             Brc4::Deploy { proto } => {
                 let dec_ok = proto.dec <= DeployProto::MAX_DEC;
+                // For max=0, allow self_mint tokens regardless of lim presence/value (normalized later)
+                // For max>0, require non-zero effective lim
                 let ok = if proto.max.is_zero() {
-                    // For max=0, only self_mint tokens allowed and lim must be present and > 0
-                    proto.self_mint && proto.lim.is_some() && !proto.lim.unwrap().is_zero()
+                    proto.self_mint
                 } else {
-                    !proto.max.is_zero() && !proto.lim.unwrap_or(proto.max).is_zero()
+                    !proto.lim.unwrap_or(proto.max).is_zero()
                 };
                 if dec_ok && ok {
                     Ok(brc4)
@@ -203,27 +204,8 @@ impl TokenCache {
 
     /// Parses token action from the InscriptionTemplate.
     pub fn parse_token_action(&mut self, inc: &InscriptionTemplate, height: u32, created: u32) -> Option<TransferProto> {
-        // Optional per-tx debug: set DEBUG_TXS=txid1,txid2 to trace token gating/decisions.
-        // let debug_txids: HashSet<Txid> = std::env::var("DEBUG_TXS")
-        //     .ok()
-        //     .map(|s| {
-        //         s.split(',')
-        //             .filter_map(|t| Txid::from_str(t.trim()).ok())
-        //             .collect()
-        //     })
-        //     .unwrap_or_default();
-        // let log_this_tx = debug_txids.contains(&inc.genesis.txid);
-
         // skip to not add invalid token creation in token_cache
         if inc.owner.is_op_return_hash() || inc.leaked {
-            // if log_this_tx {
-            //     eprintln!(
-            //         "[DEBUG_TX] token-skip tx={} reason=owner_opreturn_or_leaked owner_opret={} leaked={}",
-            //         inc.genesis.txid,
-            //         inc.owner.is_op_return_hash(),
-            //         inc.leaked
-            //     );
-            // }
             return None;
         }
 
@@ -232,59 +214,13 @@ impl TokenCache {
         // ord/OPI-style gating for BRC20 inscriptions on p2tr-only coins.
         // Make behaviour coin-specific so that:
         //  - BTC (brc-20) keeps existing logic: reject cursed or unbound inscriptions.
-        if coin.only_p2tr {
-            if inc.cursed_for_brc20 || inc.unbound {
-                // if log_this_tx {
-                //     eprintln!(
-                //         "[DEBUG_TX] token-skip tx={} reason=cursed_or_unbound cursed={} unbound={}",
-                //             inc.genesis.txid,
-                //             inc.cursed_for_brc20,
-                //             inc.unbound
-                //     );
-                // }
-                return None;
-            }
-
-            // match coin.brc_name {
-            //     // Litecoin mainnet/testnet: emulate ord/ord20 behaviour.
-            //     "ltc-20" => {
-            //         if inc.cursed_for_brc20 {
-            //             if log_this_tx {
-            //                 eprintln!(
-            //                     "[DEBUG_TX] token-skip tx={} reason=cursed_for_brc20 ltc20",
-            //                     inc.genesis.txid
-            //                 );
-            //             }
-            //             return None;
-            //         }
-            //     }
-            //     // Any other p2tr coin: keep conservative behaviour.
-            //     _ => {
-            //         if inc.cursed_for_brc20 || inc.unbound {
-            //             if log_this_tx {
-            //                 eprintln!(
-            //                     "[DEBUG_TX] token-skip tx={} reason=cursed_or_unbound cursed={} unbound={}",
-            //                     inc.genesis.txid,
-            //                     inc.cursed_for_brc20,
-            //                     inc.unbound
-            //                 );
-            //             }
-            //             return None;
-            //         }
-            //     }
-            // }
+        if coin.only_p2tr && (inc.cursed_for_brc20 || inc.unbound) {
+            return None;
         }
 
         let brc4 = match Self::try_parse(inc.content_type.as_ref()?, inc.content.as_ref()?, coin) {
             Ok(ok) => ok,
-            Err(err) => {
-                // if log_this_tx {
-                //     eprintln!(
-                //         "[DEBUG_TX] token-skip tx={} reason=try_parse err={:?}",
-                //         inc.genesis.txid,
-                //         err
-                //     );
-                // }
+            Err(_) => {
                 return None;
             }
         };
@@ -311,12 +247,28 @@ impl TokenCache {
                     }
                 }
 
+                // Reject tickers containing a null byte (reference parity and safety)
+                if v.tick.as_bytes().iter().any(|&b| b == 0) {
+                    return None;
+                }
+
+                // Normalize unlimited self_mint tokens: when max==0, set an effective large cap for max/lim.
+                let mut norm_max = v.max;
+                let mut norm_lim = v.lim.unwrap_or(v.max);
+                if v.self_mint && norm_max.is_zero() {
+                    let cap = Fixed128::from(u64::MAX);
+                    norm_max = cap;
+                    if norm_lim.is_zero() {
+                        norm_lim = cap;
+                    }
+                }
+
                 self.token_actions.push(TokenAction::Deploy {
                     genesis: inc.genesis,
                     proto: DeployProtoDB {
                         tick: v.tick,
-                        max: v.max,
-                        lim: v.lim.unwrap_or(v.max),
+                        max: norm_max,
+                        lim: norm_lim,
                         dec: v.dec,
                         self_mint: v.self_mint,
                         supply: Fixed128::ZERO,
@@ -524,26 +476,19 @@ impl TokenCache {
                     // Self-mint parent check
                     if *self_mint {
                         // Require that parents contains the deploy genesis id of this token
-                        let expected = token.genesis;
-                        let has_parent = parents.iter().any(|p| *p == expected)
-                            || parents
-                                .iter()
-                                .any(|p| self.deploy_map.get(p).map(|t| *t == LowerCaseTokenTick::from(*tick)).unwrap_or(false));
-                        if !has_parent {
+                        if !parents.contains(&token.genesis) {
                             continue;
                         }
                     }
 
-                    if !max.is_zero() {
-                        if *supply == *max {
-                            continue;
-                        }
-                        let amt = amt.min(*max - *supply);
-                        *supply += amt;
-                    } else {
-                        // unlimited supply for self_mint tokens
-                        *supply += amt;
+                    // Safe-cap mint amount using remaining capacity (max is guaranteed > 0 after normalization)
+                    let cap_left = *max - *supply;
+                    if cap_left.is_zero() {
+                        continue;
                     }
+                    let amt = amt.min(cap_left);
+                    *supply += amt;
+
                     *transactions += 1;
 
                     let key = AddressToken { address: owner, token: *tick };

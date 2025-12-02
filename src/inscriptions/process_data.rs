@@ -148,10 +148,8 @@ impl ProcessedData {
 
                         // Build new deploy_id -> tick entries (for this block)
                         let meta_map: HashMap<LowerCaseTokenTick, TokenMetaDB> = metas.iter().cloned().collect();
-                        let deploy_map_new: Vec<(InscriptionId, LowerCaseTokenTick)> = new_deploys
-                            .iter()
-                            .filter_map(|tick| meta_map.get(tick).map(|m| (m.genesis, tick.clone())))
-                            .collect();
+                        let deploy_map_new: Vec<(OutPoint, LowerCaseTokenTick)> =
+                            new_deploys.iter().filter_map(|tick| meta_map.get(tick).map(|m| (m.genesis.into(), tick.clone()))).collect();
 
                         // Record reorg actions if applicable
                         if !deploy_map_new.is_empty() {

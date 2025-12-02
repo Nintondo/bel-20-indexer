@@ -128,7 +128,7 @@ pub fn process_prevouts<'a>(
         if !missing_keys.is_empty() {
             missing_keys.sort_unstable();
             let db_fetch_start = std::time::Instant::now();
-            const CHUNK: usize = 1024;
+            const CHUNK: usize = 512;
             let table = &db.prevouts;
             let chunked: Vec<Vec<OutPoint>> = missing_keys.chunks(CHUNK).map(|c| c.to_vec()).collect();
             let chunk_results: Vec<Vec<(OutPoint, Option<TxPrevout>)>> = chunked

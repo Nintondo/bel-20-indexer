@@ -633,7 +633,7 @@ impl Parser<'_> {
         outpoints.sort_unstable_by(|a, b| a.txid.cmp(&b.txid).then(a.vout.cmp(&b.vout)));
 
         let table = &server.db.outpoint_to_inscription_offsets;
-        const CHUNK: usize = 1024;
+        const CHUNK: usize = 512;
 
         if outpoints.len() <= CHUNK {
             return table

@@ -192,7 +192,9 @@ impl TokenCache {
                 } else {
                     !proto.lim.unwrap_or(proto.max).is_zero()
                 };
-                if dec_ok && ok {
+                // 5-byte tickers must be self_mint
+                let tick_len_ok = if proto.tick.len() == 5 { proto.self_mint } else { true };
+                if dec_ok && ok && tick_len_ok {
                     Ok(brc4)
                 } else {
                     Err(Brc4ParseErr::WrongProtocol)
@@ -248,9 +250,9 @@ impl TokenCache {
                 }
 
                 // Reject tickers containing a null byte (reference parity and safety)
-                if v.tick.as_bytes().iter().any(|&b| b == 0) {
-                    return None;
-                }
+                // if v.tick.as_bytes().iter().any(|&b| b == 0) {
+                //     return None;
+                // }
 
                 // Normalize unlimited self_mint tokens: when max==0, set an effective large cap for max/lim.
                 let mut norm_max = v.max;

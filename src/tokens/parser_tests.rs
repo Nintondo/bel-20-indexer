@@ -64,6 +64,13 @@ fn try_parse_accepts_self_mint_max_zero_lim_omitted() {
 }
 
 #[test]
+fn try_parse_rejects_5byte_without_self_mint() {
+    // 5-byte tick without self_mint must be rejected at parse time
+    let content = br#"{"p":"brc-20","op":"deploy","tick":"abcde","max":"1"}"#;
+    assert!(matches!(TokenCache::try_parse(ct(), content, coin()), Err(Brc4ParseErr::WrongProtocol)));
+}
+
+#[test]
 fn try_parse_rejects_dec_over_18() {
     let content = br#"{"p":"brc-20","op":"deploy","tick":"abcd","max":"1","lim":"1","dec":"19"}"#;
     assert!(matches!(TokenCache::try_parse(ct(), content, coin()), Err(Brc4ParseErr::WrongProtocol)));

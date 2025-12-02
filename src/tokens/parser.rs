@@ -184,9 +184,10 @@ impl TokenCache {
             Brc4::Transfer { proto } if !proto.amt.is_zero() => Ok(brc4),
             Brc4::Deploy { proto } => {
                 let dec_ok = proto.dec <= DeployProto::MAX_DEC;
+                // For max=0, allow self_mint tokens regardless of lim presence/value (normalized later)
+                // For max>0, require non-zero effective lim
                 let ok = if proto.max.is_zero() {
-                    // For max=0, only self_mint tokens allowed and lim must be present and > 0
-                    proto.self_mint && proto.lim.is_some() && !proto.lim.unwrap().is_zero()
+                    proto.self_mint
                 } else {
                     !proto.lim.unwrap_or(proto.max).is_zero()
                 };
@@ -245,12 +246,28 @@ impl TokenCache {
                     }
                 }
 
+                // Reject tickers containing a null byte (reference parity and safety)
+                if v.tick.as_bytes().iter().any(|&b| b == 0) {
+                    return None;
+                }
+
+                // Normalize unlimited self_mint tokens: when max==0, set an effective large cap for max/lim.
+                let mut norm_max = v.max;
+                let mut norm_lim = v.lim.unwrap_or(v.max);
+                if v.self_mint && norm_max.is_zero() {
+                    let cap = Fixed128::from(u64::MAX);
+                    norm_max = cap;
+                    if norm_lim.is_zero() {
+                        norm_lim = cap;
+                    }
+                }
+
                 self.token_actions.push(TokenAction::Deploy {
                     genesis: inc.genesis,
                     proto: DeployProtoDB {
                         tick: v.tick,
-                        max: v.max,
-                        lim: v.lim.unwrap_or(v.max),
+                        max: norm_max,
+                        lim: norm_lim,
                         dec: v.dec,
                         self_mint: v.self_mint,
                         supply: Fixed128::ZERO,
@@ -463,16 +480,14 @@ impl TokenCache {
                         }
                     }
 
-                    if !max.is_zero() {
-                        if *supply == *max {
-                            continue;
-                        }
-                        let amt = amt.min(*max - *supply);
-                        *supply += amt;
-                    } else {
-                        // unlimited supply for self_mint tokens
-                        *supply += amt;
+                    // Safe-cap mint amount using remaining capacity (max is guaranteed > 0 after normalization)
+                    let cap_left = *max - *supply;
+                    if cap_left.is_zero() {
+                        continue;
                     }
+                    let amt = amt.min(cap_left);
+                    *supply += amt;
+
                     *transactions += 1;
 
                     let key = AddressToken { address: owner, token: *tick };

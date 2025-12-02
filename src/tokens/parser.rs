@@ -124,20 +124,10 @@ impl TokenCache {
             }
         }
 
-        token_cache.all_transfers = token_cache
-            .valid_transfers
-            .iter()
-            .map(|(location, (_, proto))| (*location, proto.clone()))
-            .collect();
+        token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
 
         // Preload deploy mapping for parent checks
-        token_cache.deploy_map = token_cache
-            .server
-            .db
-            .deploy_id_to_tick
-            .iter()
-            .map(|(k, v)| (k, v))
-            .collect();
+        token_cache.deploy_map = token_cache.server.db.deploy_id_to_tick.iter().map(|(k, v)| (k.into(), v)).collect();
 
         token_cache
     }
@@ -200,7 +190,11 @@ impl TokenCache {
                 } else {
                     !proto.max.is_zero() && !proto.lim.unwrap_or(proto.max).is_zero()
                 };
-                if dec_ok && ok { Ok(brc4) } else { Err(Brc4ParseErr::WrongProtocol) }
+                if dec_ok && ok {
+                    Ok(brc4)
+                } else {
+                    Err(Brc4ParseErr::WrongProtocol)
+                }
             }
             &Brc4::Mint { .. } | &Brc4::Transfer { .. } => Err(Brc4ParseErr::WrongProtocol),
         }
@@ -303,11 +297,17 @@ impl TokenCache {
                 let is_5_byte = v.tick.len() == 5;
                 // 5-byte tickers only active on/after activation height and must be self_mint
                 if is_5_byte {
-                    if !act.map(|h| (height as usize) >= h).unwrap_or(false) { return None; }
-                    if !v.self_mint { return None; }
+                    if !act.map(|h| (height as usize) >= h).unwrap_or(false) {
+                        return None;
+                    }
+                    if !v.self_mint {
+                        return None;
+                    }
                 } else {
                     // 4-byte: if self_mint=true, require activation height
-                    if v.self_mint && !act.map(|h| (height as usize) >= h).unwrap_or(false) { return None; }
+                    if v.self_mint && !act.map(|h| (height as usize) >= h).unwrap_or(false) {
+                        return None;
+                    }
                 }
 
                 self.token_actions.push(TokenAction::Deploy {
@@ -409,10 +409,7 @@ impl TokenCache {
             })
             .collect();
 
-        self.token_accounts = keys
-            .into_iter()
-            .filter_map(|key| runtime.balances.get(&key).cloned().map(|v| (key, v)))
-            .collect();
+        self.token_accounts = keys.into_iter().filter_map(|key| runtime.balances.get(&key).cloned().map(|v| (key, v))).collect();
 
         Ok(())
     }
@@ -492,7 +489,13 @@ impl TokenCache {
                         });
                     }
                 }
-                TokenAction::Mint { owner, proto, txid, vout, parents } => {
+                TokenAction::Mint {
+                    owner,
+                    proto,
+                    txid,
+                    vout,
+                    parents,
+                } => {
                     let MintProto { tick, amt } = proto;
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;

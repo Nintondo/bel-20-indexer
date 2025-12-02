@@ -1,5 +1,4 @@
 use super::*;
-use crate::tokens::InscriptionId;
 
 mod structs;
 pub use structs::*;
@@ -23,7 +22,7 @@ rocksdb_wrapper::generate_db_code! {
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenIdDB,
     token_id_to_event: TokenId => AddressTokenIdDB,
-    deploy_id_to_tick: UsingSerde<InscriptionId> => LowerCaseTokenTick,
+    deploy_id_to_tick: UsingConsensus<OutPoint> => LowerCaseTokenTick,
 }
 
 impl DB {
@@ -124,11 +123,7 @@ mod tests {
             count += 1;
         }
 
-        let avg = if count > 0 {
-            total_bytes as f64 / count as f64
-        } else {
-            0.0
-        };
+        let avg = if count > 0 { total_bytes as f64 / count as f64 } else { 0.0 };
 
         dbg!(name, count, total_bytes, avg);
     }

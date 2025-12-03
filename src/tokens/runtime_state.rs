@@ -6,8 +6,6 @@ pub struct RuntimeTokenState {
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
     // Secondary index: (address, outpoint) -> all locations with active transfers
     pub transfers_by_outpoint: HashMap<AddressOutPoint, Vec<Location>>,
-    // Deploy InscriptionId -> lower-case tick cache (for parent checks)
-    pub deploy_map: HashMap<InscriptionId, LowerCaseTokenTick>,
 }
 
 impl RuntimeTokenState {
@@ -34,19 +32,11 @@ impl RuntimeTokenState {
             transfers_by_outpoint.entry(key).or_default().push(loc);
         }
 
-        // Load deploy mapping once into memory (avoid RocksDB scans during parsing)
-        let deploy_map = db
-            .deploy_id_to_tick
-            .iter()
-            .map(|(k, v)| (k.into(), v))
-            .collect::<HashMap<InscriptionId, LowerCaseTokenTick>>();
-
         Self {
             tokens,
             balances,
             valid_transfers,
             transfers_by_outpoint,
-            deploy_map,
         }
     }
 
@@ -60,8 +50,6 @@ impl RuntimeTokenState {
         for (tick, meta_db) in metas {
             // Update in-memory token metas
             self.tokens.insert(tick.clone(), TokenMeta::from(meta_db.clone()));
-            // Keep deploy map in sync (idempotent if already present)
-            self.deploy_map.insert(meta_db.genesis, tick.clone());
         }
 
         for (key, balance) in balances {

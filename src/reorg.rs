@@ -9,8 +9,6 @@ pub enum TokenHistoryEntry {
     DeploysToRestore(Vec<(LowerCaseTokenTick, TokenMetaDB)>),
     RestoreTransfers(Vec<(AddressLocation, TransferProtoDB)>),
     RemoveTransfers(Vec<AddressLocation>),
-    DeployMapToRemove(Vec<OutPoint>),
-    DeployMapToRestore(Vec<(OutPoint, LowerCaseTokenTick)>),
     RemoveHistory {
         to_remove: Vec<AddressTokenIdDB>,
         last_history_id: u64,
@@ -44,12 +42,6 @@ impl ProceedReorg for TokenHistoryEntry {
             }
             TokenHistoryEntry::RemoveTransfers(address_locations) => {
                 server.db.address_location_to_transfer.remove_batch(address_locations);
-            }
-            TokenHistoryEntry::DeployMapToRemove(ids) => {
-                server.db.deploy_id_to_tick.remove_batch(ids);
-            }
-            TokenHistoryEntry::DeployMapToRestore(items) => {
-                server.db.deploy_id_to_tick.extend(items);
             }
             TokenHistoryEntry::RemoveHistory {
                 to_remove,

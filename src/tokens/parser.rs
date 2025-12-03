@@ -86,9 +86,6 @@ pub struct TokenCache {
     pub valid_transfers: BTreeMap<Location, (FullHash, TransferProtoDB)>,
 
     pub server: Arc<Server>,
-
-    /// Mapping of deploy InscriptionId -> lower-case tick
-    pub deploy_map: HashMap<InscriptionId, LowerCaseTokenTick>,
 }
 
 impl TokenCache {
@@ -100,7 +97,6 @@ impl TokenCache {
             token_actions: Vec::new(),
             tokens: HashMap::new(),
             valid_transfers: BTreeMap::new(),
-            deploy_map: HashMap::new(),
         };
 
         let transfers_to_remove: HashSet<_> = prevouts
@@ -125,9 +121,6 @@ impl TokenCache {
         }
 
         token_cache.all_transfers = token_cache.valid_transfers.iter().map(|(location, (_, proto))| (*location, proto.clone())).collect();
-
-        // Preload deploy mapping for parent checks from runtime cache
-        token_cache.deploy_map = runtime.deploy_map.clone();
 
         token_cache
     }
@@ -191,8 +184,10 @@ impl TokenCache {
                 } else {
                     !proto.lim.unwrap_or(proto.max).is_zero()
                 };
-                // 5-byte tickers must be self_mint
-                let tick_len_ok = if proto.tick.len() == 5 { proto.self_mint } else { true };
+                // Enforce self_mint policy by length:
+                //  - 5-byte tickers must be self_mint
+                //  - 4-byte tickers must NOT be self_mint
+                let tick_len_ok = if proto.tick.len() == 5 { proto.self_mint } else { !proto.self_mint };
                 if dec_ok && ok && tick_len_ok {
                     Ok(brc4)
                 } else {
@@ -233,7 +228,9 @@ impl TokenCache {
                 // Activation and policy checks
                 let act = coin.self_mint_activation_height;
                 let is_5_byte = v.tick.len() == 5;
-                // 5-byte tickers only active on/after activation height and must be self_mint
+                // Policy:
+                //  - 5-byte tickers: require activation AND self_mint=true
+                //  - 4-byte tickers: self_mint must be false
                 if is_5_byte {
                     if !act.map(|h| (height as usize) >= h).unwrap_or(false) {
                         return None;
@@ -241,11 +238,8 @@ impl TokenCache {
                     if !v.self_mint {
                         return None;
                     }
-                } else {
-                    // 4-byte: if self_mint=true, require activation height
-                    if v.self_mint && !act.map(|h| (height as usize) >= h).unwrap_or(false) {
-                        return None;
-                    }
+                } else if v.self_mint {
+                    return None;
                 }
 
                 // Reject tickers containing a null byte (reference parity and safety)
@@ -300,7 +294,6 @@ impl TokenCache {
                     proto,
                     txid: inc.location.outpoint.txid,
                     vout: inc.location.outpoint.vout,
-                    parents: inc.parents.clone(),
                 });
             }
             Brc4::Transfer { proto } => {
@@ -429,8 +422,6 @@ impl TokenCache {
                     let DeployProtoDB { tick, max, lim, dec, .. } = proto.clone();
                     if let std::collections::hash_map::Entry::Vacant(e) = self.tokens.entry(tick.into()) {
                         e.insert(TokenMeta { genesis, proto });
-                        // Remember mapping for parent validation within the same block
-                        self.deploy_map.insert(genesis, LowerCaseTokenTick::from(tick));
 
                         history.push(HistoryTokenAction::Deploy {
                             tick,
@@ -443,13 +434,7 @@ impl TokenCache {
                         });
                     }
                 }
-                TokenAction::Mint {
-                    owner,
-                    proto,
-                    txid,
-                    vout,
-                    parents,
-                } => {
+                TokenAction::Mint { owner, proto, txid, vout } => {
                     let MintProto { tick, amt } = proto;
                     let Some(token) = self.tokens.get_mut(&tick.into()) else {
                         continue;
@@ -462,7 +447,6 @@ impl TokenCache {
                         mint_count,
                         transactions,
                         tick,
-                        self_mint,
                         ..
                     } = &mut token.proto;
 
@@ -472,14 +456,6 @@ impl TokenCache {
 
                     if *lim < amt {
                         continue;
-                    }
-
-                    // Self-mint parent check
-                    if *self_mint {
-                        // Require that parents contains the deploy genesis id of this token
-                        if !parents.contains(&token.genesis) {
-                            continue;
-                        }
                     }
 
                     // Safe-cap mint amount using remaining capacity (max is guaranteed > 0 after normalization)

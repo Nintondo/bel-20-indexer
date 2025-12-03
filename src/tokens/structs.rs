@@ -263,7 +263,6 @@ pub enum TokenAction {
         proto: MintProto,
         txid: Txid,
         vout: u32,
-        parents: Vec<InscriptionId>,
     },
     /// Transfer token action.
     Transfer {
@@ -306,7 +305,6 @@ pub struct InscriptionTemplate {
     pub owner: FullHash,
     pub value: u64,
     pub content: Option<Vec<u8>>,
-    pub parents: Vec<InscriptionId>,
     pub leaked: bool,
     // ord/OPI compatibility fields (used for p2tr coins)
     pub input_index: u32,

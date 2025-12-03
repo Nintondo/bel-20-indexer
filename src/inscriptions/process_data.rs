@@ -131,7 +131,7 @@ impl ProcessedData {
                 transfers_to_remove,
             } => {
                 if let Some(rcg) = reorg_cache.as_mut() {
-                    // Deploys
+                    // Deploys (no parent-watch mapping persisted)
                     {
                         let deploys = server
                             .db
@@ -145,22 +145,7 @@ impl ProcessedData {
 
                         rcg.push_token_entry(TokenHistoryEntry::DeploysToRemove(new_deploys.clone()));
                         rcg.push_token_entry(TokenHistoryEntry::DeploysToRestore(deploys.clone().into_iter().collect()));
-
-                        // Build new deploy_id -> tick entries (for this block)
-                        let meta_map: HashMap<LowerCaseTokenTick, TokenMetaDB> = metas.iter().cloned().collect();
-                        let deploy_map_new: Vec<(OutPoint, LowerCaseTokenTick)> =
-                            new_deploys.iter().filter_map(|tick| meta_map.get(tick).map(|m| (m.genesis.into(), tick.clone()))).collect();
-
-                        // Record reorg actions if applicable
-                        if !deploy_map_new.is_empty() {
-                            rcg.push_token_entry(TokenHistoryEntry::DeployMapToRemove(deploy_map_new.iter().map(|x| x.0).collect()));
-                            rcg.push_token_entry(TokenHistoryEntry::DeployMapToRestore(deploy_map_new.clone()));
-                        }
-
-                        // Persist new deploy map entries
-                        if !deploy_map_new.is_empty() {
-                            batch.extend(&server.db.deploy_id_to_tick, deploy_map_new.iter().map(|(k, v)| (k, v)));
-                        }
+                        
                     }
 
                     // Balances

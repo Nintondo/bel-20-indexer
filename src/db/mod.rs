@@ -22,7 +22,6 @@ rocksdb_wrapper::generate_db_code! {
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenIdDB,
     token_id_to_event: TokenId => AddressTokenIdDB,
-    deploy_id_to_tick: UsingConsensus<OutPoint> => LowerCaseTokenTick,
 }
 
 impl DB {

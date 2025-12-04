@@ -5,3 +5,4 @@ rocksdb/
 index/
 .aider*
 .env_*
+docs/

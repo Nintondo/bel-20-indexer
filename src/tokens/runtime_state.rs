@@ -379,14 +379,14 @@ impl<'a> BlockTokenState<'a> {
                         let sender_key = AddressToken { address: sender, token: *tick };
                         old_key = Some(sender_key);
 
+                        
                         let Some(old_account) = self.rt.balances.get_mut(&sender_key) else {
-                            // Sender account missing - this can happen if:
-                            // 1. The transfer was created in a prior block but sender's balance
-                            //    was zeroed out and removed, OR
-                            // 2. Data inconsistency from a reorg.
-                            // Skip this transfer to maintain forward progress.
-                            continue;
+                            panic!(
+                                "Sender account missing for transfer: addr={:?}, tick={:?}, txid={}, vout={}, location={:?}",
+                                sender, tick, txid, vout, transfer_location
+                            );
                         };
+
 
                         if old_account.transfers_count == 0 || old_account.transferable_balance < amt {
                             // Keep the same invariant as before; this is a logic error.

@@ -63,8 +63,34 @@ impl PrevoutCache {
     where
         I: IntoIterator<Item = (OutPoint, TxPrevout)>,
     {
-        for (k, v) in outputs {
-            self.insert(k, v);
+        if self.capacity == 0 {
+            return;
+        }
+
+        // Collect into a temporary Vec so we know the exact batch size up front.
+        let collected: Vec<(OutPoint, TxPrevout)> = outputs.into_iter().collect();
+        let count = collected.len();
+        if count == 0 {
+            return;
+        }
+
+        let len = self.map.len();
+        if len + count > self.capacity {
+            let to_remove = len + count - self.capacity;
+            for _ in 0..to_remove {
+                if let Some(old) = self.order.pop_front() {
+                    self.map.remove(&old);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        self.map.reserve(count);
+        for (k, v) in collected {
+            if self.map.insert(k, v).is_none() {
+                self.order.push_back(k);
+            }
         }
     }
 }

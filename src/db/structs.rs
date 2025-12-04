@@ -260,15 +260,13 @@ impl rocksdb_wrapper::Pebble for Partials {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct OccupancyState {
-    pub first_inscription: Option<InscriptionId>,
     pub initial_cursed_or_vindicated: bool,
     pub count: u8,
 }
 
 impl OccupancyState {
-    pub fn new(first_inscription: InscriptionId, initial_flag: bool) -> Self {
+    pub fn new(initial_flag: bool) -> Self {
         Self {
-            first_inscription: Some(first_inscription),
             initial_cursed_or_vindicated: initial_flag,
             count: 1,
         }
@@ -276,7 +274,6 @@ impl OccupancyState {
 
     pub fn from_legacy(initial_flag: bool, count: u8) -> Self {
         Self {
-            first_inscription: None,
             initial_cursed_or_vindicated: initial_flag,
             count,
         }

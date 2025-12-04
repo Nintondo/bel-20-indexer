@@ -16,11 +16,11 @@ use envelope::{ParsedEnvelope, RawEnvelope};
 use indexer::InscriptionIndexer;
 use nint_blk::BlockEvent;
 use parser::Parser;
-use process_data::ProcessedData;
 use structs::Inscription;
 use tag::Tag;
 
 pub use structs::Location;
+pub use process_data::ProcessedData;
 
 pub struct Indexer {
     server: Arc<Server>,

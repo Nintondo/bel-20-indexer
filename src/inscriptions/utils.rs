@@ -48,15 +48,13 @@ impl PrevoutCache {
     }
 
     pub fn insert(&mut self, key: OutPoint, value: TxPrevout) {
-        if self.map.contains_key(&key) {
-            self.map.insert(key, value);
-            return;
-        }
-        self.map.insert(key, value);
-        self.order.push_back(key);
-        if self.map.len() > self.capacity {
-            if let Some(old) = self.order.pop_front() {
-                self.map.remove(&old);
+        // insert returns Some(old) if key existed, None otherwise.
+        if self.map.insert(key, value).is_none() {
+            self.order.push_back(key);
+            if self.map.len() > self.capacity {
+                if let Some(old) = self.order.pop_front() {
+                    self.map.remove(&old);
+                }
             }
         }
     }

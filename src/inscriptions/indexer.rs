@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use super::*;
 use crate::inscriptions::utils::{PrevoutCache, PREVOUT_CACHE_CAPACITY};
+use crate::tokens::BlockTokenState;
 use crate::utils::timing::INDEXING_METRICS;
 
 // Pre-FIB batching controls
@@ -95,21 +96,6 @@ impl InscriptionIndexer {
             self.reorg_cache.lock().new_block(block_height);
         }
 
-        // Snapshot token deltas (if any) before we consume processed data
-        let tokens_delta = to_write.processed.iter().find_map(|pd| {
-            if let ProcessedData::Tokens {
-                metas,
-                balances,
-                transfers_to_write,
-                transfers_to_remove,
-            } = pd
-            {
-                Some((metas, balances, transfers_to_write, transfers_to_remove))
-            } else {
-                None
-            }
-        });
-
         let db_write_start = Instant::now();
         let mut db_batch = DbBatch::new(&self.server.db);
 
@@ -123,11 +109,6 @@ impl InscriptionIndexer {
         INDEXING_METRICS.record_db_write(db_write_start.elapsed());
 
         let event_emit_start = Instant::now();
-        if let Some((metas, balances, transfers_to_write, transfers_to_remove)) = tokens_delta {
-            let mut rt = self.server.token_state.lock();
-            rt.apply_tokens_delta(metas, balances, transfers_to_write, transfers_to_remove);
-        }
-
         for event in to_write.block_events {
             self.server.event_sender.send(event).ok();
         }
@@ -219,36 +200,28 @@ impl InscriptionIndexer {
             return Ok(());
         }
 
-        let token_cache_load_start = Instant::now();
-        let runtime_guard = self.server.token_state.lock();
-        let mut token_cache = TokenCache::load(prevouts, self.server.clone(), &runtime_guard);
-        INDEXING_METRICS.record_token_cache_load(token_cache_load_start.elapsed());
+        let token_state_load_start = Instant::now();
+        let mut runtime_guard = self.server.token_state.lock();
+        let mut block_token_state = BlockTokenState::new(&mut *runtime_guard, self.server.clone(), prevouts);
+        INDEXING_METRICS.record_token_cache_load(token_state_load_start.elapsed());
 
-        let transfers_to_remove = token_cache
-            .valid_transfers
-            .iter()
-            .map(|(key, value)| AddressLocation { address: value.0, location: *key })
-            .collect::<HashSet<_>>();
+        {
+            let mut parser = Parser { server: &self.server };
 
-        let mut parser = Parser {
-            token_cache: &mut token_cache,
-            server: &self.server,
-        };
+            // Build a per-block map of txid -> tx so we can resolve script addresses for recipients
+            let parse_start = Instant::now();
+            parser.parse_block(block_height, &block, prevouts, &mut to_write.processed, &mut block_token_state);
+            INDEXING_METRICS.record_block_parse(parse_start.elapsed());
+        }
 
         // Build a per-block map of txid -> tx so we can resolve script addresses for recipients
         let tx_by_id: HashMap<Txid, _> = block.txs.iter().map(|tx| (tx.hash.into(), tx)).collect();
 
-        let parse_start = Instant::now();
-        parser.parse_block(block_height, &block, prevouts, &mut to_write.processed);
-        INDEXING_METRICS.record_block_parse(parse_start.elapsed());
-
-        token_cache.load_tokens_data(&self.server.db, &runtime_guard)?;
-
         let mut fullhash_to_load = HashSet::new();
 
         let token_process_start = Instant::now();
-        to_write.history = token_cache
-            .process_token_actions(&self.server.holders)
+        let (history_actions, tokens_pd) = block_token_state.finish(&self.server.holders, block_height, block.header.value.timestamp);
+        to_write.history = history_actions
             .into_iter()
             .flat_map(|action| {
                 last_history_id += 1;
@@ -360,16 +333,7 @@ impl InscriptionIndexer {
             history: to_write.history.clone(),
         });
 
-        to_write.processed.push(ProcessedData::Tokens {
-            metas: token_cache.tokens.into_iter().map(|(k, v)| (k, TokenMetaDB::from(v))).collect(),
-            balances: token_cache.token_accounts.into_iter().collect(),
-            transfers_to_write: token_cache
-                .valid_transfers
-                .into_iter()
-                .map(|(location, (address, proto))| (AddressLocation { address, location }, proto))
-                .collect(),
-            transfers_to_remove: transfers_to_remove.into_iter().collect(),
-        });
+        to_write.processed.push(tokens_pd);
 
         to_write.block_events.push(ServerEvent::NewBlock(block_height, new_proof, current_hash.into()));
 

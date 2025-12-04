@@ -103,11 +103,20 @@ impl<'a> BlockTokenState<'a> {
             });
         }
 
+        // Pre-populate all_transfers from valid_transfers so that when a
+        // TokenAction::Transfer tries to "spend" a pre-existing transfer,
+        // it will find it. New transfers created in this block will also
+        // be inserted into all_transfers via register_transfer / parse_token_action.
+        let all_transfers: HashMap<Location, TransferProtoDB> = valid_transfers
+            .iter()
+            .map(|(loc, (_, proto))| (*loc, proto.clone()))
+            .collect();
+
         Self {
             rt,
             server,
             token_actions: Vec::new(),
-            all_transfers: HashMap::new(),
+            all_transfers,
             valid_transfers,
             transfers_to_remove,
             touched_ticks: hashbrown::HashSet::new(),
@@ -202,8 +211,10 @@ impl<'a> BlockTokenState<'a> {
                 TokenAction::Mint { owner, proto, txid, vout } => {
                     let MintProto { tick: tick_orig, amt } = proto;
                     let tick_lc: LowerCaseTokenTick = tick_orig.into();
-                    let key = AddressToken { address: owner, token: tick_orig };
                     let mut did_change = false;
+
+                    // Declare key outside the block so it's accessible for touched_accounts
+                    let mut key: Option<AddressToken> = None;
 
                     {
                         let Some(token) = self.rt.tokens.get_mut(&tick_lc) else {
@@ -238,15 +249,19 @@ impl<'a> BlockTokenState<'a> {
 
                         *transactions += 1;
 
-                        let entry = self.rt.balances.entry(key).or_default();
-                        holders.increase(&key, entry, amt);
+                        // Use canonical tick from token.proto, not tick_orig from inscription
+                        let balance_key = AddressToken { address: owner, token: *tick };
+                        key = Some(balance_key);
+
+                        let entry = self.rt.balances.entry(balance_key).or_default();
+                        holders.increase(&balance_key, entry, amt);
                         entry.balance += amt;
                         *mint_count += 1;
 
                         history.push(HistoryTokenAction::Mint {
                             tick: *tick,
                             amt,
-                            recipient: key.address,
+                            recipient: balance_key.address,
                             txid,
                             vout,
                         });
@@ -256,7 +271,9 @@ impl<'a> BlockTokenState<'a> {
 
                     if did_change {
                         self.touched_ticks.insert(tick_lc);
-                        self.touched_accounts.insert(key);
+                        if let Some(k) = key {
+                            self.touched_accounts.insert(k);
+                        }
                     }
                 }
                 TokenAction::Transfer {
@@ -273,8 +290,10 @@ impl<'a> BlockTokenState<'a> {
 
                     let TransferProto { tick: tick_orig, amt } = proto;
                     let tick_lc: LowerCaseTokenTick = tick_orig.into();
-                    let key = AddressToken { address: owner, token: tick_orig };
                     let mut did_change = false;
+
+                    // Declare key outside the block so it's accessible for touched_accounts
+                    let mut key: Option<AddressToken> = None;
 
                     {
                         let Some(token) = self.rt.tokens.get_mut(&tick_lc) else {
@@ -295,7 +314,11 @@ impl<'a> BlockTokenState<'a> {
                             continue;
                         }
 
-                        let Some(account) = self.rt.balances.get_mut(&key) else {
+                        // Use canonical tick from token.proto, not tick_orig from inscription
+                        let balance_key = AddressToken { address: owner, token: *tick };
+                        key = Some(balance_key);
+
+                        let Some(account) = self.rt.balances.get_mut(&balance_key) else {
                             continue;
                         };
 
@@ -310,12 +333,12 @@ impl<'a> BlockTokenState<'a> {
                         history.push(HistoryTokenAction::DeployTransfer {
                             tick: *tick,
                             amt,
-                            recipient: key.address,
+                            recipient: balance_key.address,
                             txid,
                             vout,
                         });
 
-                        self.valid_transfers.insert(location, (key.address, data));
+                        self.valid_transfers.insert(location, (balance_key.address, data));
                         *transfer_count += 1;
                         *transactions += 1;
 
@@ -324,7 +347,9 @@ impl<'a> BlockTokenState<'a> {
 
                     if did_change {
                         self.touched_ticks.insert(tick_lc);
-                        self.touched_accounts.insert(key);
+                        if let Some(k) = key {
+                            self.touched_accounts.insert(k);
+                        }
                     }
                 }
                 TokenAction::Transferred {
@@ -339,22 +364,36 @@ impl<'a> BlockTokenState<'a> {
                     };
 
                     let tick_lc: LowerCaseTokenTick = tick.into();
-                    let old_key = AddressToken { address: sender, token: tick };
                     let mut touched_recipient: Option<AddressToken> = None;
+                    let mut old_key: Option<AddressToken> = None;
 
                     {
-                        let token = self.rt.tokens.get_mut(&tick_lc).expect("Tick must exist");
+                        let Some(token) = self.rt.tokens.get_mut(&tick_lc) else {
+                            // Token doesn't exist (shouldn't happen for valid transfers).
+                            continue;
+                        };
 
                         let DeployProtoDB { transactions, tick, .. } = &mut token.proto;
 
-                        let old_account = self.rt.balances.get_mut(&old_key).expect("Sender account must exist");
+                        // Create old_key AFTER getting canonical tick from token.proto
+                        let sender_key = AddressToken { address: sender, token: *tick };
+                        old_key = Some(sender_key);
+
+                        let Some(old_account) = self.rt.balances.get_mut(&sender_key) else {
+                            // Sender account missing - this can happen if:
+                            // 1. The transfer was created in a prior block but sender's balance
+                            //    was zeroed out and removed, OR
+                            // 2. Data inconsistency from a reorg.
+                            // Skip this transfer to maintain forward progress.
+                            continue;
+                        };
 
                         if old_account.transfers_count == 0 || old_account.transferable_balance < amt {
                             // Keep the same invariant as before; this is a logic error.
                             panic!("Invalid transfer sender balance");
                         }
 
-                        holders.decrease(&old_key, old_account, amt);
+                        holders.decrease(&sender_key, old_account, amt);
                         old_account.transfers_count -= 1;
                         old_account.transferable_balance -= amt;
                         *transactions += 1;
@@ -380,7 +419,9 @@ impl<'a> BlockTokenState<'a> {
                     }
 
                     self.touched_ticks.insert(tick_lc);
-                    self.touched_accounts.insert(old_key);
+                    if let Some(k) = old_key {
+                        self.touched_accounts.insert(k);
+                    }
                     if let Some(rec_key) = touched_recipient {
                         self.touched_accounts.insert(rec_key);
                     }

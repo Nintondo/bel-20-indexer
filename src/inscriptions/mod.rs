@@ -91,6 +91,11 @@ impl Indexer {
                     *rt = RuntimeTokenState::from_db(&self.server.db);
                 }
 
+                // After DB has been rolled back and runtime state rebuilt,
+                // refresh the in-memory holders snapshot so it stays in sync
+                // with the restored balances in RocksDB.
+                self.server.holders.rebuild_from_db(&self.server.db);
+
                 self.server.event_sender.send(ServerEvent::Reorg(reorg_len as u32, id.height as u32)).ok();
             }
 

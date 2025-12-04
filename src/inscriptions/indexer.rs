@@ -274,7 +274,16 @@ impl InscriptionIndexer {
             .collect();
         INDEXING_METRICS.record_token_cache_process(token_process_start.elapsed());
 
-        // Resolve address strings for recipients in this block.
+        // Resolve address strings for hashes touched in this block.
+        //
+        // IMPORTANT: the `outpoint` stored in TokenHistoryDB always points to the
+        // *output that carries the inscription / transfer*. For transfer sends this
+        // is the **recipient** output, while the corresponding sender history row
+        // uses the same outpoint but a different address hash. If we bound that
+        // sender hash to the recipient script we would later see the same textual
+        // address at multiple ranks in the holders view. To avoid that, we only
+        // derive address strings for history variants where the outpoint's script
+        // actually belongs to `addr_token.address`.
         let mut new_block_addresses = HashMap::<FullHash, String>::new();
         for (addr_token, history_value) in &to_write.history {
             let addr = addr_token.address;
@@ -282,11 +291,24 @@ impl InscriptionIndexer {
                 continue;
             }
 
-            let outpoint = history_value.action.outpoint();
-            if let Some(tx) = tx_by_id.get(&outpoint.txid) {
-                if let Some(output) = tx.value.outputs.get(outpoint.vout as usize) {
-                    if let Some(address) = output.script.address.as_ref() {
-                        new_block_addresses.entry(addr).or_insert_with(|| address.to_owned());
+            match &history_value.action {
+                // For Send rows the outpoint belongs to the *recipient* output,
+                // not to the sender hash stored in `addr_token.address`, so skip.
+                TokenHistoryDB::Send { .. } => {}
+                // For all other variants the outpoint's script corresponds to
+                // the hash carried in `addr_token.address`.
+                TokenHistoryDB::Deploy { .. }
+                | TokenHistoryDB::Mint { .. }
+                | TokenHistoryDB::DeployTransfer { .. }
+                | TokenHistoryDB::Receive { .. }
+                | TokenHistoryDB::SendReceive { .. } => {
+                    let outpoint = history_value.action.outpoint();
+                    if let Some(tx) = tx_by_id.get(&outpoint.txid) {
+                        if let Some(output) = tx.value.outputs.get(outpoint.vout as usize) {
+                            if let Some(address) = output.script.address.as_ref() {
+                                new_block_addresses.entry(addr).or_insert_with(|| address.to_owned());
+                            }
+                        }
                     }
                 }
             }

@@ -15,7 +15,18 @@ enum Action {
 
 impl Holders {
     pub fn init(db: &DB) -> Self {
-        let holders = HashMap::<OriginalTokenTick, _>::from_iter(
+        let holders = Self::build_from_db(db);
+
+        let stats = holders.iter().map(|(tick, holders)| (*tick, holders.len())).collect();
+
+        Self {
+            balances: parking_lot::RwLock::new(holders),
+            stats: parking_lot::RwLock::new(stats),
+        }
+    }
+
+    fn build_from_db(db: &DB) -> HashMap<OriginalTokenTick, BTreeSet<SortedByBalance>> {
+        HashMap::<OriginalTokenTick, _>::from_iter(
             db.address_token_to_balance
                 .iter()
                 .filter(|(_, v)| !v.balance.is_zero() || !v.transferable_balance.is_zero())
@@ -24,14 +35,16 @@ impl Holders {
                 .chunk_by(|(tick, _)| *tick)
                 .into_iter()
                 .map(|(k, v)| (k, v.map(|(_, v)| v).collect::<BTreeSet<_>>())),
-        );
+        )
+    }
 
+    /// Rebuild holders snapshot from RocksDB after events such as a reorg.
+    pub fn rebuild_from_db(&self, db: &DB) {
+        let holders = Self::build_from_db(db);
         let stats = holders.iter().map(|(tick, holders)| (*tick, holders.len())).collect();
 
-        Self {
-            balances: parking_lot::RwLock::new(holders),
-            stats: parking_lot::RwLock::new(stats),
-        }
+        *self.balances.write() = holders;
+        *self.stats.write() = stats;
     }
 
     pub fn get_holders(&self, tick: &OriginalTokenTick) -> Option<BTreeSet<SortedByBalance>> {

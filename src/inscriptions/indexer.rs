@@ -305,8 +305,11 @@ impl InscriptionIndexer {
                     let outpoint = history_value.action.outpoint();
                     if let Some(tx) = tx_by_id.get(&outpoint.txid) {
                         if let Some(output) = tx.value.outputs.get(outpoint.vout as usize) {
-                            if let Some(address) = output.script.address.as_ref() {
-                                new_block_addresses.entry(addr).or_insert_with(|| address.to_owned());
+                            let script = bellscoin::Script::from_bytes(&output.out.script_pubkey);
+                            if let Some(address) =
+                                nint_blk::proto::script::script_to_address_str(&script, self.server.indexer.coin)
+                            {
+                                new_block_addresses.entry(addr).or_insert_with(|| address);
                             }
                         }
                     }

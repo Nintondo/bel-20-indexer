@@ -95,6 +95,11 @@ impl Indexer {
         let (tx, rx) = kanal::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
 
         std::thread::spawn(move || {
+            // Disable heavy script evaluation in the block reader. The indexer
+            // now derives human-readable addresses lazily only for BRC-20-
+            // relevant outputs, so full script evaluation here is unnecessary.
+            set_script_eval_enabled(false);
+
             let mut last_height = {
                 let last = self.last_block.height;
                 if last == 0 { last } else { last + 1 }
@@ -116,10 +121,6 @@ impl Indexer {
                 if self.token.is_cancelled() {
                     return;
                 }
-
-                // Skip heavy script evaluation for pre-FIB blocks; inscriptions
-                // logic never inspects addresses there.
-                set_script_eval_enabled(height >= fib_height);
 
                 let read_start = Instant::now();
                 let Some(block) = chain.get_block(height).unwrap() else {
@@ -187,9 +188,6 @@ impl Indexer {
                         while checkpoint.height() < best_height {
                             let next_height = checkpoint.height() + 1;
                             let next_hash = self.client.get_block_hash(next_height).unwrap();
-                            // Apply the same pre-FIB optimization when tailing
-                            // blocks via RPC.
-                            set_script_eval_enabled(next_height >= fib_height);
                             let block = self.client.get_block(&next_hash).unwrap();
 
                             // Guard if reorg happened in the mid of loop

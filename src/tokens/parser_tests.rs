@@ -1,7 +1,7 @@
 use crate::Fixed128;
 
-use super::runtime_state::BlockTokenState;
 use super::proto::Brc4;
+use super::runtime_state::BlockTokenState;
 use super::structs::Brc4ParseErr;
 use nint_blk::CoinType;
 
@@ -99,4 +99,10 @@ fn try_parse_accepts_valid_mint_and_transfer() {
 
     let transfer = br#"{"p":"brc-20","op":"transfer","tick":"abcd","amt":"1"}"#;
     assert!(matches!(BlockTokenState::try_parse(ct(), transfer, 0, coin()), Ok(Brc4::Transfer { .. })));
+}
+
+#[test]
+fn double_serde_envelope_construction_fails_for_valid_deploy() {
+    let content = br#"{"p":"brc-20","op":"deploy","tick":"abcd","tick":"xxxx","max":"1","lim":"1","dec":"0"}"#;
+    assert!(matches!(BlockTokenState::try_parse(ct(), content, 0, coin()), Ok(Brc4::Deploy { .. })));
 }

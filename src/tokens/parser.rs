@@ -77,8 +77,8 @@ impl<'a> BlockTokenState<'a> {
             };
         }
 
-        // Validate UTF-8 first to preserve existing error semantics.
         let data = core::str::from_utf8(content).map_err(|_| Brc4ParseErr::InvalidUtf8)?;
+        let data = serde_json::from_str::<serde_json::Value>(data).map_err(|_| Brc4ParseErr::WrongProtocol)?;
 
         // Cheap byte-level prefilters to skip obviously irrelevant payloads without full JSON work.
         if content.len() < 4 || !content.windows(3).any(|w| w == b"\"p\"") {

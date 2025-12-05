@@ -182,13 +182,14 @@ impl TokenCache {
                     return err;
                 }
 
-                if proto.tick.len() == 5 && !proto.self_mint {
-                    return err;
+                if proto.tick.len() == 5 {
+                    if !proto.self_mint {
+                        return err;
+                    }
+                    if (height as usize) < coin.self_mint_activation_height.unwrap_or_default() {
+                        return err;
+                    }
                 };
-
-                if proto.self_mint && (height as usize) < coin.self_mint_activation_height.unwrap_or_default() {
-                    return err;
-                }
 
                 let lim = proto.lim.unwrap_or(proto.max);
 

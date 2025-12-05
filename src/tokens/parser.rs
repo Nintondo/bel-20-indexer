@@ -193,6 +193,10 @@ impl TokenCache {
 
                 let lim = proto.lim.unwrap_or(proto.max);
 
+                if proto.max.is_zero() && proto.tick.len() == 4 {
+                    return err;
+                }
+
                 if (proto.max.is_zero() || lim.is_zero()) && !proto.self_mint {
                     return err;
                 }

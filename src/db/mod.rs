@@ -18,7 +18,7 @@ rocksdb_wrapper::generate_db_code! {
     last_block: () => u32,
     last_history_id: () => u64,
     proof_of_history: u32 => UsingConsensus<sha256::Hash>,
-    block_events: u32 => Vec<AddressTokenIdDB>,
+    block_events: u32 => UsingSerde<Vec<AddressTokenIdDB>>,
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenIdDB,
     token_id_to_event: TokenId => AddressTokenIdDB,

@@ -202,7 +202,7 @@ impl InscriptionIndexer {
 
         let token_state_load_start = Instant::now();
         let mut runtime_guard = self.server.token_state.lock();
-        let mut block_token_state = BlockTokenState::new(&mut *runtime_guard, self.server.clone(), prevouts);
+        let mut block_token_state = BlockTokenState::new(&mut runtime_guard, self.server.clone(), prevouts);
         INDEXING_METRICS.record_token_cache_load(token_state_load_start.elapsed());
 
         {
@@ -306,9 +306,7 @@ impl InscriptionIndexer {
                     if let Some(tx) = tx_by_id.get(&outpoint.txid) {
                         if let Some(output) = tx.value.outputs.get(outpoint.vout as usize) {
                             let script = bellscoin::Script::from_bytes(&output.out.script_pubkey);
-                            if let Some(address) =
-                                nint_blk::proto::script::script_to_address_str(&script, self.server.indexer.coin)
-                            {
+                            if let Some(address) = nint_blk::proto::script::script_to_address_str(script, self.server.indexer.coin) {
                                 new_block_addresses.entry(addr).or_insert_with(|| address);
                             }
                         }
@@ -341,8 +339,7 @@ impl InscriptionIndexer {
             combined_addresses.entry(*hash).or_insert_with(|| address.clone());
         }
 
-        let rest_addresses: AddressesFullHash =
-            std::collections::HashMap::from_iter(combined_addresses.into_iter()).into();
+        let rest_addresses: AddressesFullHash = std::collections::HashMap::from_iter(combined_addresses).into();
 
         let new_proof = Server::generate_history_hash(prev_block_proof, &to_write.history, &rest_addresses)?;
 

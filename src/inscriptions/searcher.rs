@@ -51,19 +51,13 @@ impl InscriptionSearcher {
 
     /// Map a global output offset to (vout index, offset inside vout) using a
     /// precomputed prefix-sum array produced by `calc_output_prefixes`.
-    pub fn get_output_index_by_input_with_prefix(
-        offset: Option<u64>,
-        out_cum: &[u64],
-    ) -> anyhow::Result<(u32, u64)> {
-        let Some(mut offset) = offset else {
+    pub fn get_output_index_by_input_with_prefix(offset: Option<u64>, out_cum: &[u64]) -> anyhow::Result<(u32, u64)> {
+        let Some(offset) = offset else {
             return Err(anyhow::anyhow!("leaked: offset is None"));
         };
 
         if out_cum.is_empty() {
-            return Err(anyhow::anyhow!(
-                "leaked: offset={} is too large for total_output=0",
-                offset
-            ));
+            return Err(anyhow::anyhow!("leaked: offset={} is too large for total_output=0", offset));
         }
 
         let total_output: u64 = *out_cum.last().unwrap();

@@ -96,15 +96,16 @@ impl<'a> BlockTokenState<'a> {
             inner: Brc4,
         }
 
-        let envelope = serde_json::from_str::<Brc4Envelope>(data).map_err(|error| match error.to_string().as_str() {
-            "Invalid decimal: empty" => Brc4ParseErr::DecimalEmpty,
-            "Invalid decimal: overflow from too many digits" => Brc4ParseErr::DecimalOverflow,
-            "value cannot start from + or -" => Brc4ParseErr::DecimalPlusMinus,
-            "value cannot start or end with ." => Brc4ParseErr::DecimalDotStartEnd,
-            "value cannot contain spaces" => Brc4ParseErr::DecimalSpaces,
-            "invalid digit found in string" => Brc4ParseErr::InvalidDigit,
-            _ => Brc4ParseErr::WrongProtocol,
-        })?;
+        let envelope =
+            serde_json::from_str::<Brc4Envelope>(&serde_json::to_string(&data).map_err(|_| Brc4ParseErr::WrongProtocol)?).map_err(|error| match error.to_string().as_str() {
+                "Invalid decimal: empty" => Brc4ParseErr::DecimalEmpty,
+                "Invalid decimal: overflow from too many digits" => Brc4ParseErr::DecimalOverflow,
+                "value cannot start from + or -" => Brc4ParseErr::DecimalPlusMinus,
+                "value cannot start or end with ." => Brc4ParseErr::DecimalDotStartEnd,
+                "value cannot contain spaces" => Brc4ParseErr::DecimalSpaces,
+                "invalid digit found in string" => Brc4ParseErr::InvalidDigit,
+                _ => Brc4ParseErr::WrongProtocol,
+            })?;
 
         if envelope.protocol != coin.brc_name {
             return Err(Brc4ParseErr::WrongProtocol);

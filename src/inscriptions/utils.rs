@@ -1,6 +1,9 @@
-use bellscoin::{Script, hashes::{sha256, Hash}};
-use nint_blk::proto::hashbrown::HashMap;
+use bellscoin::{
+    hashes::{sha256, Hash},
+    Script,
+};
 use nint_blk::proto::block::Block;
+use nint_blk::proto::hashbrown::HashMap;
 use rayon::prelude::*;
 use std::collections::VecDeque;
 
@@ -23,13 +26,6 @@ impl PrevoutCache {
             capacity,
             result_scratch: HashMap::new(),
         }
-    }
-
-    #[inline]
-    pub fn clear(&mut self) {
-        self.map.clear();
-        self.order.clear();
-        self.result_scratch.clear();
     }
 
     #[inline]
@@ -95,12 +91,7 @@ impl PrevoutCache {
     }
 }
 
-pub fn process_prevouts<'a>(
-    db: Arc<DB>,
-    block: &Block,
-    data_to_write: &mut Vec<ProcessedData>,
-    cache: &'a mut PrevoutCache,
-) -> anyhow::Result<&'a HashMap<OutPoint, TxPrevout>> {
+pub fn process_prevouts<'a>(db: Arc<DB>, block: &Block, data_to_write: &mut Vec<ProcessedData>, cache: &'a mut PrevoutCache) -> anyhow::Result<&'a HashMap<OutPoint, TxPrevout>> {
     let outputs_capacity: usize = block.txs.iter().map(|tx| tx.value.outputs.len()).sum();
     let outputs_start = std::time::Instant::now();
     let mut prevouts: HashMap<OutPoint, TxPrevout> = HashMap::with_capacity(outputs_capacity);
@@ -120,7 +111,13 @@ pub fn process_prevouts<'a>(
             }
 
             let script_hash = sha256::Hash::hash(script_bytes).into();
-            prevouts.insert(outpoint, TxPrevout { script_hash, value: txout.out.value });
+            prevouts.insert(
+                outpoint,
+                TxPrevout {
+                    script_hash,
+                    value: txout.out.value,
+                },
+            );
         }
     }
     INDEXING_METRICS.record_prevout_build(outputs_start.elapsed());

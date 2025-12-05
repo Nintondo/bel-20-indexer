@@ -79,11 +79,7 @@ fn is_reinscription(inscribed_offsets: &HashMap<u64, InscribedOffsetState>, glob
 
 // Increment the inscription counter for a given input offset, preserving the
 // initial cursed/vindicated flag. Returns the stored tuple after increment.
-fn increment_inscription_count(
-    inscribed_offsets: &mut HashMap<u64, InscribedOffsetState>,
-    global_input_offset: u64,
-    base_cursed: bool,
-) -> (bool, u8) {
+fn increment_inscription_count(inscribed_offsets: &mut HashMap<u64, InscribedOffsetState>, global_input_offset: u64, base_cursed: bool) -> (bool, u8) {
     let entry = match inscribed_offsets.entry(global_input_offset) {
         Entry::Occupied(e) => e.into_mut(),
         Entry::Vacant(v) => v.insert(InscribedOffsetState {
@@ -108,18 +104,6 @@ fn seed_offset_from_state(inscribed_offsets: &mut HashMap<u64, InscribedOffsetSt
     if entry.count == delta {
         entry.initial_cursed_or_vindicated = state.initial_cursed_or_vindicated;
     }
-}
-
-fn compute_cursed_for_brc20(coin: CoinType, base_cursed: bool, jubilant: bool) -> bool {
-    // if coin.brc_name == "ltc-20" {
-    //     // For ltc-20, curses before jubilee are treated as invalid; after
-    //     // jubilee they are considered vindicated.
-    //     base_cursed && !jubilant
-    // } else {
-    //     base_cursed
-    // }
-
-    base_cursed
 }
 
 impl<'a> Parser<'a> {
@@ -416,7 +400,6 @@ impl<'a> Parser<'a> {
                         let mut base_cursed_for_location = false;
 
                         if is_p2tr_only {
-                            let pointer_raw = inscription_template.pointer_value;
                             let loc_key = (location.outpoint, location.offset);
 
                             // Satpoint-based multiplicity: treat DB occupancy as present/not-present,
@@ -468,7 +451,7 @@ impl<'a> Parser<'a> {
                             //    as BRC-20-invalid (post-jubilee they are "vindicated").
                             //  - For all other coins (including Bitcoin), preserve existing
                             //    behaviour and treat any curse as BRC-20-invalid.
-                            let cursed_for_brc20 = compute_cursed_for_brc20(coin, base_cursed, jubilant);
+                            let cursed_for_brc20 = base_cursed;
 
                             let vindicated = base_cursed && jubilant;
                             let unbound = input_value == 0 || matches!(curse, Some(Curse::UnrecognizedEvenField)) || inscription_template.unrecognized_even_field;
@@ -573,22 +556,12 @@ impl<'a> Parser<'a> {
         const CHUNK: usize = 512;
 
         if outpoints.len() <= CHUNK {
-            return table
-                .multi_get_kv(outpoints.iter(), false)
-                .into_iter()
-                .map(|(k, v)| (*k, v))
-                .collect();
+            return table.multi_get_kv(outpoints.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect();
         }
 
         let chunked: Vec<Vec<(OutPoint, BTreeMap<u64, OccupancyState>)>> = outpoints
             .par_chunks(CHUNK)
-            .map(|chunk| {
-                table
-                    .multi_get_kv(chunk.iter(), false)
-                    .into_iter()
-                    .map(|(k, v)| (*k, v))
-                    .collect()
-            })
+            .map(|chunk| table.multi_get_kv(chunk.iter(), false).into_iter().map(|(k, v)| (*k, v)).collect())
             .collect();
 
         chunked.into_iter().flatten().collect()
@@ -637,7 +610,7 @@ impl<'a> Parser<'a> {
             },
             owner: FullHash::ZERO,
             value: 0,
-            
+
             leaked: false,
             // ord/OPI compatibility fields, filled from meta and inscription
             input_index: meta.input_index,
@@ -708,10 +681,6 @@ mod tests {
         );
 
         assert!(is_reinscription(&inscribed_offsets, 10));
-
-        // Any curse should mark BRC-20 invalid for non-LTC coins.
-        let coin = CoinType::default(); // Bitcoin settings, only_p2tr = true
-        assert!(compute_cursed_for_brc20(coin, true, false));
     }
 
     #[test]

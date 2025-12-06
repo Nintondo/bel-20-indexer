@@ -17,6 +17,10 @@ pub enum Brc4ParseErr {
     DecimalSpaces,
     InvalidDigit,
     InvalidUtf8,
+    SelfMint5Byte,
+    HeightTooLow5Byte,
+    ZeroLimMax,
+    ZeroAmt,
     Unknown(String),
 }
 
@@ -258,12 +262,7 @@ pub enum TokenAction {
     /// Deploy new token action.
     Deploy { genesis: InscriptionId, proto: DeployProtoDB, owner: FullHash },
     /// Mint new token action.
-    Mint {
-        owner: FullHash,
-        proto: MintProto,
-        txid: Txid,
-        vout: u32,
-    },
+    Mint { owner: FullHash, proto: MintProto, txid: Txid, vout: u32 },
     /// Transfer token action.
     Transfer {
         location: Location,

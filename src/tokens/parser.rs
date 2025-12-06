@@ -117,18 +117,16 @@ impl<'a> BlockTokenState<'a> {
             Brc4::Mint { proto } if !proto.amt.is_zero() => Ok(brc4),
             Brc4::Transfer { proto } if !proto.amt.is_zero() => Ok(brc4),
             Brc4::Deploy { proto } => {
-                let err = Err(Brc4ParseErr::WrongProtocol);
-
                 if proto.dec > DeployProto::MAX_DEC {
-                    return err;
+                    return Err(Brc4ParseErr::WrongProtocol);
                 }
 
                 if proto.tick.len() == 5 {
                     if !proto.self_mint {
-                        return err;
+                        return Err(Brc4ParseErr::SelfMint5Byte);
                     }
                     if (height as usize) < coin.self_mint_activation_height.unwrap_or_default() {
-                        return err;
+                        return Err(Brc4ParseErr::HeightTooLow5Byte);
                     }
                 };
 
@@ -136,10 +134,10 @@ impl<'a> BlockTokenState<'a> {
 
                 if proto.max.is_zero() || lim.is_zero() {
                     if proto.tick.len() == 4 {
-                        return err;
+                        return Err(Brc4ParseErr::ZeroLimMax);
                     }
                     if !proto.self_mint {
-                        return err;
+                        return Err(Brc4ParseErr::ZeroLimMax);
                     }
                 }
 
@@ -151,9 +149,13 @@ impl<'a> BlockTokenState<'a> {
                     proto.lim = Some(proto.max);
                 }
 
+                if lim.scale() > proto.dec || proto.max.scale() > proto.dec {
+                    return Err(Brc4ParseErr::DecimalOverflow);
+                }
+
                 Ok(brc4)
             }
-            _ => Err(Brc4ParseErr::WrongProtocol),
+            _ => Err(Brc4ParseErr::ZeroAmt),
         }
     }
 

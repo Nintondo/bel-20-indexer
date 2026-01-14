@@ -75,6 +75,26 @@ impl Coin for DogecoinTestnet {
     };
 }
 
+pub struct DogecoinEv;
+impl Coin for DogecoinEv {
+    const NAME: &'static str = "DogecoinEV";
+    const CONFIG: EncoderConfig = EncoderConfig {
+        pubkey_address: 30,
+        script_address: 22,
+        bech32: "dev",
+    };
+}
+
+pub struct DogecoinEvTestnet;
+impl Coin for DogecoinEvTestnet {
+    const NAME: &'static str = "DogecoinEV Testnet";
+    const CONFIG: EncoderConfig = EncoderConfig {
+        pubkey_address: 113,
+        script_address: 196,
+        bech32: "tdev",
+    };
+}
+
 pub struct Bellscoin;
 impl Coin for Bellscoin {
     const NAME: &'static str = "Bellscoin";
@@ -153,6 +173,8 @@ impl FromStr for CoinType {
             "litecoin-testnet" => Ok(CoinType::from(LitecoinTestnet)),
             "dogecoin" => Ok(CoinType::from(Dogecoin)),
             "dogecoin-testnet" => Ok(CoinType::from(DogecoinTestnet)),
+            "dogecoinev" => Ok(CoinType::from(DogecoinEv)),
+            "dogecoinev-testnet" => Ok(CoinType::from(DogecoinEvTestnet)),
             "bellscoin" => Ok(CoinType::from(Bellscoin)),
             "bellscoin-testnet" => Ok(CoinType::from(BellscoinTestnet)),
             "pepecoin" => Ok(CoinType::from(Pepecoin)),

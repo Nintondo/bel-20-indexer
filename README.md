@@ -37,6 +37,27 @@ rsync -av --delete /home/<user>/.dogecoin/blocks/index/ /path/to/your/project/in
 # sudo systemctl start dogecoind
 ```
 
+### Docker bind-mount permissions (blk-dir)
+
+If `/app/blk-dir` is a bind mount to a host directory owned by a different UID/GID (for example, when the host path is a symlink to another application's data), the container user may not have read access and the indexer will fail with `Permission denied (os error 13)`.
+
+Two options:
+
+1. Set the container user to match the owner of the host blk directory via env:
+```
+AUTO_RUN_AS_FROM_BLK_DIR=1
+```
+This makes the entrypoint detect the UID:GID of `/app/blk-dir` and run the indexer as that user, while still fixing permissions for writable mounts like `/app/index-dir` and `/app/rocksdb`.
+
+2. Explicitly set `APP_UID`/`APP_GID` to the host owner of the blk directory.
+
+If you must keep running as `appuser` (uid 1001), grant read/execute permissions on the host using ACLs:
+```
+setfacl -R -m u:1001:rx /path/to/blocks
+setfacl -R -d -m u:1001:rx /path/to/blocks
+```
+`x` on directories allows traversal into the folder; without it, the user cannot access files inside even if the files are readable.
+
 ## API Documentation
 
 ### Overview

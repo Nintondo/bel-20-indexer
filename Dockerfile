@@ -1,9 +1,9 @@
-FROM rust:1.91.1-trixie AS builder
+FROM rust:1.92-trixie AS builder
 
 WORKDIR /usr/src/app
 
 RUN apt update -y && \
-    apt install -y \
+    apt install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     git \
@@ -18,32 +18,39 @@ COPY Cargo.toml ./
 COPY src src
 COPY packages packages
 
-RUN cargo fetch && cargo build --release
+RUN cargo fetch \
+  && cargo build --release
 
 RUN rm -rf /usr/local/cargo/git && \
     rm -rf /usr/local/cargo/registry
 
 FROM debian:trixie-slim AS runner
 
-WORKDIR /app
-
 RUN apt update -y && \
     apt install -y --no-install-recommends \
+    tini \
+    gosu \
     curl \
     rsync \
     libc6 \
     libgcc-s1 \ 
     libstdc++6 && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd --gid 1001 appuser && \
-    useradd --uid 1001 --gid 1001 --create-home appuser
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system --gid 1001 appuser \
+  && useradd --system --uid 1001 --gid appuser --home /home/appuser --shell /usr/sbin/nologin appuser \
+  && mkdir -p /home/appuser/.cache \
+  && chown -R 1001:1001 /home/appuser
+
+WORKDIR /app
 
 COPY --from=builder /usr/src/app/target/release/bel_20_node .
 
-RUN chown -R 1001:1001 /app
-USER 1001
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["./bel_20_node"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
+CMD ["/app/bel_20_node"]

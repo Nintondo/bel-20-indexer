@@ -34,7 +34,8 @@ RUN apt update -y && \
     rsync \
     libc6 \
     libgcc-s1 \ 
-    libstdc++6 && \
+    libstdc++6 \
+    ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

@@ -15,17 +15,66 @@ on:
       - 'packages/**/*'
 
 jobs:
+  semgrep-rust:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+
+    steps:
+
+    - name: Determine commit SHA
+      env:
+        INPUT_SHA: ${{ github.event.inputs.sha }}
+        GITHUB_SHA_REF: ${{ github.sha }}
+      run: |
+        if [ -n "$INPUT_SHA" ]; then
+          echo "SCAN_REF=$INPUT_SHA" >> $GITHUB_ENV
+        else
+          echo "SCAN_REF=$GITHUB_SHA_REF" >> $GITHUB_ENV
+        fi
+
+    - name: Checkout repository at selected commit
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ env.SCAN_REF }}
+
+    - name: Install Semgrep
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-pip pipx
+        pipx ensurepath
+        pipx install semgrep || pipx upgrade semgrep
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: report all (non-blocking)
+      continue-on-error: true
+      run: |
+        semgrep --config p/rust .
+
+    - name: fail on WARNING
+      run: |
+        semgrep --config p/rust --severity WARNING --error .
+
+    - name: fail on ERROR
+      run: |
+        semgrep --config p/rust --severity ERROR --error .
+
   build:
     runs-on: self-hosted
+    needs: semgrep-rust
+    if: github.event_name != 'pull_request'
 
     steps:
 
     - name:  Determine commit SHA
+      env:
+        INPUT_SHA: ${{ github.event.inputs.sha }}
+        GITHUB_SHA_REF: ${{ github.sha }}
       run: |
-        if [ -n "${{ github.event.inputs.sha }}" ]; then
-          echo "SERVICE_TAG=${{ github.event.inputs.sha }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_SHA" ]; then
+          echo "SERVICE_TAG=$INPUT_SHA" >> $GITHUB_ENV
         else
-          echo "SERVICE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+          echo "SERVICE_TAG=$GITHUB_SHA_REF" >> $GITHUB_ENV
         fi
 
     - name: Log SERVICE_TAG

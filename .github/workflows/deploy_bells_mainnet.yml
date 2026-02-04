@@ -16,15 +16,21 @@ jobs:
     steps:
 
     - name:  Determine commit SHA
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        CLIENT_PAYLOAD_SHA: ${{ github.event.client_payload.sha }}
+        CLIENT_PAYLOAD_REF: ${{ github.event.client_payload.ref }}
+        INPUT_SHA: ${{ github.event.inputs.sha }}
+        GITHUB_SHA_REF: ${{ github.sha }}
       run: |
-        if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
-          echo "SERVICE_TAG=${{ github.event.client_payload.sha }}" >> $GITHUB_ENV
-          echo "Ref: ${{ github.event.client_payload.ref }}"
+        if [ "$EVENT_NAME" == "repository_dispatch" ]; then
+          echo "SERVICE_TAG=$CLIENT_PAYLOAD_SHA" >> $GITHUB_ENV
+          echo "Ref: $CLIENT_PAYLOAD_REF"
         else
-          if [ -n "${{ github.event.inputs.sha }}" ]; then
-            echo "SERVICE_TAG=${{ github.event.inputs.sha }}" >> $GITHUB_ENV
+          if [ -n "$INPUT_SHA" ]; then
+            echo "SERVICE_TAG=$INPUT_SHA" >> $GITHUB_ENV
           else
-            echo "SERVICE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+            echo "SERVICE_TAG=$GITHUB_SHA_REF" >> $GITHUB_ENV
           fi
         fi
 

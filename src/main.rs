@@ -9,6 +9,7 @@ use {
         opcodes, script, BlockHash, Network, OutPoint, TxOut, Txid,
     },
     blockchain::Blockchain,
+    config::Config,
     db::*,
     dutils::{
         error::{ApiError, ContextWrapper},
@@ -39,6 +40,7 @@ use {
     utils::*,
 };
 
+mod config;
 mod inscriptions;
 mod reorg;
 mod rest;
@@ -91,7 +93,8 @@ fn main() {
     dotenv::dotenv().ok();
     utils::init_logger();
 
-    dbg!(&*BLK_DIR, &*URL, &*USER, &*PASS, &*BLOCKCHAIN, *NETWORK, *JUBILEE_HEIGHT, *START_HEIGHT, &*SERVER_URL,);
+    let config = Config::new();
+    info!("Config loaded:\n{:#?}", config.redacted());
 
     let (raw_event_tx, event_tx, server) = Server::new(&DB_PATH).unwrap();
 

@@ -64,7 +64,12 @@ define_static! {
     BLOCKCHAIN: Blockchain = Blockchain::from_str(&load_env!("BLOCKCHAIN")).unwrap();
     INDEX_DIR: Option<String> = load_opt_env!("INDEX_DIR");
     NETWORK: Network = load_opt_env!("NETWORK")
-        .map(|x| Network::from_str(&x).unwrap())
+        .map(|x| match x.to_ascii_lowercase().as_str() {
+            // treat common aliases as mainnet/testnet
+            "mainnet" | "prod" | "bellscoin" => Network::Bellscoin,
+            "testnet" | "test" => Network::Testnet,
+            _ => Network::from_str(&x).unwrap(),
+        })
         .unwrap_or(Network::Bellscoin);
     // multiple input inscription scan activation
     JUBILEE_HEIGHT: usize = match (*NETWORK, *BLOCKCHAIN) {

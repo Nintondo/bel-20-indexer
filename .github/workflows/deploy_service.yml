@@ -1,0 +1,155 @@
+name: Deploy service
+run-name: >-
+  Deploy → ${{
+    github.event_name == 'workflow_dispatch'
+      && format('{0}-{1}', inputs.coin, inputs.network)
+      || format('{0}-{1}', github.event.client_payload.coin, github.event.client_payload.network)
+  }} ${{ github.event_name == 'workflow_dispatch' && '(manual)' || '(auto)' }}
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      coin:
+        description: Coin
+        required: true
+        type: choice
+        options:
+          - bells
+          - doge
+          - pepe
+      network:
+        description: Network
+        required: true
+        type: choice
+        options:
+          - testnet
+          - mainnet
+      sha:
+        description: Commit SHA for deploy/rollback (default latest in branch)
+        required: false
+        default: ''
+      confirm_mainnet:
+        description: Type DEPLOY_MAINNET to confirm mainnet rollout (required only for mainnet)
+        required: false
+        default: ''
+  repository_dispatch:
+    types:
+      - deploy
+
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && format('{0}-{1}', inputs.coin, inputs.network) || format('{0}-{1}', github.event.client_payload.coin, github.event.client_payload.network) }}
+  cancel-in-progress: false
+
+jobs:
+  deployment:
+    runs-on: self-hosted
+    environment: ${{ github.event_name == 'workflow_dispatch' && format('{0}-{1}', inputs.coin, inputs.network) || format('{0}-{1}', github.event.client_payload.coin, github.event.client_payload.network) }}
+
+    steps:
+      - name: Block mainnet via repository_dispatch
+        if: github.event_name == 'repository_dispatch' && github.event.client_payload.network == 'mainnet'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Mainnet deploys must be triggered manually via workflow_dispatch."
+          exit 1
+
+      - name: Validate explicit mainnet confirmation
+        if: github.event_name == 'workflow_dispatch' && inputs.network == 'mainnet'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ inputs.confirm_mainnet }}" != "DEPLOY_MAINNET" ]; then
+            echo "Mainnet deploy requires explicit confirmation."
+            echo "Re-run workflow_dispatch and set confirm_mainnet=DEPLOY_MAINNET"
+            exit 1
+          fi
+
+      - name: Checkout repository for local actions
+        uses: actions/checkout@v5
+
+      - name: Resolve SERVICE_TAG
+        uses: ./.github/actions/resolve-service-tag
+
+      - name: Log SERVICE_TAG
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Deploying image with SHA ${{ env.SERVICE_TAG }}"
+
+      - name: Log in to Docker Registry
+        shell: bash
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_USER: ${{ secrets.CI_REGISTRY_USER }}
+          CI_REGISTRY_PASSWORD: ${{ secrets.CI_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$CI_REGISTRY_PASSWORD" \
+            | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+
+      - name: Check if image exists
+        uses: ./.github/actions/check-image-exists
+        with:
+          registry: ${{ secrets.CI_REGISTRY }}
+          registry_repo: ${{ secrets.CI_REGISTRY_REPO }}
+          service_name: ${{ vars.SERVICE_NAME }}
+          service_tag: ${{ env.SERVICE_TAG }}
+
+      - name: Render .env from template
+        shell: bash
+        env:
+          RPC_URL: ${{ vars.RPC_URL }}
+          RPC_USER: ${{ secrets.RPC_USER }}
+          RPC_PASS: ${{ secrets.RPC_PASS }}
+          BLOCKCHAIN: ${{ vars.BLOCKCHAIN }}
+          NETWORK: ${{ vars.NETWORK }}
+          BLK_DIR: ${{ vars.BLK_DIR }}
+          INDEX_DIR: ${{ vars.INDEX_DIR }}
+        run: |
+          set -euo pipefail
+
+          envsubst < .env.template > .env.updated
+
+      - name: Copy .env to server
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST_1 }}
+          username: ${{ secrets.HOST_1_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: ".env.updated"
+          target: "/opt/${{ vars.COIN }}-${{ vars.NETWORK }}/services/${{ vars.SERVICE_NAME }}"
+
+      - name: Deploy service
+        uses: ./.github/actions/deploy-over-ssh
+        with:
+          host: ${{ secrets.HOST_1 }}
+          username: ${{ secrets.HOST_1_USERNAME }}
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+          registry: ${{ secrets.CI_REGISTRY }}
+          registry_repo: ${{ secrets.CI_REGISTRY_REPO }}
+          service_name: ${{ vars.SERVICE_NAME }}
+          service_tag: ${{ env.SERVICE_TAG }}
+          docker_compose_file: ${{ vars.DOCKER_COMPOSE_FILE }}
+          coin: ${{ vars.COIN }}
+          network: ${{ vars.NETWORK }}
+          env_updated_file: .env.updated
+          post_deploy_sleep_seconds: "10"
+          reload_nginx: "true"
+
+      - name: Docker logout
+        if: always()
+        shell: bash
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+        run: |
+          set +e
+          docker logout "$CI_REGISTRY"
+          exit 0

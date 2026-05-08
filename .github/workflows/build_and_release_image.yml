@@ -1,4 +1,13 @@
 name: Build and release Docker image
+run-name: >-
+  Build & release → ${{
+    github.event_name == 'workflow_dispatch'
+      && inputs.targets
+      || 'all-testnet'
+  }}
+
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -7,61 +16,253 @@ on:
         description: 'Commit SHA for build (default: latest in branch)'
         required: false
         default: ''
+      targets:
+        description: 'Auto-deploy target after build (mainnet is never auto-deployed)'
+        required: true
+        type: choice
+        default: all-testnet
+        options:
+          - all-testnet
+          - bells-testnet
+          - doge-testnet
+          - pepe-testnet
+          - none
   push:
     branches:
       - main
     paths:
       - 'src/**/*'
       - 'packages/**/*'
+      - 'Dockerfile'
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  semgrep-rust:
+    runs-on: self-hosted
+    steps:
+      - name: Resolve SCAN_REF
+        shell: bash
+        env:
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          GITHUB_SHA_REF: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          resolve_commit_ref() {
+            local ref="$1"
+            local sha
+
+            if [ -z "$ref" ]; then
+              printf '%s\n' "$GITHUB_SHA_REF"
+              return
+            fi
+
+            sha=$(curl -fsSL \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${GH_API_URL}/repos/${GH_REPOSITORY}/commits/${ref}" \
+              | sed -nE 's/^[^"]*"sha"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/p' \
+              | head -n1)
+
+            if [ -z "$sha" ]; then
+              echo "::error::Unable to resolve commit ref '${ref}' to a full SHA."
+              exit 1
+            fi
+
+            printf '%s\n' "$sha"
+          }
+
+          SCAN_REF="$(resolve_commit_ref "$INPUT_SHA")"
+          echo "SCAN_REF=$SCAN_REF" >> "$GITHUB_ENV"
+
+      - name: Checkout repository at selected commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SCAN_REF }}
+
+      - name: Install Semgrep
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y python3-pip pipx
+          pipx ensurepath
+          pipx install semgrep || pipx upgrade semgrep
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Report all (non-blocking)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          semgrep --config p/rust .
+
+      - name: Fail on WARNING
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          semgrep --config p/rust --severity WARNING --error .
+
+      - name: Fail on ERROR
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          semgrep --config p/rust --severity ERROR --error .
+
   build:
     runs-on: self-hosted
-
+    needs: semgrep-rust
+    outputs:
+      service_tag: ${{ steps.tag.outputs.service_tag }}
     steps:
+      - name: Resolve SERVICE_TAG
+        id: tag
+        shell: bash
+        env:
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          GITHUB_SHA_REF: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
 
-    - name:  Determine commit SHA
-      run: |
-        if [ -n "${{ github.event.inputs.sha }}" ]; then
-          echo "SERVICE_TAG=${{ github.event.inputs.sha }}" >> $GITHUB_ENV
-        else
-          echo "SERVICE_TAG=${{ github.sha }}" >> $GITHUB_ENV
-        fi
+          resolve_commit_ref() {
+            local ref="$1"
+            local sha
 
-    - name: Log SERVICE_TAG
-      run: |
-        echo "Deploying image with SHA: ${{ env.SERVICE_TAG }}"
+            if [ -z "$ref" ]; then
+              printf '%s\n' "$GITHUB_SHA_REF"
+              return
+            fi
 
-    - name: Checkout repository at selected commit
-      uses: actions/checkout@v4
-      with:
-        ref: ${{ env.SERVICE_TAG }}
+            sha=$(curl -fsSL \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${GH_API_URL}/repos/${GH_REPOSITORY}/commits/${ref}" \
+              | sed -nE 's/^[^"]*"sha"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/p' \
+              | head -n1)
 
-    - name: Build Docker image
-      uses: docker/setup-buildx-action@v3
+            if [ -z "$sha" ]; then
+              echo "::error::Unable to resolve commit ref '${ref}' to a full SHA."
+              exit 1
+            fi
 
-    - name: Log in to Docker Registry
-      uses: docker/login-action@v2
-      with:
-        registry: ${{ secrets.CI_REGISTRY }}
-        username: ${{ secrets.CI_REGISTRY_USER }}
-        password: ${{ secrets.CI_REGISTRY_PASSWORD }}
+            printf '%s\n' "$sha"
+          }
 
-    - name: Build and release Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./
-        file: ./Dockerfile
-        push: true
-        no-cache: true
-        tags: |
-          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}:${{ env.SERVICE_TAG }}
-          ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/${{ vars.SERVICE_NAME }}:latest
+          SERVICE_TAG="$(resolve_commit_ref "$INPUT_SHA")"
+          echo "SERVICE_TAG=$SERVICE_TAG" >> "$GITHUB_ENV"
+          echo "service_tag=$SERVICE_TAG" >> "$GITHUB_OUTPUT"
 
-    - name: Trigger Deploy Workflow
-      uses: peter-evans/repository-dispatch@v2
-      with:
-        token: ${{ secrets.GIT_ACCESS_TOKEN }}
-        repository: ${{ github.repository }}
-        event-type: Deploy
-        client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ env.SERVICE_TAG }}"}'
+      - name: Log SERVICE_TAG
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Building image with SHA ${{ env.SERVICE_TAG }}"
+
+      - name: Checkout repository at selected commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SERVICE_TAG }}
+
+      - name: Log in to Docker Registry
+        shell: bash
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_USER: ${{ secrets.CI_REGISTRY_USER }}
+          CI_REGISTRY_PASSWORD: ${{ secrets.CI_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$CI_REGISTRY_PASSWORD" \
+            | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+
+      - name: Build and release Docker image
+        shell: bash
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+          DOCKER_BUILDKIT: "1"
+        run: |
+          set -euo pipefail
+
+          IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}"
+          docker build \
+            --no-cache \
+            --pull \
+            --label "org.opencontainers.image.revision=${SERVICE_TAG}" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            -f ./Dockerfile \
+            -t "${IMAGE}:${SERVICE_TAG}" \
+            -t "${IMAGE}:latest" \
+            ./
+          docker push "${IMAGE}:${SERVICE_TAG}"
+          docker push "${IMAGE}:latest"
+
+      - name: Docker logout
+        if: always()
+        shell: bash
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+        run: |
+          set +e
+          docker logout "$CI_REGISTRY"
+          exit 0
+
+  fanout-deploy:
+    runs-on: self-hosted
+    needs: build
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.targets != 'none')
+    strategy:
+      fail-fast: false
+      matrix:
+        coin: [bells, doge, pepe]
+    steps:
+      - name: Decide whether to dispatch
+        id: gate
+        shell: bash
+        env:
+          TARGETS: ${{ github.event_name == 'workflow_dispatch' && inputs.targets || 'all-testnet' }}
+          COIN: ${{ matrix.coin }}
+        run: |
+          set -euo pipefail
+
+          if [ "$TARGETS" = "all-testnet" ] || [ "$TARGETS" = "${COIN}-testnet" ]; then
+            echo "fire=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fire=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository for local actions
+        if: steps.gate.outputs.fire == 'true'
+        uses: actions/checkout@v5
+
+      - name: Trigger testnet deploy
+        if: steps.gate.outputs.fire == 'true'
+        uses: ./.github/actions/repository-dispatch
+        with:
+          token: ${{ secrets.GIT_ACCESS_TOKEN }}
+          repository: ${{ github.repository }}
+          event_type: deploy
+          client_payload: |
+            {
+              "coin": "${{ matrix.coin }}",
+              "network": "testnet",
+              "sha": "${{ needs.build.outputs.service_tag }}",
+              "ref": "${{ github.ref }}"
+            }

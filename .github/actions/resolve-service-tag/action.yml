@@ -1,0 +1,59 @@
+name: Resolve service tag
+description: Resolve SERVICE_TAG for workflow_dispatch or repository_dispatch runs.
+inputs:
+  log_ref:
+    description: Whether to log client_payload.ref for repository_dispatch.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Resolve SERVICE_TAG
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        CLIENT_PAYLOAD_SHA: ${{ github.event.client_payload.sha }}
+        CLIENT_PAYLOAD_REF: ${{ github.event.client_payload.ref }}
+        INPUT_SHA: ${{ github.event.inputs.sha }}
+        GITHUB_SHA_REF: ${{ github.sha }}
+        GH_TOKEN: ${{ github.token }}
+        GH_API_URL: ${{ github.api_url }}
+        GH_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        resolve_commit_ref() {
+          local ref="$1"
+          local sha
+
+          if [ -z "$ref" ]; then
+            printf '%s\n' "$GITHUB_SHA_REF"
+            return
+          fi
+
+          sha=$(curl -fsSL \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${GH_API_URL}/repos/${GH_REPOSITORY}/commits/${ref}" \
+            | sed -nE 's/^[^"]*"sha"[[:space:]]*:[[:space:]]*"([0-9a-f]{40})".*/\1/p' \
+            | head -n1)
+
+          if [ -z "$sha" ]; then
+            echo "::error::Unable to resolve commit ref '${ref}' to a full SHA."
+            exit 1
+          fi
+
+          printf '%s\n' "$sha"
+        }
+
+        if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+          SERVICE_TAG="$(resolve_commit_ref "$CLIENT_PAYLOAD_SHA")"
+          echo "SERVICE_TAG=$SERVICE_TAG" >> "$GITHUB_ENV"
+          if [ "${{ inputs.log_ref }}" = "true" ]; then
+            echo "Ref: $CLIENT_PAYLOAD_REF"
+          fi
+        else
+          SERVICE_TAG="$(resolve_commit_ref "$INPUT_SHA")"
+          echo "SERVICE_TAG=$SERVICE_TAG" >> "$GITHUB_ENV"
+        fi

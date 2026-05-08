@@ -1,0 +1,119 @@
+name: Deploy over SSH
+description: Update compose image and restart the service over SSH.
+inputs:
+  host:
+    description: SSH host for deployment.
+    required: true
+  username:
+    description: SSH username.
+    required: true
+  ssh_private_key:
+    description: SSH private key for authentication.
+    required: true
+  registry:
+    description: Container registry host.
+    required: true
+  registry_repo:
+    description: Container registry repository or namespace.
+    required: true
+  service_name:
+    description: Service name and service directory name.
+    required: true
+  service_tag:
+    description: Image tag to deploy.
+    required: true
+  docker_compose_file:
+    description: Docker compose file path on host (relative to BASE_PATH).
+    required: true
+  coin:
+    description: Base directory segment.
+    required: true
+  network:
+    description: Network suffix (testnet|mainnet).
+    required: true
+  image_name:
+    description: Optional image name override.
+    required: false
+    default: ""
+  env_updated_file:
+    description: Optional env file to place as .env on the server.
+    required: false
+    default: ""
+  post_deploy_sleep_seconds:
+    description: Sleep time after restart.
+    required: false
+    default: "10"
+  reload_nginx:
+    description: Whether to reload nginx after deploy.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Deploy service
+      uses: appleboy/ssh-action@v1.0.0
+      env:
+        CI_REGISTRY: ${{ inputs.registry }}
+        CI_REGISTRY_REPO: ${{ inputs.registry_repo }}
+        SERVICE_NAME: ${{ inputs.service_name }}
+        SERVICE_TAG: ${{ inputs.service_tag }}
+        DOCKER_COMPOSE_FILE: ${{ inputs.docker_compose_file }}
+        COIN: ${{ inputs.coin }}
+        NETWORK: ${{ inputs.network }}
+        IMAGE_NAME_OVERRIDE: ${{ inputs.image_name }}
+        ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
+        POST_DEPLOY_SLEEP_SECONDS: ${{ inputs.post_deploy_sleep_seconds }}
+        RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.username }}
+        key: ${{ inputs.ssh_private_key }}
+        envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,POST_DEPLOY_SLEEP_SECONDS,RELOAD_NGINX
+        script: |
+          set -e
+
+          for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE COIN NETWORK; do
+            if [ -z "${!var}" ]; then
+              echo "Error: Environment variable ${var} is not set."
+              exit 1
+            fi
+          done
+
+          BASE_PATH="/opt/${COIN}-${NETWORK}"
+          SERVICE_PATH="${BASE_PATH}/services/${SERVICE_NAME}"
+
+          IMAGE_NAME="${IMAGE_NAME_OVERRIDE}"
+          if [ -z "${IMAGE_NAME}" ]; then
+            IMAGE_NAME="${SERVICE_NAME}"
+          fi
+
+          IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${IMAGE_NAME}:${SERVICE_TAG}"
+          CONTAINER="${COIN}-${NETWORK}-${SERVICE_NAME}"
+
+          if [ ! -d "${SERVICE_PATH}" ]; then
+            echo "Error: Service path ${SERVICE_PATH} does not exist."
+            exit 1
+          fi
+
+          cd "${SERVICE_PATH}"
+
+          sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${IMAGE}|" "${DOCKER_COMPOSE_FILE}"
+
+          if [ -n "${ENV_UPDATED_FILE}" ] && [ -f "${ENV_UPDATED_FILE}" ]; then
+            if [ -f .env ]; then
+              mv .env .env.old
+            fi
+            mv "${ENV_UPDATED_FILE}" .env
+          fi
+
+          cd "${BASE_PATH}"
+
+          docker compose up -d --force-recreate "${CONTAINER}"
+
+          if [ -n "${POST_DEPLOY_SLEEP_SECONDS}" ]; then
+            sleep "${POST_DEPLOY_SLEEP_SECONDS}"
+          fi
+
+          if [ "${RELOAD_NGINX}" = "true" ]; then
+            docker exec nginx nginx -s reload || true
+          fi

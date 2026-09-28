@@ -237,10 +237,14 @@ jobs:
         env:
           TARGETS: ${{ github.event_name == 'workflow_dispatch' && inputs.targets || 'all-testnet' }}
           COIN: ${{ matrix.coin }}
+          ENABLE_DOGE_TESTNET: ${{ vars.ENABLE_DOGE_TESTNET }}
         run: |
           set -euo pipefail
 
-          if [ "$TARGETS" = "all-testnet" ] || [ "$TARGETS" = "${COIN}-testnet" ]; then
+          if [ "$COIN" = doge ] && [ "$ENABLE_DOGE_TESTNET" != true ]; then
+            echo "Doge testnet is disabled; set ENABLE_DOGE_TESTNET=true after recovery."
+            echo "fire=false" >> "$GITHUB_OUTPUT"
+          elif [ "$TARGETS" = "all-testnet" ] || [ "$TARGETS" = "${COIN}-testnet" ]; then
             echo "fire=true" >> "$GITHUB_OUTPUT"
           else
             echo "fire=false" >> "$GITHUB_OUTPUT"

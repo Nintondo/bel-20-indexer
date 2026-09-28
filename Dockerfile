@@ -53,5 +53,8 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
+    CMD curl --fail --silent --show-error --max-time 4 http://127.0.0.1:8000/readyz >/dev/null || exit 1
+
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
 CMD ["/app/bel_20_node"]

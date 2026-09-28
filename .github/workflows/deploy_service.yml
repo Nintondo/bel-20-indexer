@@ -141,7 +141,7 @@ jobs:
           coin: ${{ vars.COIN }}
           network: ${{ vars.NETWORK }}
           env_updated_file: .env.updated
-          post_deploy_sleep_seconds: "10"
+          health_timeout_seconds: "600"
           reload_nginx: "true"
 
       - name: Docker logout

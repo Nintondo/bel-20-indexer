@@ -23,7 +23,7 @@ inputs:
     description: Image tag to deploy.
     required: true
   docker_compose_file:
-    description: Docker compose file path on host (relative to BASE_PATH).
+    description: Docker compose file path on host (relative to SERVICE_PATH).
     required: true
   coin:
     description: Base directory segment.
@@ -39,10 +39,10 @@ inputs:
     description: Optional env file to place as .env on the server.
     required: false
     default: ""
-  post_deploy_sleep_seconds:
-    description: Sleep time after restart.
+  health_timeout_seconds:
+    description: Maximum time to wait for the container healthcheck.
     required: false
-    default: "10"
+    default: "180"
   reload_nginx:
     description: Whether to reload nginx after deploy.
     required: false
@@ -62,15 +62,15 @@ runs:
         NETWORK: ${{ inputs.network }}
         IMAGE_NAME_OVERRIDE: ${{ inputs.image_name }}
         ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
-        POST_DEPLOY_SLEEP_SECONDS: ${{ inputs.post_deploy_sleep_seconds }}
+        HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
         RELOAD_NGINX: ${{ inputs.reload_nginx }}
       with:
         host: ${{ inputs.host }}
         username: ${{ inputs.username }}
         key: ${{ inputs.ssh_private_key }}
-        envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,POST_DEPLOY_SLEEP_SECONDS,RELOAD_NGINX
+        envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX
         script: |
-          set -e
+          set -Eeuo pipefail
 
           for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE COIN NETWORK; do
             if [ -z "${!var}" ]; then
@@ -95,25 +95,60 @@ runs:
             exit 1
           fi
 
+          COMPOSE_PATH="${SERVICE_PATH}/${DOCKER_COMPOSE_FILE}"
+          ROOT_COMPOSE_PATH="${BASE_PATH}/docker-compose.yml"
+          test -f "${COMPOSE_PATH}"
+          test -f "${ROOT_COMPOSE_PATH}"
           cd "${SERVICE_PATH}"
+          COMPOSE_BACKUP="$(mktemp "${SERVICE_PATH}/.compose-backup.XXXXXX")"
+          cp -p "${COMPOSE_PATH}" "${COMPOSE_BACKUP}"
+          ENV_BACKUP=""
+          if [ -n "${ENV_UPDATED_FILE}" ] && [ -f "${ENV_UPDATED_FILE}" ] && [ -f .env ]; then
+            ENV_BACKUP="$(mktemp "${SERVICE_PATH}/.env-backup.XXXXXX")"
+            cp -p .env "${ENV_BACKUP}"
+          fi
 
-          sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${IMAGE}|" "${DOCKER_COMPOSE_FILE}"
+          rollback() {
+            status=$?
+            trap - ERR
+            echo "Deploy failed; restoring the previous compose and environment files."
+            cp -p "${COMPOSE_BACKUP}" "${COMPOSE_PATH}"
+            if [ -n "${ENV_BACKUP}" ]; then cp -p "${ENV_BACKUP}" .env; fi
+            cd "${BASE_PATH}"
+            docker compose up -d --no-deps --force-recreate "${CONTAINER}" || true
+            rm -f "${COMPOSE_BACKUP}"
+            if [ -n "${ENV_BACKUP}" ]; then rm -f "${ENV_BACKUP}"; fi
+            exit "${status}"
+          }
+          trap rollback ERR
 
+          sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${IMAGE}|" "${COMPOSE_PATH}"
+          grep -Fq "image: ${IMAGE}" "${COMPOSE_PATH}"
           if [ -n "${ENV_UPDATED_FILE}" ] && [ -f "${ENV_UPDATED_FILE}" ]; then
-            if [ -f .env ]; then
-              mv .env .env.old
-            fi
             mv "${ENV_UPDATED_FILE}" .env
           fi
 
           cd "${BASE_PATH}"
+          docker compose config --quiet
+          docker compose pull "${CONTAINER}"
+          docker compose up -d --no-deps --force-recreate "${CONTAINER}"
 
-          docker compose up -d --force-recreate "${CONTAINER}"
-
-          if [ -n "${POST_DEPLOY_SLEEP_SECONDS}" ]; then
-            sleep "${POST_DEPLOY_SLEEP_SECONDS}"
-          fi
+          deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
+          while [ "${SECONDS}" -lt "${deadline}" ]; do
+            state="$(docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${CONTAINER}")"
+            case "${state}" in
+              'running healthy') break ;;
+              'running unhealthy'|*' missing'|exited*|dead*)
+                echo "Container ${CONTAINER} failed readiness: ${state}"
+                false ;;
+            esac
+            sleep 3
+          done
+          [ "${state}" = 'running healthy' ] || { echo "Healthcheck timed out: ${state}"; false; }
 
           if [ "${RELOAD_NGINX}" = "true" ]; then
-            docker exec nginx nginx -s reload || true
+            docker exec nginx nginx -s reload
           fi
+          trap - ERR
+          rm -f "${COMPOSE_BACKUP}"
+          if [ -n "${ENV_BACKUP}" ]; then rm -f "${ENV_BACKUP}"; fi

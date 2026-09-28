@@ -142,6 +142,7 @@ jobs:
           network: ${{ vars.NETWORK }}
           env_updated_file: .env.updated
           health_timeout_seconds: "600"
+          public_health_url: ${{ vars.PUBLIC_HEALTH_URL }}
           reload_nginx: "true"
 
       - name: Docker logout

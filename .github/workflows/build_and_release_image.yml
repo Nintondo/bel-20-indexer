@@ -209,10 +209,8 @@ jobs:
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             -f ./Dockerfile \
             -t "${IMAGE}:${SERVICE_TAG}" \
-            -t "${IMAGE}:latest" \
             ./
           docker push "${IMAGE}:${SERVICE_TAG}"
-          docker push "${IMAGE}:latest"
 
       - name: Docker logout
         if: always()

@@ -53,7 +53,9 @@ def main():
             mapping=run('docker','port',registry,'5000/tcp',capture_output=True).stdout.strip()
             registry_host=mapping
             for _ in range(30):
-                p=subprocess.run(['curl','-fsS',f'http://{registry_host}/v2/'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                # The runner may be a container using a host Docker socket.
+                # Probe inside the registry, not the runner's own loopback.
+                p=subprocess.run(['docker','exec',registry,'wget','-q','-O','/dev/null','http://127.0.0.1:5000/v2/'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 if not p.returncode: break
                 time.sleep(1)
             else: raise RuntimeError('Local registry did not start')

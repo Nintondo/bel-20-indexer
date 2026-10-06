@@ -38,8 +38,8 @@ def main():
     registry='deploy-test-registry-'+suffix
     service_name=FIXTURE['compose_service']
     project='deploy-test-'+suffix
-    container=service_name
-    with tempfile.TemporaryDirectory() as temporary:
+    container="deploy-fixture-"+suffix
+    with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as temporary:
         root=Path(temporary)
         service=root/FIXTURE['service_path'].lstrip('/')
         base=root/FIXTURE['base_path'].lstrip('/')
@@ -58,7 +58,7 @@ def main():
                 time.sleep(1)
             else: raise RuntimeError('Local registry did not start')
             env=dict(os.environ,**FIXTURE['env'])
-            env.update(CI_REGISTRY=registry_host,CI_REGISTRY_REPO='fixture',DEPLOYMENT_ID='compose_test',DEPLOY_PHASE='deploy',HEALTH_TIMEOUT_SECONDS='30',RELOAD_NGINX='false',COMPOSE_PROJECT_NAME=project)
+            env.update(CI_REGISTRY=registry_host,CI_REGISTRY_REPO='fixture',DEPLOYMENT_ID='compose_test',DEPLOY_PHASE='deploy',HEALTH_TIMEOUT_SECONDS='30',RELOAD_NGINX='false',COMPOSE_PROJECT_NAME=project,COMPOSE_SERVICE_NAME_OVERRIDE=service_name)
             if env.get('SERVICE_PATH_INPUT'): env['SERVICE_PATH_INPUT']=str(service)
             image_name=env['IMAGE_NAME_OVERRIDE']
             old=f'{registry_host}/fixture/{image_name}:'+ 'a'*40
@@ -92,6 +92,11 @@ def main():
                 p.write_text(compose_text(new) if relative.endswith(('.yml.updated','.yaml.updated')) else 'CI_VALUE=updated\n')
             script=root/'deploy.sh'
             text=(ROOT/'.github/actions/deploy-over-ssh/deploy.sh').read_text().replace('/opt/',str(root/'opt')+'/')
+            # Keep logical Compose service names, but never use a production
+            # container name on a shared self-hosted Docker daemon.
+            text,count=re.subn(r'(?m)^CONTAINER=.*$',lambda _: 'CONTAINER="'+container+'"',text)
+            assert count==1, 'Expected one container assignment'
+            text=text.replace("'services': {os.environ['CONTAINER']: {", "'services': {"+repr(service_name)+": {")
             script.write_text(text)
             run('docker','compose','-f',str(root_compose),'up','-d','--no-deps',service_name,env=env,stdout=subprocess.DEVNULL)
             run('bash',str(script),env=env)

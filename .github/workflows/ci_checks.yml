@@ -16,7 +16,7 @@ on:
 
 jobs:
   semgrep-ci:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: read
 

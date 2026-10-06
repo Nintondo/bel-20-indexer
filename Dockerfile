@@ -1,5 +1,8 @@
 FROM rust:1.92-trixie AS builder
 
+ARG RUN_TESTS=0
+ARG CI_BUILD_JOBS=0
+
 WORKDIR /usr/src/app
 
 RUN apt update -y && \
@@ -14,12 +17,14 @@ RUN apt update -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY src src
 COPY packages packages
 
-RUN cargo fetch \
-  && cargo build --release
+RUN if [ "$CI_BUILD_JOBS" != "0" ]; then export CARGO_BUILD_JOBS="$CI_BUILD_JOBS"; fi \
+  && cargo fetch --locked \
+  && if [ "$RUN_TESTS" = "1" ]; then cargo test --release --locked; fi \
+  && cargo build --release --locked
 
 RUN rm -rf /usr/local/cargo/git && \
     rm -rf /usr/local/cargo/registry

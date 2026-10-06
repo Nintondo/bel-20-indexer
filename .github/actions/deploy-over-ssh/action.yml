@@ -34,136 +34,111 @@ inputs:
   image_name:
     description: Optional image name override.
     required: false
-    default: ""
+    default: ''
   env_updated_file:
     description: Optional env file to place as .env on the server.
     required: false
-    default: ""
+    default: ''
   health_timeout_seconds:
     description: Maximum time to wait for the container healthcheck.
     required: false
-    default: "180"
+    default: '180'
   public_health_url:
     description: Optional public readiness URL checked from the CI runner.
     required: false
-    default: ""
+    default: ''
   reload_nginx:
     description: Whether to reload nginx after deploy.
     required: false
-    default: "true"
+    default: 'true'
 runs:
   using: composite
   steps:
-    - name: Deploy service
-      uses: appleboy/ssh-action@v1.0.0
-      env:
-        CI_REGISTRY: ${{ inputs.registry }}
-        CI_REGISTRY_REPO: ${{ inputs.registry_repo }}
-        SERVICE_NAME: ${{ inputs.service_name }}
-        SERVICE_TAG: ${{ inputs.service_tag }}
-        DOCKER_COMPOSE_FILE: ${{ inputs.docker_compose_file }}
-        COIN: ${{ inputs.coin }}
-        NETWORK: ${{ inputs.network }}
-        IMAGE_NAME_OVERRIDE: ${{ inputs.image_name }}
-        ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
-        HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
-        RELOAD_NGINX: ${{ inputs.reload_nginx }}
-      with:
-        host: ${{ inputs.host }}
-        username: ${{ inputs.username }}
-        key: ${{ inputs.ssh_private_key }}
-        envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX
-        script: |
-          set -Eeuo pipefail
+  - name: Create deployment transaction ID
+    id: transaction
+    shell: bash
+    run: echo "id=$(python3 -c 'import uuid; print(uuid.uuid4().hex)')" >> "$GITHUB_OUTPUT"
+  - name: Deploy service
+    uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+    env:
+      CI_REGISTRY: ${{ inputs.registry }}
+      CI_REGISTRY_REPO: ${{ inputs.registry_repo }}
+      SERVICE_NAME: ${{ inputs.service_name }}
+      SERVICE_TAG: ${{ inputs.service_tag }}
+      DOCKER_COMPOSE_FILE: ${{ inputs.docker_compose_file }}
+      COIN: ${{ inputs.coin }}
+      NETWORK: ${{ inputs.network }}
+      IMAGE_NAME_OVERRIDE: ${{ inputs.image_name }}
+      ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
+      HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
+      RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      DEPLOYMENT_ID: ${{ steps.transaction.outputs.id }}
+      DEPLOY_PHASE: deploy
+    with:
+      host: ${{ inputs.host }}
+      username: ${{ inputs.username }}
+      key: ${{ inputs.ssh_private_key }}
+      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE
+      script_path: ${{ github.action_path }}/deploy.sh
+      command_timeout: 45m
+    id: deploy
+  - name: Check public readiness from CI runner
+    id: public
+    if: inputs.public_health_url != ''
+    shell: bash
+    env:
+      PUBLIC_HEALTH_URL: ${{ inputs.public_health_url }}
+    run: 'set -euo pipefail
 
-          for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE COIN NETWORK; do
-            if [ -z "${!var}" ]; then
-              echo "Error: Environment variable ${var} is not set."
-              exit 1
-            fi
-          done
+      curl --fail --silent --show-error --output /dev/null --connect-timeout 5 --max-time 10 --retry 5 --retry-delay 3 --retry-all-errors "$PUBLIC_HEALTH_URL"
 
-          BASE_PATH="/opt/${COIN}-${NETWORK}"
-          SERVICE_PATH="${BASE_PATH}/services/${SERVICE_NAME}"
-
-          IMAGE_NAME="${IMAGE_NAME_OVERRIDE}"
-          if [ -z "${IMAGE_NAME}" ]; then
-            IMAGE_NAME="${SERVICE_NAME}"
-          fi
-
-          IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${IMAGE_NAME}:${SERVICE_TAG}"
-          CONTAINER="${COIN}-${NETWORK}-${SERVICE_NAME}"
-
-          if [ ! -d "${SERVICE_PATH}" ]; then
-            echo "Error: Service path ${SERVICE_PATH} does not exist."
-            exit 1
-          fi
-
-          COMPOSE_PATH="${SERVICE_PATH}/${DOCKER_COMPOSE_FILE}"
-          ROOT_COMPOSE_PATH="${BASE_PATH}/docker-compose.yml"
-          test -f "${COMPOSE_PATH}"
-          test -f "${ROOT_COMPOSE_PATH}"
-          cd "${SERVICE_PATH}"
-          COMPOSE_BACKUP="$(mktemp "${SERVICE_PATH}/.compose-backup.XXXXXX")"
-          cp -p "${COMPOSE_PATH}" "${COMPOSE_BACKUP}"
-          ENV_BACKUP=""
-          if [ -n "${ENV_UPDATED_FILE}" ] && [ -f "${ENV_UPDATED_FILE}" ] && [ -f .env ]; then
-            ENV_BACKUP="$(mktemp "${SERVICE_PATH}/.env-backup.XXXXXX")"
-            cp -p .env "${ENV_BACKUP}"
-          fi
-
-          rollback() {
-            status=$?
-            trap - ERR
-            echo "Deploy failed; restoring the previous compose and environment files."
-            cp -p "${COMPOSE_BACKUP}" "${COMPOSE_PATH}"
-            if [ -n "${ENV_BACKUP}" ]; then cp -p "${ENV_BACKUP}" .env; fi
-            cd "${BASE_PATH}"
-            docker compose up -d --no-deps --force-recreate "${CONTAINER}" || true
-            rm -f "${COMPOSE_BACKUP}"
-            if [ -n "${ENV_BACKUP}" ]; then rm -f "${ENV_BACKUP}"; fi
-            exit "${status}"
-          }
-          trap rollback ERR
-
-          sed -i "s|image: .*/${IMAGE_NAME}:.*|image: ${IMAGE}|" "${COMPOSE_PATH}"
-          grep -Fq "image: ${IMAGE}" "${COMPOSE_PATH}"
-          if [ -n "${ENV_UPDATED_FILE}" ] && [ -f "${ENV_UPDATED_FILE}" ]; then
-            mv "${ENV_UPDATED_FILE}" .env
-          fi
-
-          cd "${BASE_PATH}"
-          docker compose config --quiet
-          docker compose pull "${CONTAINER}"
-          docker compose up -d --no-deps --force-recreate "${CONTAINER}"
-
-          deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
-          while [ "${SECONDS}" -lt "${deadline}" ]; do
-            state="$(docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${CONTAINER}")"
-            case "${state}" in
-              'running healthy') break ;;
-              'running unhealthy'|*' missing'|exited*|dead*)
-                echo "Container ${CONTAINER} failed readiness: ${state}"
-                false ;;
-            esac
-            sleep 3
-          done
-          [ "${state}" = 'running healthy' ] || { echo "Healthcheck timed out: ${state}"; false; }
-
-          if [ "${RELOAD_NGINX}" = "true" ]; then
-            docker exec nginx nginx -s reload
-          fi
-          trap - ERR
-          rm -f "${COMPOSE_BACKUP}"
-          if [ -n "${ENV_BACKUP}" ]; then rm -f "${ENV_BACKUP}"; fi
-    - name: Check public readiness from CI runner
-      if: inputs.public_health_url != ''
-      shell: bash
-      env:
-        PUBLIC_HEALTH_URL: ${{ inputs.public_health_url }}
-      run: |
-        set -euo pipefail
-        curl --fail --silent --show-error --output /dev/null \
-          --connect-timeout 5 --max-time 10 \
-          --retry 5 --retry-delay 3 --retry-all-errors \
-          "$PUBLIC_HEALTH_URL"
+      '
+  - name: Commit deployment transaction
+    uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+    env:
+      CI_REGISTRY: ${{ inputs.registry }}
+      CI_REGISTRY_REPO: ${{ inputs.registry_repo }}
+      SERVICE_NAME: ${{ inputs.service_name }}
+      SERVICE_TAG: ${{ inputs.service_tag }}
+      DOCKER_COMPOSE_FILE: ${{ inputs.docker_compose_file }}
+      COIN: ${{ inputs.coin }}
+      NETWORK: ${{ inputs.network }}
+      IMAGE_NAME_OVERRIDE: ${{ inputs.image_name }}
+      ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
+      HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
+      RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      DEPLOYMENT_ID: ${{ steps.transaction.outputs.id }}
+      DEPLOY_PHASE: commit
+    with:
+      host: ${{ inputs.host }}
+      username: ${{ inputs.username }}
+      key: ${{ inputs.ssh_private_key }}
+      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE
+      script_path: ${{ github.action_path }}/deploy.sh
+      command_timeout: 45m
+    id: commit
+  - name: Restore previous deployment on failure
+    uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+    env:
+      CI_REGISTRY: ${{ inputs.registry }}
+      CI_REGISTRY_REPO: ${{ inputs.registry_repo }}
+      SERVICE_NAME: ${{ inputs.service_name }}
+      SERVICE_TAG: ${{ inputs.service_tag }}
+      DOCKER_COMPOSE_FILE: ${{ inputs.docker_compose_file }}
+      COIN: ${{ inputs.coin }}
+      NETWORK: ${{ inputs.network }}
+      IMAGE_NAME_OVERRIDE: ${{ inputs.image_name }}
+      ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
+      HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
+      RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      DEPLOYMENT_ID: ${{ steps.transaction.outputs.id }}
+      DEPLOY_PHASE: rollback
+    with:
+      host: ${{ inputs.host }}
+      username: ${{ inputs.username }}
+      key: ${{ inputs.ssh_private_key }}
+      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE
+      script_path: ${{ github.action_path }}/deploy.sh
+      command_timeout: 45m
+    id: rollback
+    if: always() && steps.deploy.outcome != 'skipped' && (failure() || cancelled())

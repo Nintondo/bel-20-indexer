@@ -1,0 +1,53 @@
+name: Deployment checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deployment-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install pinned workflow checker
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Check workflows and deployment shell
+        run: |
+          actionlint
+          bash -n .github/actions/deploy-over-ssh/deploy.sh
+          shellcheck .github/actions/deploy-over-ssh/deploy.sh
+      - name: Test deployment failure and recovery contracts
+        run: python3 .github/tests/test_deploy.py -v
+      - name: Test real Compose includes, health and legacy recovery
+        run: python3 .github/tests/test_compose.py
+
+  image-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Build actual image from the exact PR commit without publishing
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+        run: |
+          set -euo pipefail
+          docker build --pull --build-arg RUN_TESTS=1 --build-arg CI_BUILD_JOBS=2 --label "org.opencontainers.image.revision=$SOURCE_SHA" -t nintondo-ci:check .
+          [ "$(docker image inspect -f '{{if .Config.Healthcheck}}present{{end}}' nintondo-ci:check)" = present ]
+          [ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' nintondo-ci:check)" = "$SOURCE_SHA" ]

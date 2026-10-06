@@ -30,10 +30,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'src/**/*'
-      - 'packages/**/*'
-      - 'Dockerfile'
 
 concurrency:
   group: build-${{ github.event.inputs.sha || github.sha }}
@@ -83,7 +79,7 @@ jobs:
           echo "SCAN_REF=$SCAN_REF" >> "$GITHUB_ENV"
 
       - name: Checkout repository at selected commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ env.SCAN_REF }}
 
@@ -175,7 +171,7 @@ jobs:
           echo "Building image with SHA ${{ env.SERVICE_TAG }}"
 
       - name: Checkout repository at selected commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ env.SERVICE_TAG }}
 
@@ -271,7 +267,7 @@ jobs:
 
       - name: Checkout repository for local actions
         if: steps.gate.outputs.fire == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Trigger testnet deploy
         if: steps.gate.outputs.fire == 'true'

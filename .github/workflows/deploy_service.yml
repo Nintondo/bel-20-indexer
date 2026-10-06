@@ -71,7 +71,10 @@ jobs:
           fi
 
       - name: Checkout repository for local actions
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
 
       - name: Resolve SERVICE_TAG
         uses: ./.github/actions/resolve-service-tag
@@ -119,7 +122,7 @@ jobs:
           envsubst < .env.template > .env.updated
 
       - name: Copy .env to server
-        uses: appleboy/scp-action@v1.0.0
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: ${{ secrets.HOST_1 }}
           username: ${{ secrets.HOST_1_USERNAME }}

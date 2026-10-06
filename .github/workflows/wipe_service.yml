@@ -54,7 +54,7 @@ jobs:
           fi
 
       - name: Checkout repository for local actions
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Wipe service
         uses: ./.github/actions/wipe-over-ssh

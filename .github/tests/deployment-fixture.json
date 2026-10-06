@@ -1,0 +1,31 @@
+[
+  {
+    "env": {
+      "CI_REGISTRY": "registry.example",
+      "CI_REGISTRY_REPO": "project",
+      "SERVICE_NAME": "tokens",
+      "SERVICE_TAG": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "DOCKER_COMPOSE_FILE": "tokens.yml",
+      "COIN": "bells",
+      "NETWORK": "testnet",
+      "IMAGE_NAME_OVERRIDE": "tokens",
+      "ENV_UPDATED_FILE": ".env.updated",
+      "HEALTH_TIMEOUT_SECONDS": "180",
+      "RELOAD_NGINX": "true",
+      "DEPLOYMENT_ID": "${{ steps.transaction.outputs.id }}",
+      "DEPLOY_PHASE": "deploy",
+      "SERVICE_ENVIRONMENT": "testnet"
+    },
+    "base_path": "/opt/bells-testnet",
+    "service_path": "/opt/bells-testnet/services/tokens",
+    "root_compose": "/opt/bells-testnet/docker-compose.yml",
+    "compose_service": "bells-testnet-tokens",
+    "compose_file": "tokens.yml",
+    "files": [
+      ".env"
+    ],
+    "staged_files": [
+      ".env.updated"
+    ]
+  }
+]

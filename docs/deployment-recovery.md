@@ -43,7 +43,7 @@ RPC, not completed chain synchronization. Track IBD and tip lag separately.
 
 ## Validation and rollout
 
-Deployment checks run on GitHub-hosted runners with read-only permissions and
+Deployment checks run on self-hosted runners with read-only permissions and
 without registry or server credentials. They validate workflows and shell,
 exercise injected deployment/recovery failures, test the real Compose transaction
 with disposable fixture images, and build the actual image at the PR head.
@@ -56,3 +56,5 @@ testnet environments. Keep mainnet deployment manual with `DEPLOY_MAINNET`.
 Doge testnet is excluded from this rollout. Legacy Bells is an independent reserve
 and stays unchanged. The active Bells mainnet image remains
 `2cd82c7741d7e578c3597e9ade09e94daf31cb0e` until a separately chosen node release.
+
+CI uses unique per-run image tags, container names and networks for disposable fixtures. The tests do not reuse working service containers or mount live index data. Runner tooling installs a checksum-verified actionlint binary and ShellCheck explicitly.

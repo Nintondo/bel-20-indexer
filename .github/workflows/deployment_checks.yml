@@ -13,17 +13,34 @@ concurrency:
 
 jobs:
   deployment-contracts:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Install pinned workflow checker
+      - name: Install pinned workflow checker and runner tools
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck python3 curl
+          case "$(uname -m)" in
+            x86_64) arch=amd64; checksum=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8 ;;
+            aarch64) arch=arm64; checksum=325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6 ;;
+            *) echo 'Unsupported runner architecture'; exit 1 ;;
+          esac
+          tools="$RUNNER_TEMP/nintondo-tools-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$tools"
+          archive="$tools/actionlint.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_${arch}.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$tools" actionlint
+          rm -f "$archive"
+          echo "$tools" >> "$GITHUB_PATH"
+          docker compose version
       - name: Check workflows and deployment shell
         run: |
           actionlint
@@ -35,8 +52,10 @@ jobs:
         run: python3 .github/tests/test_compose.py
 
   image-build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 120
+    env:
+      CI_TEST_IMAGE: nintondo-ci:${{ github.repository_id }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -48,6 +67,9 @@ jobs:
 
         run: |
           set -euo pipefail
-          docker build --pull --build-arg RUN_TESTS=1 --build-arg CI_BUILD_JOBS=2 --label "org.opencontainers.image.revision=$SOURCE_SHA" -t nintondo-ci:check .
-          [ "$(docker image inspect -f '{{if .Config.Healthcheck}}present{{end}}' nintondo-ci:check)" = present ]
-          [ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' nintondo-ci:check)" = "$SOURCE_SHA" ]
+          docker build --pull --build-arg RUN_TESTS=1 --build-arg CI_BUILD_JOBS=2 --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$CI_TEST_IMAGE" .
+          [ "$(docker image inspect -f '{{if .Config.Healthcheck}}present{{end}}' "$CI_TEST_IMAGE")" = present ]
+          [ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CI_TEST_IMAGE")" = "$SOURCE_SHA" ]
+      - name: Remove this run's test image
+        if: always()
+        run: docker image rm "$CI_TEST_IMAGE" || true

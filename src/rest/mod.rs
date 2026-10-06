@@ -14,6 +14,7 @@ use aide::{
 use axum::{
     extract::{Path, Query, State},
     http::Response,
+    http::StatusCode,
     http::Uri,
     response::{sse::Event, IntoResponse, Sse},
     Extension, Json,
@@ -86,6 +87,8 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             .finish_api_with(&mut api, api_docs)
             // Not documented
             .route("/all-addresses", axum::routing::get(info::all_addresses))
+            .route("/livez", axum::routing::get(|| async { StatusCode::OK }))
+            .route("/readyz", axum::routing::get(info::status))
             .route("/all-tickers", axum::routing::get(tokens::all_tickers))
             .route("/events", axum::routing::post(history::subscribe))
             .layer(Extension(Arc::new(api)))

@@ -51,6 +51,18 @@ inputs:
     description: Whether to reload nginx after deploy.
     required: false
     default: 'true'
+  base_path:
+    description: Absolute project directory on the server; defaults to the existing layout.
+    required: false
+    default: ''
+  service_path:
+    description: Absolute service directory on the server; shared by SCP and Compose.
+    required: false
+    default: ''
+  compose_project_name:
+    description: Existing Compose project name when deploying through a canonical path.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -72,13 +84,16 @@ runs:
       ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
       HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
       RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      BASE_PATH_INPUT: ${{ inputs.base_path }}
+      SERVICE_PATH_INPUT: ${{ inputs.service_path }}
+      COMPOSE_PROJECT_NAME_INPUT: ${{ inputs.compose_project_name }}
       DEPLOYMENT_ID: ${{ steps.transaction.outputs.id }}
       DEPLOY_PHASE: deploy
     with:
       host: ${{ inputs.host }}
       username: ${{ inputs.username }}
       key: ${{ inputs.ssh_private_key }}
-      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE
+      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE,BASE_PATH_INPUT,SERVICE_PATH_INPUT,COMPOSE_PROJECT_NAME_INPUT
       script_path: ${{ github.action_path }}/deploy.sh
       command_timeout: 45m
     id: deploy
@@ -107,13 +122,16 @@ runs:
       ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
       HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
       RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      BASE_PATH_INPUT: ${{ inputs.base_path }}
+      SERVICE_PATH_INPUT: ${{ inputs.service_path }}
+      COMPOSE_PROJECT_NAME_INPUT: ${{ inputs.compose_project_name }}
       DEPLOYMENT_ID: ${{ steps.transaction.outputs.id }}
       DEPLOY_PHASE: commit
     with:
       host: ${{ inputs.host }}
       username: ${{ inputs.username }}
       key: ${{ inputs.ssh_private_key }}
-      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE
+      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE,BASE_PATH_INPUT,SERVICE_PATH_INPUT,COMPOSE_PROJECT_NAME_INPUT
       script_path: ${{ github.action_path }}/deploy.sh
       command_timeout: 45m
     id: commit
@@ -131,13 +149,16 @@ runs:
       ENV_UPDATED_FILE: ${{ inputs.env_updated_file }}
       HEALTH_TIMEOUT_SECONDS: ${{ inputs.health_timeout_seconds }}
       RELOAD_NGINX: ${{ inputs.reload_nginx }}
+      BASE_PATH_INPUT: ${{ inputs.base_path }}
+      SERVICE_PATH_INPUT: ${{ inputs.service_path }}
+      COMPOSE_PROJECT_NAME_INPUT: ${{ inputs.compose_project_name }}
       DEPLOYMENT_ID: ${{ steps.transaction.outputs.id }}
       DEPLOY_PHASE: rollback
     with:
       host: ${{ inputs.host }}
       username: ${{ inputs.username }}
       key: ${{ inputs.ssh_private_key }}
-      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE
+      envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,COIN,NETWORK,IMAGE_NAME_OVERRIDE,ENV_UPDATED_FILE,HEALTH_TIMEOUT_SECONDS,RELOAD_NGINX,DEPLOYMENT_ID,DEPLOY_PHASE,BASE_PATH_INPUT,SERVICE_PATH_INPUT,COMPOSE_PROJECT_NAME_INPUT
       script_path: ${{ github.action_path }}/deploy.sh
       command_timeout: 45m
     id: rollback

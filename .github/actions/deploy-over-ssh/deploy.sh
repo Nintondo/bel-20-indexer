@@ -17,6 +17,16 @@ IMAGE_NAME="${IMAGE_NAME_OVERRIDE:-$SERVICE_NAME}"
 IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${IMAGE_NAME}:${SERVICE_TAG}"
 CONTAINER="${COIN}-${NETWORK}-${SERVICE_NAME}"
 COMPOSE_SERVICE="${COMPOSE_SERVICE_NAME_OVERRIDE:-${COMPOSE_SERVICE:-$CONTAINER}}"
+# Explicit deployment paths let SCP and Compose use the same canonical layout.
+if [ -n "${BASE_PATH_INPUT:-}" ]; then BASE_PATH="$BASE_PATH_INPUT"; fi
+if [ -n "${SERVICE_PATH_INPUT:-}" ]; then SERVICE_PATH="$SERVICE_PATH_INPUT"; fi
+for deployment_path in "$BASE_PATH" "$SERVICE_PATH"; do
+  [[ "$deployment_path" == /opt/* && "$deployment_path" != *..* ]] || { echo 'Deployment paths must stay inside /opt'; exit 1; }
+done
+if [ -n "${COMPOSE_PROJECT_NAME_INPUT:-}" ]; then
+  [[ "$COMPOSE_PROJECT_NAME_INPUT" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'Invalid Compose project name'; exit 1; }
+  export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME_INPUT"
+fi
 TARGET_COMPOSE="$SERVICE_PATH/${DOCKER_COMPOSE_FILE}"
 
 compose() {

@@ -119,6 +119,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          umask 077
           envsubst < .env.template > .env.updated
 
       - name: Copy .env to server
@@ -128,7 +129,7 @@ jobs:
           username: ${{ secrets.HOST_1_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: ".env.updated"
-          target: "/opt/${{ vars.COIN }}-${{ vars.NETWORK }}/services/${{ vars.SERVICE_NAME }}"
+          target: "${{ vars.SERVICE_DIR_1 || format('/opt/{0}-{1}/services/{2}', vars.COIN, vars.NETWORK, vars.SERVICE_NAME) }}"
 
       - name: Deploy service
         uses: ./.github/actions/deploy-over-ssh
@@ -141,6 +142,9 @@ jobs:
           service_name: ${{ vars.SERVICE_NAME }}
           service_tag: ${{ env.SERVICE_TAG }}
           docker_compose_file: ${{ vars.DOCKER_COMPOSE_FILE }}
+          base_path: ${{ vars.BASE_PATH }}
+          compose_project_name: ${{ vars.COMPOSE_PROJECT_NAME }}
+          service_path: ${{ vars.SERVICE_DIR_1 }}
           coin: ${{ vars.COIN }}
           network: ${{ vars.NETWORK }}
           env_updated_file: .env.updated

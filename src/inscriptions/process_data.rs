@@ -37,9 +37,7 @@ pub enum ProcessedData {
 }
 
 impl ProcessedData {
-    pub fn write(self, server: &Server, reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>, batch: &mut rocksdb_wrapper::RocksBatch) {
-        let mut reorg_cache = reorg_cache.as_ref().map(|x| x.lock());
-
+    pub fn write(self, server: &Server, mut reorg_cache: Option<&mut ReorgCache>, batch: &mut rocksdb_wrapper::RocksBatch) {
         match self {
             ProcessedData::Info {
                 block_number,

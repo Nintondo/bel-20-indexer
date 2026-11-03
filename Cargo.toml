@@ -8,10 +8,10 @@ edition = "2021"
 members = [".", "packages/*"]
 
 [dependencies]
-nintondo-holdings-protocol = { path = "packages/holdings-sync-protocol" }
-self_cell = "1.2"
+nintondo-holdings-protocol = { path = "packages/holdings-sync-protocol", features = ["schema"] }
 uuid = { version = "1", features = ["v4"] }
 hex = "0.4"
+subtle = "2.6"
 anyhow = "1.0.91"
 bellscoincore-rpc = "0.17.3"
 num-traits = "0.2.19"

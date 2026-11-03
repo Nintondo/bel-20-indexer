@@ -14,6 +14,8 @@ pub struct Server {
     pub client: Arc<nint_blk::Client>,
     pub start_time: std::time::Instant,
     pub sync_gate: parking_lot::RwLock<()>,
+    pub sync_config: crate::sync::config::SyncConfig,
+    pub catching_up: std::sync::atomic::AtomicBool,
     pub snapshots: crate::sync::snapshots::Snapshots,
 }
 
@@ -23,6 +25,8 @@ impl Server {
         let (tx, _) = tokio::sync::broadcast::channel(30_000);
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
+        let sync_config = crate::sync::config::SyncConfig::from_env()?;
+        crate::sync::storage::initialize(&db)?;
 
         let coin = match (*BLOCKCHAIN, *NETWORK) {
             (Blockchain::Bellscoin, Network::Bellscoin) => "bellscoin",
@@ -64,6 +68,8 @@ impl Server {
             client,
             start_time: std::time::Instant::now(),
             sync_gate: parking_lot::RwLock::new(()),
+            sync_config,
+            catching_up: std::sync::atomic::AtomicBool::new(true),
             snapshots: Default::default(),
         };
 

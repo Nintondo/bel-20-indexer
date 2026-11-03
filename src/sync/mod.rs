@@ -1,27 +1,39 @@
+pub mod config;
+mod error;
 mod events;
-pub mod export;
+mod replay;
 pub mod routes;
 pub mod snapshots;
+pub mod storage;
 #[cfg(test)]
 mod tests;
 
-use crate::{Blockchain, Network, DB};
+use crate::{Blockchain, Network, Server};
 use anyhow::Context;
-use nintondo_holdings_protocol::{BlockRef, Chain, SyncStatus, PROTOCOL_VERSION};
+use nintondo_holdings_protocol::{BlockRef, SyncStatus, PROTOCOL_VERSION};
 
-pub fn status(db: &DB) -> anyhow::Result<SyncStatus> {
-    let chain = match *crate::BLOCKCHAIN {
-        Blockchain::Bellscoin => Chain::Bells,
-        Blockchain::Dogecoin => Chain::Doge,
-        Blockchain::Pepecoin => Chain::Pepe,
-        _ => anyhow::bail!("Holdings sync supports Bells, Doge and Pepe"),
+pub fn identity(blockchain: Blockchain, network: Network) -> anyhow::Result<(String, String)> {
+    let chain = match blockchain {
+        Blockchain::Bellscoin => "bells",
+        Blockchain::Dogecoin => "doge",
+        Blockchain::Pepecoin => "pepe",
+        Blockchain::Litecoin => "litecoin",
     };
-    let network = match *crate::NETWORK {
-        Network::Testnet => nintondo_holdings_protocol::Network::Testnet,
-        _ => nintondo_holdings_protocol::Network::Mainnet,
+    let network = match network {
+        Network::Bellscoin => "mainnet",
+        Network::Testnet => "testnet",
+        Network::Regtest => "regtest",
+        Network::Signet => "signet",
+        _ => anyhow::bail!("Unsupported network"),
     };
-    let height = db.last_block.get(()).context("Indexer has no committed tip")?;
-    let info = db.block_info.get(height).context("Indexer has no committed block")?;
+    Ok((chain.into(), network.into()))
+}
+
+pub fn status(server: &Server) -> anyhow::Result<SyncStatus> {
+    let (chain, network) = identity(*crate::BLOCKCHAIN, *crate::NETWORK)?;
+    let height = server.db.last_block.try_get(())?.context("Indexer has no committed tip")?;
+    let info = server.db.block_info.try_get(height)?.context("Indexer has no committed block")?;
+    let start = server.db.sync_state.try_get(())?.context("Replay state missing")?.start();
     Ok(SyncStatus {
         protocol_version: PROTOCOL_VERSION,
         chain,
@@ -30,5 +42,7 @@ pub fn status(db: &DB) -> anyhow::Result<SyncStatus> {
             height,
             hash: info.hash.to_string(),
         },
+        replay_start: start,
+        catching_up: server.catching_up.load(std::sync::atomic::Ordering::Acquire),
     })
 }

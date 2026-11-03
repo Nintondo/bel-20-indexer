@@ -19,7 +19,8 @@ rocksdb_wrapper::generate_db_code! {
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenIdDB,
     token_id_to_event: TokenId => AddressTokenIdDB,
-    sync_blocks: u32 => UsingSerde<nintondo_holdings_protocol::SyncBlock>,
+    sync_state: () => UsingSerde<crate::sync::storage::ReplayState>,
+    sync_blocks: u32 => UsingSerde<crate::sync::storage::Changes>,
 }
 
 impl DB {

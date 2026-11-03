@@ -151,7 +151,7 @@ impl ReorgCache {
             for entry in data.ordinals_history.into_iter().rev() {
                 entry.proceed(server, &mut batch)?;
             }
-            batch.commit(&server.db.last_block.db)?;
+            batch.commit(&server.db.storage)?;
         }
 
         Ok(())

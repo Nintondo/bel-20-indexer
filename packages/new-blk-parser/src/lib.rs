@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate tracing;
 
-use bellscoin::hashes::{Hash, sha256, sha256d};
+use bellscoin::hashes::{sha256, sha256d, Hash};
 use dutils::{error::ContextWrapper, wait_token::WaitToken};
 use kanal::{SendError, Sender};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -24,7 +24,7 @@ use crate::{
     blockchain::{
         checkpoint::CheckPoint,
         parser::{ChainOptions, ChainStorage},
-        proto::{Hashed, address_to_fullhash},
+        proto::{address_to_fullhash, Hashed},
     },
     utils::BlockHeightRange,
 };
@@ -33,8 +33,8 @@ mod blockchain;
 mod utils;
 
 pub use blockchain::{
-    BlockId, CoinType, LoadBlocks, LoadBlocksArgs,
     proto::{self, ScriptType},
+    BlockId, CoinType, LoadBlocks, LoadBlocksArgs,
 };
 pub use utils::{Auth, Client};
 
@@ -47,6 +47,11 @@ pub struct BlockEvent {
     pub block: blockchain::proto::block::Block,
     pub reorg_len: usize,
     pub tip: u64,
+}
+
+pub enum IndexerEvent {
+    Block(BlockEvent),
+    Synced(BlockId),
 }
 
 pub struct Indexer {
@@ -63,10 +68,10 @@ trait SendChecked {
     fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError>;
 }
 
-impl SendChecked for Sender<BlockEvent> {
+impl SendChecked for Sender<IndexerEvent> {
     fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError> {
         check_ordering(last_sent_hash, &event.block.header);
-        self.send(event)
+        self.send(IndexerEvent::Block(event))
     }
 }
 
@@ -79,13 +84,17 @@ fn check_ordering(last_sent_hash: &mut sha256d::Hash, header: &Hashed<proto::hea
 }
 
 impl Indexer {
-    pub fn parse_blocks(self: Arc<Self>) -> kanal::Receiver<BlockEvent> {
-        let (tx, rx) = kanal::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
+    pub fn parse_blocks(self: Arc<Self>) -> kanal::Receiver<IndexerEvent> {
+        let (tx, rx) = kanal::bounded::<IndexerEvent>(BOUNDED_CHANNEL_SIZE);
 
         std::thread::spawn(move || {
             let mut last_height = {
                 let last = self.last_block.height;
-                if last == 0 { last } else { last + 1 }
+                if last == 0 {
+                    last
+                } else {
+                    last + 1
+                }
             };
             let mut last_hash = self.last_block.hash;
 
@@ -136,11 +145,13 @@ impl Indexer {
                 checkpoint = checkpoint.insert(BlockId { height, hash });
             }
 
+            let mut announced_synced = false;
             while !self.token.is_cancelled() {
                 let mut reorg_counter = 0;
                 let best_hash = self.client.get_best_block_hash().unwrap();
 
                 if best_hash != checkpoint.hash() {
+                    announced_synced = false;
                     loop {
                         if reorg_counter > self.reorg_max_len {
                             panic!("Reorg chain is too long");
@@ -200,6 +211,18 @@ impl Indexer {
                         break;
                     }
                 } else {
+                    if !announced_synced {
+                        // This marker follows all queued blocks, so the consumer
+                        // only advertises readiness after committing that tip.
+                        let tip = BlockId {
+                            height: checkpoint.height(),
+                            hash: checkpoint.hash(),
+                        };
+                        if tx.send(IndexerEvent::Synced(tip)).is_err() {
+                            return;
+                        }
+                        announced_synced = true;
+                    }
                     std::thread::sleep(Duration::from_millis(200));
                     continue;
                 }

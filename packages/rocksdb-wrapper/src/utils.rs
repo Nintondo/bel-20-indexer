@@ -12,6 +12,7 @@ impl<T: Sized> RcUtils for T {}
 macro_rules! generate_db_code {
     ($($name:ident: $key_type:ty => $value_type:ty),* $(,)?) => {
         pub struct DB {
+            pub storage: $crate::RocksDB,
             $(
                 pub $name: super::RocksTable<$key_type, $value_type>,
             )*
@@ -29,6 +30,7 @@ macro_rules! generate_db_code {
                 );
 
                 Self {
+                    storage: db.clone(),
                     $(
                         $name: db.table(stringify!($name).to_uppercase().as_str()),
                     )*

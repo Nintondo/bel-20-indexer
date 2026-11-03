@@ -1,135 +1,158 @@
-use crate::Server;
+use super::{
+    config::*,
+    error::{self, internal, response},
+};
+use crate::{rest::ApiResult, Server};
+use aide::axum::{
+    routing::{delete_with, get_with, post_with},
+    ApiRouter,
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
-    Json, Router,
+    middleware::{self, Next},
+    response::Response,
+    Json,
 };
-use nintondo_holdings_protocol::{BlockPage, BlockRef};
+use nintondo_holdings_protocol::{BlockPage, BlockRef, SnapshotCreated, SnapshotPage, SyncStatus};
 use serde::Deserialize;
 use std::sync::Arc;
 
-type ApiError = (StatusCode, String);
-type ApiResult<T> = Result<Json<T>, ApiError>;
-
-pub fn router() -> Router<Arc<Server>> {
-    Router::new()
-        .route("/status", get(status))
-        .route("/events", get(super::events::subscribe))
-        .route("/blocks", get(blocks))
-        .route("/block/{height}", get(block))
-        .route("/snapshot", post(create))
-        .route("/snapshot/{id}", get(page).delete(close))
+pub fn router(server: Arc<Server>) -> ApiRouter<Arc<Server>> {
+    ApiRouter::new()
+        .api_route(
+            "/status",
+            get_with(status, |op| {
+                op.tag("sync")
+                    .security_requirement("SyncBearer")
+                    .description("Authenticated source identity, tip and replay boundary")
+            }),
+        )
+        .api_route(
+            "/blocks",
+            get_with(blocks, |op| {
+                op.tag("sync")
+                    .security_requirement("SyncBearer")
+                    .description("Replay after a checkpoint; empty page while source is behind")
+            }),
+        )
+        .api_route(
+            "/block/{height}",
+            get_with(block, |op| {
+                op.tag("sync")
+                    .security_requirement("SyncBearer")
+                    .description("Canonical block; 503 while source is below requested height")
+            }),
+        )
+        .api_route(
+            "/snapshot",
+            post_with(create, |op| {
+                op.tag("sync").security_requirement("SyncBearer").description("Create a consistent holdings snapshot")
+            }),
+        )
+        .api_route(
+            "/snapshot/{id}",
+            get_with(page, |op| {
+                op.tag("sync")
+                    .security_requirement("SyncBearer")
+                    .description("Read snapshot page; only expired sessions return 410")
+            })
+            .merge(delete_with(close, |op| {
+                op.tag("sync").security_requirement("SyncBearer").description("Release a snapshot session")
+            })),
+        )
+        .api_route(
+            "/events",
+            get_with(super::events::subscribe, |op| {
+                op.tag("sync")
+                    .security_requirement("SyncBearer")
+                    .description("SSE notifications using the shared SyncEvent contract")
+            }),
+        )
+        .layer(middleware::from_fn_with_state(server, authorize))
 }
 
-fn unavailable(e: impl std::fmt::Display) -> ApiError {
-    (StatusCode::SERVICE_UNAVAILABLE, e.to_string())
+async fn authorize(State(server): State<Arc<Server>>, request: axum::extract::Request, next: Next) -> Response {
+    if !server.sync_config.enabled() {
+        return response(StatusCode::NOT_FOUND, "Sync API disabled").map(axum::body::Body::from);
+    }
+    let supplied = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    if !server.sync_config.authorized(supplied) {
+        return response(StatusCode::UNAUTHORIZED, "Invalid sync credentials").map(axum::body::Body::from);
+    }
+    next.run(request).await
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct PageArgs {
     cursor: Option<String>,
-    #[serde(default = "default_limit")]
+    #[serde(default = "page_default")]
     limit: usize,
 }
-fn default_limit() -> usize {
-    500
+fn page_default() -> usize {
+    PAGE_DEFAULT
 }
 
-async fn create(State(server): State<Arc<Server>>) -> ApiResult<nintondo_holdings_protocol::SnapshotCreated> {
+async fn create(State(server): State<Arc<Server>>) -> ApiResult<Json<SnapshotCreated>> {
     tokio::task::spawn_blocking(move || server.snapshots.create(&server))
         .await
-        .map_err(unavailable)?
+        .map_err(internal)?
         .map(Json)
-        .map_err(unavailable)
+        .map_err(error::snapshot)
 }
 
-async fn page(State(server): State<Arc<Server>>, Path(id): Path<String>, Query(args): Query<PageArgs>) -> ApiResult<nintondo_holdings_protocol::SnapshotPage> {
-    if !(1..=1000).contains(&args.limit) {
-        return Err((StatusCode::BAD_REQUEST, "limit must be 1..1000".into()));
+async fn page(State(server): State<Arc<Server>>, Path(id): Path<String>, Query(args): Query<PageArgs>) -> ApiResult<Json<SnapshotPage>> {
+    if !(1..=PAGE_MAX).contains(&args.limit) {
+        return Err(response(StatusCode::BAD_REQUEST, "Invalid page limit"));
     }
-    if args.cursor.as_ref().is_some_and(|c| c.len() != 72 || hex::decode(c).is_err()) {
-        return Err((StatusCode::BAD_REQUEST, "Invalid snapshot cursor".into()));
-    }
-    tokio::task::spawn_blocking(move || server.snapshots.page(&server.db, &id, args.cursor, args.limit))
+    let after = super::snapshots::decode_cursor(args.cursor.as_deref()).map_err(|_| response(StatusCode::BAD_REQUEST, "Invalid snapshot cursor"))?;
+    tokio::task::spawn_blocking(move || server.snapshots.page(&server.db, &id, after, args.limit))
         .await
-        .map_err(unavailable)?
+        .map_err(internal)?
         .map(Json)
-        .map_err(|e| (StatusCode::GONE, e.to_string()))
+        .map_err(error::snapshot)
 }
 
-async fn close(State(server): State<Arc<Server>>, Path(id): Path<String>) -> StatusCode {
-    server.snapshots.close(&id);
-    StatusCode::NO_CONTENT
+async fn close(State(server): State<Arc<Server>>, Path(id): Path<String>) -> ApiResult<StatusCode> {
+    tokio::task::spawn_blocking(move || server.snapshots.close(&id)).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
-async fn status(State(server): State<Arc<Server>>) -> ApiResult<nintondo_holdings_protocol::SyncStatus> {
+async fn status(State(server): State<Arc<Server>>) -> ApiResult<Json<SyncStatus>> {
     tokio::task::spawn_blocking(move || {
         let _gate = server.sync_gate.read();
-        super::status(&server.db)
+        super::status(&server)
     })
     .await
-    .map_err(unavailable)?
+    .map_err(internal)?
     .map(Json)
-    .map_err(unavailable)
+    .map_err(internal)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct BlocksArgs {
     after_height: u32,
     after_hash: String,
-    #[serde(default = "block_limit")]
+    #[serde(default = "block_default")]
     limit: usize,
 }
-fn block_limit() -> usize {
-    50
+fn block_default() -> usize {
+    BLOCK_DEFAULT
 }
 
-async fn blocks(State(server): State<Arc<Server>>, Query(args): Query<BlocksArgs>) -> ApiResult<BlockPage> {
-    if !(1..=100).contains(&args.limit) || args.after_hash.len() != 64 || hex::decode(&args.after_hash).is_err() {
-        return Err((StatusCode::BAD_REQUEST, "Invalid limit or block hash".into()));
+async fn blocks(State(server): State<Arc<Server>>, Query(args): Query<BlocksArgs>) -> ApiResult<Json<BlockPage>> {
+    if !(1..=BLOCK_MAX).contains(&args.limit) || args.after_hash.len() != 64 || hex::decode(&args.after_hash).is_err() {
+        return Err(response(StatusCode::BAD_REQUEST, "Invalid limit or block hash"));
     }
-    tokio::task::spawn_blocking(move || {
-        let _gate = server.sync_gate.read();
-        let status = super::status(&server.db).map_err(unavailable)?;
-        let ancestor = server.db.block_info.get(args.after_height);
-        if ancestor.is_none_or(|b| b.hash.to_string() != args.after_hash) || args.after_height > status.tip.height {
-            return Err((StatusCode::CONFLICT, "Checkpoint is no longer canonical".into()));
-        }
-        let mut blocks = Vec::new();
-        for offset in 1..=args.limit as u32 {
-            let Some(height) = args.after_height.checked_add(offset).filter(|h| *h <= status.tip.height) else {
-                break;
-            };
-            blocks.push(
-                server
-                    .db
-                    .sync_blocks
-                    .get(height)
-                    .ok_or((StatusCode::GONE, "Block predates replay log; create a new snapshot".into()))?,
-            );
-        }
-        Ok(Json(BlockPage { status, blocks }))
-    })
-    .await
-    .map_err(unavailable)?
+    tokio::task::spawn_blocking(move || super::replay::blocks(&server, args.after_height, &args.after_hash, args.limit))
+        .await
+        .map_err(internal)?
 }
 
-async fn block(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<BlockRef> {
-    tokio::task::spawn_blocking(move || {
-        let _gate = server.sync_gate.read();
-        let tip = server.db.last_block.get(()).unwrap_or_default();
-        let info = server
-            .db
-            .block_info
-            .get(height)
-            .filter(|_| height <= tip)
-            .ok_or((StatusCode::NOT_FOUND, "Block not found".into()))?;
-        Ok(Json(BlockRef {
-            height,
-            hash: info.hash.to_string(),
-        }))
-    })
-    .await
-    .map_err(unavailable)?
+async fn block(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<Json<BlockRef>> {
+    tokio::task::spawn_blocking(move || super::replay::block(&server, height)).await.map_err(internal)?
 }

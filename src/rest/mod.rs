@@ -37,7 +37,7 @@ mod wrappers;
 
 pub use wrappers::{OutPoint, Txid};
 
-type ApiResult<T> = core::result::Result<T, Response<String>>;
+pub(crate) type ApiResult<T> = core::result::Result<T, Response<String>>;
 const INTERNAL: &str = "Internal server error";
 
 pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
@@ -47,7 +47,10 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
         loop {
             tokio::select! {
                 _ = cleanup.token.cancelled() => break,
-                _ = tokio::time::sleep(Duration::from_secs(30)) => cleanup.snapshots.expire(),
+                _ = tokio::time::sleep(Duration::from_secs(30)) => {
+                    let server = cleanup.clone();
+                    let _ = tokio::task::spawn_blocking(move || server.snapshots.expire()).await;
+                },
             }
         }
     });
@@ -91,6 +94,7 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             // Status
             .api_route("/status", get_with(info::status, info::status_docs))
             .api_route("/proof-of-history", get_with(history::proof_of_history, history::proof_of_history_docs))
+            .nest("/sync", crate::sync::routes::router(server.clone()))
             // Debug
             .nest_api_service("/docs", docs_routes(server.clone()))
             .finish_api_with(&mut api, api_docs)
@@ -100,7 +104,6 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             .route("/readyz", axum::routing::get(info::status))
             .route("/all-tickers", axum::routing::get(tokens::all_tickers))
             .route("/events", axum::routing::post(history::subscribe))
-            .nest("/sync", crate::sync::routes::router())
             .layer(Extension(Arc::new(api)))
             .layer(CompressionLayer::new())
             .with_state(server),
@@ -127,6 +130,15 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
 
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
     api.title("BRC-20 Indexer API")
+        .security_scheme(
+            "SyncBearer",
+            aide::openapi::SecurityScheme::Http {
+                scheme: "bearer".into(),
+                bearer_format: None,
+                description: Some("SYNC_TOKEN; required by all /sync routes".into()),
+                extensions: Default::default(),
+            },
+        )
         .tag(Tag {
             name: "address".into(),
             description: Some("Address Management".into()),

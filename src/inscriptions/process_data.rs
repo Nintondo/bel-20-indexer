@@ -37,7 +37,7 @@ pub enum ProcessedData {
 }
 
 impl ProcessedData {
-    pub fn write(self, server: &Server, reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>) {
+    pub fn write(self, server: &Server, reorg_cache: Option<Arc<parking_lot::Mutex<ReorgCache>>>, batch: &mut rocksdb_wrapper::RocksBatch) {
         let mut reorg_cache = reorg_cache.as_ref().map(|x| x.lock());
 
         match self {
@@ -46,9 +46,9 @@ impl ProcessedData {
                 block_info,
                 block_proof,
             } => {
-                server.db.last_block.set((), block_number);
-                server.db.block_info.set(block_number, block_info);
-                server.db.proof_of_history.set(block_number, block_proof);
+                batch.set(&server.db.last_block, (), block_number);
+                batch.set(&server.db.block_info, block_number, block_info);
+                batch.set(&server.db.proof_of_history, block_number, block_proof);
             }
             ProcessedData::Prevouts { to_write, to_remove } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
@@ -64,11 +64,11 @@ impl ProcessedData {
                     reorg_cache.push_ordinals_entry(OrdinalsEntry::RestorePrevouts(prevouts));
                 }
 
-                server.db.prevouts.extend(to_write);
-                server.db.prevouts.remove_batch(to_remove);
+                batch.extend(&server.db.prevouts, to_write);
+                batch.remove_batch(&server.db.prevouts, to_remove);
             }
             ProcessedData::FullHash { addresses } => {
-                server.db.fullhash_to_address.extend(addresses);
+                batch.extend(&server.db.fullhash_to_address, addresses);
             }
             ProcessedData::History {
                 block_number,
@@ -109,11 +109,11 @@ impl ProcessedData {
                     });
                 }
 
-                server.db.token_id_to_event.extend(token_id_to_event);
-                server.db.block_events.set(block_number, block_events);
-                server.db.last_history_id.set((), last_history_id);
-                server.db.outpoint_to_event.extend(outpoint_to_event);
-                server.db.address_token_to_history.extend(history);
+                batch.extend(&server.db.token_id_to_event, token_id_to_event);
+                batch.set(&server.db.block_events, block_number, block_events);
+                batch.set(&server.db.last_history_id, (), last_history_id);
+                batch.extend(&server.db.outpoint_to_event, outpoint_to_event);
+                batch.extend(&server.db.address_token_to_history, history);
             }
             ProcessedData::Tokens {
                 metas,
@@ -170,10 +170,10 @@ impl ProcessedData {
                     }
                 }
 
-                server.db.token_to_meta.extend(metas);
-                server.db.address_token_to_balance.extend(balances);
-                server.db.address_location_to_transfer.remove_batch(transfers_to_remove);
-                server.db.address_location_to_transfer.extend(transfers_to_write);
+                batch.extend(&server.db.token_to_meta, metas);
+                batch.extend(&server.db.address_token_to_balance, balances);
+                batch.remove_batch(&server.db.address_location_to_transfer, transfers_to_remove);
+                batch.extend(&server.db.address_location_to_transfer, transfers_to_write);
             }
             ProcessedData::InscriptionPartials { to_remove, to_write } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
@@ -181,8 +181,8 @@ impl ProcessedData {
                     reorg_cache.push_ordinals_entry(OrdinalsEntry::RemovePartials(to_write.iter().map(|x| x.0).collect_vec()));
                 }
 
-                server.db.outpoint_to_partials.remove_batch(to_remove.iter().map(|x| x.0));
-                server.db.outpoint_to_partials.extend(to_write);
+                batch.remove_batch(&server.db.outpoint_to_partials, to_remove.iter().map(|x| x.0));
+                batch.extend(&server.db.outpoint_to_partials, to_write);
             }
             ProcessedData::InscriptionOffset { to_remove, to_write } => {
                 if let Some(reorg_cache) = reorg_cache.as_mut() {
@@ -190,8 +190,8 @@ impl ProcessedData {
                     reorg_cache.push_ordinals_entry(OrdinalsEntry::RemoveOffsets(to_write.iter().map(|x| x.0).collect_vec()));
                 }
 
-                server.db.outpoint_to_inscription_offsets.remove_batch(to_remove.iter().map(|x| x.0));
-                server.db.outpoint_to_inscription_offsets.extend(to_write);
+                batch.remove_batch(&server.db.outpoint_to_inscription_offsets, to_remove.iter().map(|x| x.0));
+                batch.extend(&server.db.outpoint_to_inscription_offsets, to_write);
             }
         }
     }

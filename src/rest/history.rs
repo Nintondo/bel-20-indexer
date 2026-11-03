@@ -86,7 +86,7 @@ pub async fn subscribe(State(server): State<Arc<Server>>, Json(payload): Json<ty
     }
 
     let stream = ReceiverStream::new(rx);
-    Ok(Sse::new(stream))
+    Ok(Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default()))
 }
 
 pub async fn address_token_history(

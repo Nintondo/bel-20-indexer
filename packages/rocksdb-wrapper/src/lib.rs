@@ -11,13 +11,16 @@ use std::{
     sync::Arc,
 };
 
+mod batch;
 mod definition;
 mod internal;
 mod item;
 mod storage;
 mod utils;
 
+pub use batch::RocksBatch;
 use internal::{DbInfo, TableInfo};
 pub use item::{Pebble, UsingConsensus, UsingSerde};
+pub use rocksdb::{Direction, IteratorMode, OptimisticTransactionDB, SnapshotWithThreadMode};
 pub use storage::{RocksDB, RocksTable};
 use utils::RcUtils;

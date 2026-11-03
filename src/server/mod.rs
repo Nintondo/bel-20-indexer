@@ -13,6 +13,8 @@ pub struct Server {
     pub indexer: Arc<nint_blk::Indexer>,
     pub client: Arc<nint_blk::Client>,
     pub start_time: std::time::Instant,
+    pub sync_gate: parking_lot::RwLock<()>,
+    pub snapshots: crate::sync::snapshots::Snapshots,
 }
 
 impl Server {
@@ -61,6 +63,8 @@ impl Server {
             db,
             client,
             start_time: std::time::Instant::now(),
+            sync_gate: parking_lot::RwLock::new(()),
+            snapshots: Default::default(),
         };
 
         Ok((raw_rx, tx, server))

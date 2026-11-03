@@ -22,7 +22,14 @@ impl InscriptionIndexer {
     pub fn handle(&self, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
         let mut to_write = DataToWrite::default();
 
+        let header = nint_blk::proto::Hashed {
+            hash: block.header.hash,
+            value: block.header.value.clone(),
+        };
         self.handle_block(&mut to_write, block_height, block, handle_reorgs)?;
+        let _gate = self.server.sync_gate.write();
+        let sync_block = crate::sync::export::block(&self.server.db, block_height, &header, &to_write.processed)?;
+        let mut batch = rocksdb_wrapper::RocksBatch::default();
 
         if handle_reorgs {
             self.reorg_cache.lock().new_block(block_height);
@@ -30,8 +37,14 @@ impl InscriptionIndexer {
 
         // write/remove data from block
         for data in to_write.processed {
-            data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()));
+            data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()), &mut batch);
         }
+
+        if block_height >= *START_HEIGHT {
+            batch.set(&self.server.db.sync_blocks, block_height, sync_block);
+        }
+        batch.commit(&self.server.db.last_block.db)?;
+        drop(_gate);
 
         for event in to_write.block_events {
             self.server.event_sender.send(event).ok();

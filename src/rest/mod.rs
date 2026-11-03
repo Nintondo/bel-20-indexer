@@ -42,6 +42,15 @@ const INTERNAL: &str = "Internal server error";
 
 pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
     let token = server.token.clone();
+    let cleanup = server.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = cleanup.token.cancelled() => break,
+                _ = tokio::time::sleep(Duration::from_secs(30)) => cleanup.snapshots.expire(),
+            }
+        }
+    });
 
     aide::generate::on_error(|error| {
         println!("{error}");
@@ -91,6 +100,7 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             .route("/readyz", axum::routing::get(info::status))
             .route("/all-tickers", axum::routing::get(tokens::all_tickers))
             .route("/events", axum::routing::post(history::subscribe))
+            .nest("/sync", crate::sync::routes::router())
             .layer(Extension(Arc::new(api)))
             .layer(CompressionLayer::new())
             .with_state(server),

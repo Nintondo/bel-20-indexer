@@ -3,10 +3,10 @@ use super::*;
 pub const PROTOCOL_ID: &[u8; 3] = b"ord";
 
 mod envelope;
-mod indexer;
+pub(crate) mod indexer;
 mod leaked;
 mod parser;
-mod process_data;
+pub(crate) mod process_data;
 mod searcher;
 pub mod structs;
 mod tag;

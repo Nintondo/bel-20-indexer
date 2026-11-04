@@ -8,9 +8,23 @@ async fn authentication_precedes_snapshot_allocation() {
     let app = Router::new()
         .nest("/sync", crate::sync::routes::router(server.clone()).finish_api(&mut Default::default()))
         .with_state(server.clone());
-    for _ in 0..8 {
-        let response = app.clone().oneshot(Request::post("/sync/snapshot").body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status(), 401);
+    for authorization in [None, Some("Bearer incorrect-key"), Some("Basic incorrect-key"), Some("Bearer ")] {
+        for (method, path) in [
+            ("POST", "/sync/snapshot"),
+            ("GET", "/sync/snapshot/unknown"),
+            ("DELETE", "/sync/snapshot/unknown"),
+            ("GET", "/sync/status"),
+            ("GET", "/sync/events"),
+            ("GET", "/sync/blocks"),
+            ("GET", "/sync/block/30000"),
+        ] {
+            let mut request = Request::builder().method(method).uri(path);
+            if let Some(value) = authorization {
+                request = request.header("Authorization", value);
+            }
+            let response = app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), 401, "{method} {path}");
+        }
     }
     for _ in 0..crate::sync::config::SNAPSHOT_LIMIT {
         assert_eq!(request(server.clone(), "POST", "/sync/snapshot").await.0, 200);

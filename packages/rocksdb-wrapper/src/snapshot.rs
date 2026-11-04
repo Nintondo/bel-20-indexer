@@ -14,6 +14,13 @@ self_cell::self_cell! {
 pub struct RocksSnapshot(SnapshotCell);
 
 impl RocksDB {
+    pub fn drop_disposable_table(&self, name: &str) -> anyhow::Result<()> {
+        if self.db.cf_handle(name).is_some() {
+            self.db.drop_cf(name)?;
+        }
+        Ok(())
+    }
+
     pub fn snapshot(&self) -> RocksSnapshot {
         RocksSnapshot(SnapshotCell::new(self.db.clone(), |db| db.snapshot()))
     }
@@ -34,7 +41,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
             if key.as_ref() >= to.as_ref() {
                 break;
             }
-            keys.push(K::from_bytes(Cow::Owned(key.into_vec()))?);
+            keys.push(K::decode(Cow::Owned(key.into_vec()))?);
         }
         Ok(keys)
     }
@@ -43,7 +50,7 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
         self.db
             .db
             .get_cf(&self.cf(), K::get_bytes(key.borrow()))?
-            .map(|bytes| V::from_bytes(Cow::Owned(bytes)))
+            .map(|bytes| V::decode(Cow::Owned(bytes)))
             .transpose()
     }
 }
@@ -53,7 +60,7 @@ impl RocksSnapshot {
         self.0
             .borrow_dependent()
             .get_cf(&table.cf(), K::get_bytes(key.borrow()))?
-            .map(|bytes| V::from_bytes(Cow::Owned(bytes)))
+            .map(|bytes| V::decode(Cow::Owned(bytes)))
             .transpose()
     }
 
@@ -62,7 +69,7 @@ impl RocksSnapshot {
         let mode = after.as_ref().map(|key| IteratorMode::From(key, Direction::Forward)).unwrap_or(IteratorMode::Start);
         self.0.borrow_dependent().iterator_cf(&table.cf(), mode).filter_map(move |entry| match entry {
             Ok((key, _)) if after.as_deref().is_some_and(|start| key.as_ref() <= start) => None,
-            Ok((key, value)) => Some(K::from_bytes(Cow::Owned(key.into_vec())).and_then(|key| V::from_bytes(Cow::Owned(value.into_vec())).map(|value| (key, value)))),
+            Ok((key, value)) => Some(K::decode(Cow::Owned(key.into_vec())).and_then(|key| V::decode(Cow::Owned(value.into_vec())).map(|value| (key, value)))),
             Err(error) => Some(Err(error.into())),
         })
     }

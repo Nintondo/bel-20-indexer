@@ -20,7 +20,7 @@ macro_rules! load_env {
 
 macro_rules! load_opt_env {
     ($var:expr) => {
-        std::env::var($var).ok()
+        std::env::var($var).ok().filter(|value| !value.trim().is_empty())
     };
 }
 

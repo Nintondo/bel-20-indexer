@@ -83,3 +83,15 @@ jobs:
         set -euo pipefail
 
         semgrep --config p/ci .
+
+  rust-checks:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake libclang-dev
+      - run: cargo test --locked --workspace

@@ -13,9 +13,13 @@ use tokio_stream::wrappers::ReceiverStream;
 
 /// Notifications only. Consumers recover data through the durable block feed.
 pub async fn subscribe(State(server): State<Arc<Server>>) -> axum::response::Response {
+    let Ok(permit) = server.sync_limits.streams.clone().try_acquire_owned() else {
+        return super::error::response(axum::http::StatusCode::TOO_MANY_REQUESTS, "Sync stream limit reached").into_response();
+    };
     let mut events = server.event_sender.subscribe();
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(32);
     tokio::spawn(async move {
+        let _permit = permit;
         let _ = tx
             .send(Ok(Event::default().event("sync").json_data(SyncEvent::Ready).expect("serialize notification")))
             .await;

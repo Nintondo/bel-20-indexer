@@ -3,10 +3,17 @@ use std::collections::HashSet;
 use super::*;
 
 pub trait Pebble {
+    const PREFIX: &'static [u8] = &[];
     const FIXED_SIZE: Option<usize> = None;
     type Inner;
     fn get_bytes<'a>(v: &'a Self::Inner) -> Cow<'a, [u8]>;
     fn from_bytes(v: Cow<[u8]>) -> anyhow::Result<Self::Inner>;
+    fn decode(v: Cow<[u8]>) -> anyhow::Result<Self::Inner> {
+        if let Some(size) = Self::FIXED_SIZE {
+            anyhow::ensure!(v.len() == size, "Invalid stored value length: expected {size}, got {}", v.len());
+        }
+        Self::from_bytes(v)
+    }
     fn get_bytes_borrowing<R>(v: &Self::Inner, f: impl FnOnce(&[u8]) -> R) -> R {
         (f)(&Self::get_bytes(v))
     }

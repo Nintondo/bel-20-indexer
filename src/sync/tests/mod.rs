@@ -1,6 +1,7 @@
 mod errors;
 mod fixtures;
 mod lifecycle;
+mod safety;
 use crate::*;
 use fixtures::*;
 use nintondo_holdings_protocol::{BlockPage, SnapshotCreated, SnapshotPage};
@@ -46,6 +47,7 @@ async fn committed_empty_blocks_replay_and_reorg_removes_orphans() {
     let block = empty_block([1; 32], 1);
     let old_hash = block.header.hash.to_string();
     indexer.handle(30_001, block, true).unwrap();
+    server.catching_up.store(false, std::sync::atomic::Ordering::Release);
     let parent = BlockHash::from_byte_array([1; 32]).to_string();
     let (_, body) = request(server.clone(), "GET", &format!("/sync/blocks?after_height=30000&after_hash={parent}")).await;
     let page: BlockPage = serde_json::from_slice(&body).unwrap();
@@ -56,6 +58,7 @@ async fn committed_empty_blocks_replay_and_reorg_removes_orphans() {
     assert!(server.db.sync_blocks.try_get(30_001).unwrap().is_none());
     assert!(server.db.proof_of_history.get(30_001).is_none());
     indexer.handle(30_001, empty_block([1; 32], 2), true).unwrap();
+    server.catching_up.store(false, std::sync::atomic::Ordering::Release);
     assert_eq!(
         request(server.clone(), "GET", &format!("/sync/blocks?after_height=30001&after_hash={old_hash}")).await.0,
         409

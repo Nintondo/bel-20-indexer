@@ -1,4 +1,4 @@
-use anyhow::{ensure, Context};
+use anyhow::ensure;
 use std::time::Duration;
 
 pub const SNAPSHOT_IDLE: Duration = Duration::from_secs(900);
@@ -9,6 +9,10 @@ pub const PAGE_MAX: usize = 1000;
 pub const BLOCK_DEFAULT: usize = 50;
 pub const BLOCK_MAX: usize = 100;
 pub const REPLAY_PAGE_BYTES: usize = 16 * 1024 * 1024;
+pub const REPLAY_RETENTION: u32 = 10_000;
+pub const PAGE_SCAN_MAX: usize = 5000;
+pub const EXPORT_WORKERS: usize = 4;
+pub const EVENT_CONNECTIONS: usize = 16;
 pub const BALANCE_KEY_BYTES: usize = 36;
 
 pub struct SyncConfig {
@@ -25,13 +29,7 @@ impl SyncConfig {
                 "SYNC_TOKEN must contain at least 32 printable ASCII characters"
             );
         }
-        let retention = std::env::var("SYNC_RETENTION_BLOCKS")
-            .ok()
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "10000".into())
-            .parse()
-            .context("Invalid SYNC_RETENTION_BLOCKS")?;
-        ensure!((64..=1_000_000).contains(&retention), "SYNC_RETENTION_BLOCKS must be 64..1000000");
+        let retention = REPLAY_RETENTION;
         Ok(Self { token, retention })
     }
 

@@ -1,6 +1,7 @@
 pub mod config;
 mod error;
 mod events;
+pub mod limits;
 mod replay;
 pub mod routes;
 pub mod snapshots;
@@ -30,7 +31,7 @@ pub fn identity(blockchain: Blockchain, network: Network) -> anyhow::Result<(Str
 }
 
 pub fn status(server: &Server) -> anyhow::Result<SyncStatus> {
-    let (chain, network) = identity(*crate::BLOCKCHAIN, *crate::NETWORK)?;
+    let storage::Identity::V1 { chain, network } = server.db.sync_identity.try_get(())?.context("Database identity missing")?;
     let height = server.db.last_block.try_get(())?.context("Indexer has no committed tip")?;
     let info = server.db.block_info.try_get(height)?.context("Indexer has no committed block")?;
     let start = server.db.sync_state.try_get(())?.context("Replay state missing")?.start();

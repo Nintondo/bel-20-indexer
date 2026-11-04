@@ -3,6 +3,7 @@ use crate::{
     inscriptions::{commit::commit_block, indexer::DataToWrite, process_data::ProcessedData},
     sync::storage::{self, BalanceV1, ReplayState},
 };
+use rocksdb_wrapper::Pebble;
 
 fn commit_balance(server: &Server, cache: &mut ReorgCache, key: AddressToken, height: u32, hash: u8, amount: u64, live: bool) {
     let value = TokenBalance {
@@ -31,6 +32,7 @@ fn commit_balance(server: &Server, cache: &mut ReorgCache, key: AddressToken, he
         ..Default::default()
     };
     commit_block(server, cache, height, data, live).unwrap();
+    server.catching_up.store(false, std::sync::atomic::Ordering::Release);
 }
 
 #[tokio::test]
@@ -78,6 +80,7 @@ async fn sparse_retention_is_bounded_and_history_gaps_are_explicit() {
     for height in 30_081..=30_160 {
         commit_balance(&server, &mut cache, key, height, 2, 20, true);
     }
+    storage::prune(&server.db).unwrap();
     assert_eq!(server.db.sync_blocks.iter().count(), 64);
     assert_eq!(server.db.sync_state.get(()).unwrap().start(), 30_097);
     let hash = BlockHash::from_byte_array([2; 32]);
@@ -93,7 +96,7 @@ async fn sparse_retention_is_bounded_and_history_gaps_are_explicit() {
 fn stored_schema_is_versioned_and_legacy_log_reset_preserves_balances() {
     let (_fixture, server) = setup();
     let key = seed(&server, 1, *b"AAAA", 10);
-    server.db.storage.db.put_cf(&server.db.sync_blocks.cf(), 1u32.to_be_bytes(), [255]).unwrap();
+    server.db.storage.db.put_cf(&server.db.sync_blocks.cf(), SyncHeight::get_bytes(&1), [255]).unwrap();
     server.db.sync_state.remove(());
     storage::initialize(&server.db).unwrap();
     assert!(server.db.sync_blocks.try_get(1).unwrap().is_none());

@@ -38,11 +38,18 @@ impl Indexer {
 
     pub fn run(self) -> anyhow::Result<()> {
         let res = self.index();
-
+        self.recovering();
         self.reorg_cache.lock().restore_all(&self.server).track().ok();
         self.server.db.flush_all();
 
         res
+    }
+
+    fn recovering(&self) {
+        // Revoke publication before recovery or flushing, including producer exit.
+        let _gate = self.server.sync_gate.write();
+        self.server.catching_up.store(true, std::sync::atomic::Ordering::Release);
+        self.server.snapshots.clear();
     }
 
     fn index(&self) -> anyhow::Result<()> {
@@ -54,9 +61,21 @@ impl Indexer {
 
         let mut prev_height: Option<u64> = None;
         while !self.server.token.is_cancelled() {
+            if rx.is_disconnected() {
+                self.recovering();
+                // Discard queued blocks/readiness, preserving actionable startup errors.
+                while let Ok(Some(event)) = rx.try_recv() {
+                    if let IndexerEvent::InvalidTip(error) = event {
+                        anyhow::bail!("{error}");
+                    }
+                }
+                anyhow::bail!("Block parser stopped; exports disabled");
+            }
             let data = match rx.try_recv() {
                 Ok(Some(IndexerEvent::Block(data))) => data,
                 Ok(Some(IndexerEvent::Synced(tip))) => {
+                    // A fatal producer exit must not publish its queued marker.
+                    anyhow::ensure!(!rx.is_disconnected(), "Block parser stopped before readiness");
                     commit::mark_synced(&self.server, tip)?;
                     continue;
                 }
@@ -64,7 +83,8 @@ impl Indexer {
                     std::thread::sleep(Duration::from_millis(50));
                     continue;
                 }
-                Err(_) => break,
+                Err(error) => anyhow::bail!("Block parser stopped: {error}"),
+                Ok(Some(IndexerEvent::InvalidTip(error))) => anyhow::bail!("{error}"),
             };
             if let Some(progress) = progress.as_mut() {
                 progress.update_len(data.tip.saturating_sub(REORG_CACHE_MAX_LEN as u64));
@@ -78,16 +98,15 @@ impl Indexer {
                 progress.take();
             }
 
-            {
-                let mut cache = self.reorg_cache.lock();
-                if !cache.blocks.is_empty() && !handle_reorgs {
-                    cache.blocks.clear();
-                }
+            if !handle_reorgs {
+                let _gate = self.server.sync_gate.write();
+                self.server.catching_up.store(true, std::sync::atomic::Ordering::Release);
+                self.server.snapshots.clear();
             }
 
             if reorg_len > 0 {
                 warn!("Reorg detected: {} blocks", reorg_len);
-                let restore_height = prev_height.unwrap_or_default().saturating_sub(reorg_len as u64);
+                let restore_height = prev_height.unwrap_or(self.server.indexer.last_block.height).saturating_sub(reorg_len as u64);
 
                 self.reorg_cache.lock().restore(&self.server, restore_height as u32)?;
                 self.server.event_sender.send(ServerEvent::Reorg(reorg_len as u32, id.height as u32)).ok();
@@ -99,7 +118,9 @@ impl Indexer {
                 }
             }
 
-            indexer.handle(id.height as u32, block, handle_reorgs).track()?;
+            indexer
+                .handle(id.height as u32, block, id.height >= tip.saturating_sub(self.server.sync_config.retention as u64 - 1))
+                .track()?;
 
             prev_height = Some(id.height);
 

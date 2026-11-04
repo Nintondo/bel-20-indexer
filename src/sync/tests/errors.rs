@@ -1,5 +1,6 @@
 use super::*;
 use axum::{body::Body, http::Request, Router};
+use rocksdb_wrapper::Pebble;
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -65,7 +66,12 @@ async fn corrupt_replay_record_returns_500_without_panicking() {
             created: 2,
         },
     );
-    server.db.storage.db.put_cf(&server.db.sync_blocks.cf(), 30_001u32.to_be_bytes(), [255, 255]).unwrap();
+    server
+        .db
+        .storage
+        .db
+        .put_cf(&server.db.sync_blocks.cf(), SyncHeight::get_bytes(&30_001), [255, 255])
+        .unwrap();
     let hash = BlockHash::from_byte_array([1; 32]);
     assert_eq!(request(server, "GET", &format!("/sync/blocks?after_height=30000&after_hash={hash}")).await.0, 500);
 }

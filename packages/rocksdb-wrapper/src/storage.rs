@@ -13,6 +13,14 @@ impl RocksDB {
         opts.create_if_missing(true);
         opts.create_missing_column_families(true);
 
+        let mut tables: Vec<String> = tables.into_iter().map(|s| s.as_ref().to_owned()).collect();
+        // Open prototype export CFs once so initialize can remove them safely.
+        // Unknown CFs are preserved; only explicitly disposable names are dropped.
+        if let Ok(existing) = rocksdb::OptimisticTransactionDB::<rocksdb::MultiThreaded>::list_cf(&opts, path) {
+            tables.extend(existing);
+        }
+        tables.sort();
+        tables.dedup();
         let db = rocksdb::OptimisticTransactionDB::open_cf(&opts, path, tables).unwrap().arc();
         Self { db }
     }
@@ -107,8 +115,9 @@ impl<K: Pebble, V: Pebble> RocksTable<K, V> {
     pub fn iter(&self) -> impl Iterator<Item = (K::Inner, V::Inner)> + '_ {
         self.db
             .db
-            .iterator_cf(&self.cf(), rocksdb::IteratorMode::Start)
+            .iterator_cf(&self.cf(), rocksdb::IteratorMode::From(K::PREFIX, rocksdb::Direction::Forward))
             .flatten()
+            .take_while(|(k, _)| k.starts_with(K::PREFIX))
             .map(|(k, v)| (K::from_bytes(Cow::Owned(k.into_vec())), V::from_bytes(Cow::Owned(v.into_vec()))))
             .map(|(k, v)| (k.unwrap_or_else(|e| _panic("iter key", &self.cf, e)), v.unwrap_or_else(|e| _panic("iter val", &self.cf, e))))
     }

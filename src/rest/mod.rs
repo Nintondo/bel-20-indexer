@@ -44,12 +44,22 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
     let token = server.token.clone();
     let cleanup = server.clone();
     tokio::spawn(async move {
+        let mut pruned_to = 0;
         loop {
             tokio::select! {
                 _ = cleanup.token.cancelled() => break,
                 _ = tokio::time::sleep(Duration::from_secs(30)) => {
                     let server = cleanup.clone();
-                    let _ = tokio::task::spawn_blocking(move || server.snapshots.expire()).await;
+                    if let Ok(Ok(boundary)) = tokio::task::spawn_blocking(move || -> anyhow::Result<u32> {
+                        server.snapshots.expire();
+                        let start = server.sync_boundary.load(std::sync::atomic::Ordering::Acquire);
+                        if start > pruned_to {
+                            crate::sync::storage::prune(&server.db)?;
+                        }
+                        Ok(start)
+                    }).await {
+                        pruned_to = boundary;
+                    }
                 },
             }
         }

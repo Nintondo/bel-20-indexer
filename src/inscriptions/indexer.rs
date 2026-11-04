@@ -66,6 +66,11 @@ impl InscriptionIndexer {
         });
 
         if block_height < *START_HEIGHT {
+            to_write.processed.push(ProcessedData::Info {
+                block_number: block_height,
+                block_info,
+                block_proof: prev_block_proof,
+            });
             return Ok(());
         }
 
@@ -100,7 +105,7 @@ impl InscriptionIndexer {
 
         token_cache.load_tokens_data(&self.server.db)?;
 
-        let balances_before = token_cache.token_accounts.clone();
+        let balances_before = (handle_reorgs && self.server.sync_config.enabled()).then(|| token_cache.token_accounts.clone());
         let mut fullhash_to_load = HashSet::new();
 
         to_write.history = token_cache
@@ -167,7 +172,9 @@ impl InscriptionIndexer {
             .collect::<HashMap<_, _>>()
             .into();
 
-        token_cache.token_accounts.retain(|key, value| balances_before.get(key) != Some(value));
+        if let Some(before) = balances_before {
+            token_cache.token_accounts.retain(|key, value| before.get(key) != Some(value));
+        }
         if handle_reorgs && self.server.sync_config.enabled() {
             to_write.sync_balances = token_cache
                 .token_accounts

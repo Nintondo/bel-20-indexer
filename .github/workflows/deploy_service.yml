@@ -117,7 +117,6 @@ jobs:
           BLK_DIR: ${{ vars.BLK_DIR }}
           INDEX_DIR: ${{ vars.INDEX_DIR }}
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
-          SYNC_RETENTION_BLOCKS: ${{ vars.SYNC_RETENTION_BLOCKS }}
         run: |
           set -euo pipefail
 

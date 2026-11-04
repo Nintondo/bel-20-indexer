@@ -1,6 +1,7 @@
 use super::{
     config::*,
     error::{self, internal, response},
+    limits::{run, Encoded},
 };
 use crate::{rest::ApiResult, Server};
 use aide::axum::{
@@ -12,7 +13,6 @@ use axum::{
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
-    Json,
 };
 use nintondo_holdings_protocol::{BlockPage, BlockRef, SnapshotCreated, SnapshotPage, SyncStatus};
 use serde::Deserialize;
@@ -97,24 +97,16 @@ fn page_default() -> usize {
     PAGE_DEFAULT
 }
 
-async fn create(State(server): State<Arc<Server>>) -> ApiResult<Json<SnapshotCreated>> {
-    tokio::task::spawn_blocking(move || server.snapshots.create(&server))
-        .await
-        .map_err(internal)?
-        .map(Json)
-        .map_err(error::snapshot)
+async fn create(State(server): State<Arc<Server>>) -> ApiResult<Encoded<SnapshotCreated>> {
+    run(server, |server| server.snapshots.create(server).map_err(error::snapshot)).await
 }
 
-async fn page(State(server): State<Arc<Server>>, Path(id): Path<String>, Query(args): Query<PageArgs>) -> ApiResult<Json<SnapshotPage>> {
+async fn page(State(server): State<Arc<Server>>, Path(id): Path<String>, Query(args): Query<PageArgs>) -> ApiResult<Encoded<SnapshotPage>> {
     if !(1..=PAGE_MAX).contains(&args.limit) {
         return Err(response(StatusCode::BAD_REQUEST, "Invalid page limit"));
     }
     let after = super::snapshots::decode_cursor(args.cursor.as_deref()).map_err(|_| response(StatusCode::BAD_REQUEST, "Invalid snapshot cursor"))?;
-    tokio::task::spawn_blocking(move || server.snapshots.page(&server.db, &id, after, args.limit))
-        .await
-        .map_err(internal)?
-        .map(Json)
-        .map_err(error::snapshot)
+    run(server, move |server| server.snapshots.page(&server.db, &id, after, args.limit).map_err(error::snapshot)).await
 }
 
 async fn close(State(server): State<Arc<Server>>, Path(id): Path<String>) -> ApiResult<StatusCode> {
@@ -122,15 +114,12 @@ async fn close(State(server): State<Arc<Server>>, Path(id): Path<String>) -> Api
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn status(State(server): State<Arc<Server>>) -> ApiResult<Json<SyncStatus>> {
-    tokio::task::spawn_blocking(move || {
+async fn status(State(server): State<Arc<Server>>) -> ApiResult<Encoded<SyncStatus>> {
+    run(server, |server| {
         let _gate = server.sync_gate.read();
-        super::status(&server)
+        super::status(server).map_err(internal)
     })
     .await
-    .map_err(internal)?
-    .map(Json)
-    .map_err(internal)
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -144,15 +133,13 @@ fn block_default() -> usize {
     BLOCK_DEFAULT
 }
 
-async fn blocks(State(server): State<Arc<Server>>, Query(args): Query<BlocksArgs>) -> ApiResult<Json<BlockPage>> {
+async fn blocks(State(server): State<Arc<Server>>, Query(args): Query<BlocksArgs>) -> ApiResult<Encoded<BlockPage>> {
     if !(1..=BLOCK_MAX).contains(&args.limit) || args.after_hash.len() != 64 || hex::decode(&args.after_hash).is_err() {
         return Err(response(StatusCode::BAD_REQUEST, "Invalid limit or block hash"));
     }
-    tokio::task::spawn_blocking(move || super::replay::blocks(&server, args.after_height, &args.after_hash, args.limit))
-        .await
-        .map_err(internal)?
+    run(server, move |server| super::replay::blocks(server, args.after_height, &args.after_hash, args.limit)).await
 }
 
-async fn block(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<Json<BlockRef>> {
-    tokio::task::spawn_blocking(move || super::replay::block(&server, height)).await.map_err(internal)?
+async fn block(State(server): State<Arc<Server>>, Path(height): Path<u32>) -> ApiResult<Encoded<BlockRef>> {
+    run(server, move |server| super::replay::block(server, height).map(|value| value.0)).await
 }

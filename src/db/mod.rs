@@ -1,7 +1,9 @@
 use super::*;
 
 mod structs;
+mod sync_keys;
 pub use structs::*;
+pub use sync_keys::*;
 
 rocksdb_wrapper::generate_db_code! {
     token_to_meta: LowerCaseTokenTick => UsingSerde<TokenMetaDB>,
@@ -19,8 +21,9 @@ rocksdb_wrapper::generate_db_code! {
     fullhash_to_address: FullHash => String,
     outpoint_to_event: UsingConsensus<OutPoint> => AddressTokenIdDB,
     token_id_to_event: TokenId => AddressTokenIdDB,
-    sync_state: () => UsingSerde<crate::sync::storage::ReplayState>,
-    sync_blocks: u32 => UsingSerde<crate::sync::storage::Changes>,
+    sync_state: SyncStateKey => UsingSerde<crate::sync::storage::ReplayState> => "default",
+    sync_blocks: SyncHeight => UsingSerde<crate::sync::storage::Changes> => "default",
+    sync_identity: IdentityKey => UsingSerde<crate::sync::storage::Identity> => "default",
 }
 
 impl DB {

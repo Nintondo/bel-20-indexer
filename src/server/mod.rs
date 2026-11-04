@@ -13,20 +13,26 @@ pub struct Server {
     pub indexer: Arc<nint_blk::Indexer>,
     pub client: Arc<nint_blk::Client>,
     pub start_time: std::time::Instant,
+    pub sync_boundary: std::sync::atomic::AtomicU32,
     pub sync_gate: parking_lot::RwLock<()>,
     pub sync_config: crate::sync::config::SyncConfig,
     pub catching_up: std::sync::atomic::AtomicBool,
+    pub sync_limits: crate::sync::limits::Limits,
     pub snapshots: crate::sync::snapshots::Snapshots,
 }
 
 impl Server {
     pub fn new(db_path: &str) -> anyhow::Result<(kanal::Receiver<RawServerEvent>, tokio::sync::broadcast::Sender<ServerEvent>, Self)> {
+        nint_blk::validate_local_paths(BLK_DIR.as_deref(), INDEX_DIR.as_deref())?;
         let (raw_tx, raw_rx) = kanal::unbounded();
         let (tx, _) = tokio::sync::broadcast::channel(30_000);
         let token = WaitToken::default();
         let db = Arc::new(DB::open(db_path));
         let sync_config = crate::sync::config::SyncConfig::from_env()?;
         crate::sync::storage::initialize(&db)?;
+        let (chain, network) = crate::sync::identity(*BLOCKCHAIN, *NETWORK)?;
+        crate::sync::storage::bind_identity(&db, chain, network)?;
+        let sync_boundary = std::sync::atomic::AtomicU32::new(db.sync_state.try_get(())?.unwrap().start());
 
         let coin = match (*BLOCKCHAIN, *NETWORK) {
             (Blockchain::Bellscoin, Network::Bellscoin) => "bellscoin",
@@ -68,9 +74,11 @@ impl Server {
             client,
             start_time: std::time::Instant::now(),
             sync_gate: parking_lot::RwLock::new(()),
+            sync_boundary,
             sync_config,
             catching_up: std::sync::atomic::AtomicBool::new(true),
             snapshots: Default::default(),
+            sync_limits: Default::default(),
         };
 
         Ok((raw_rx, tx, server))

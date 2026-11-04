@@ -30,6 +30,10 @@ pub fn decode_cursor(value: Option<&str>) -> anyhow::Result<Option<AddressToken>
 }
 
 impl Snapshots {
+    pub fn clear(&self) {
+        self.0.lock().clear();
+    }
+
     pub fn expire(&self) {
         self.0.lock().retain(|_, session| !session.expired());
     }
@@ -44,6 +48,10 @@ impl Snapshots {
             }
             (status, server.db.storage.snapshot())
         };
+        let _gate = server.sync_gate.read();
+        if server.catching_up.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(SyncError::CatchingUp.into());
+        }
         let mut sessions = self.0.lock();
         sessions.retain(|_, session| !session.expired());
         if sessions.len() >= SNAPSHOT_LIMIT {
@@ -76,20 +84,25 @@ impl Snapshots {
         let mut items = Vec::new();
         let mut last_key = None;
         let mut more = false;
-        for entry in snapshot.iter_after(&db.address_token_to_balance, after.as_ref()) {
-            let (key, value) = entry?;
-            if value.balance == crate::Fixed128::default() && value.transferable_balance == crate::Fixed128::default() {
-                continue;
+        for (scanned, entry) in snapshot.iter_after(&db.address_token_to_balance, after.as_ref()).enumerate() {
+            // Count visited storage rows, including zero balances and non-address scripts.
+            if scanned == PAGE_SCAN_MAX {
+                more = true;
+                break;
             }
-            let Some(address) = snapshot.get(&db.fullhash_to_address, key.address)? else { continue };
+            let (key, value) = entry?;
             if items.len() == limit {
                 more = true;
                 break;
             }
+            last_key = Some(hex::encode(AddressToken::get_bytes(&key)));
+            if value.balance == crate::Fixed128::default() && value.transferable_balance == crate::Fixed128::default() {
+                continue;
+            }
+            let Some(address) = snapshot.get(&db.fullhash_to_address, key.address)? else { continue };
             let token: LowerCaseTokenTick = key.token.into();
             let meta = snapshot.get(&db.token_to_meta, token)?.context("Snapshot token has no metadata")?;
             items.push(BalanceV1::new(address, key, &value, &meta).into_api());
-            last_key = Some(hex::encode(AddressToken::get_bytes(&key)));
         }
         Ok(SnapshotPage {
             items,

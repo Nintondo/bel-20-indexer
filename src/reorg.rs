@@ -1,7 +1,9 @@
 use super::*;
+use anyhow::Context;
 
 pub const REORG_CACHE_MAX_LEN: usize = 30;
 
+#[derive(Clone)]
 pub enum TokenHistoryEntry {
     BalancesBefore(Vec<(AddressToken, TokenBalance)>),
     BalancesToRemove(Vec<AddressToken>),
@@ -62,6 +64,7 @@ impl ProceedReorg for TokenHistoryEntry {
     }
 }
 
+#[derive(Clone)]
 pub enum OrdinalsEntry {
     RestoreOffsets(Vec<(OutPoint, HashSet<u64>)>),
     RemoveOffsets(Vec<OutPoint>),
@@ -94,7 +97,7 @@ impl ProceedReorg for OrdinalsEntry {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ReorgHistoryBlock {
     token_history: Vec<TokenHistoryEntry>,
     ordinals_history: Vec<OrdinalsEntry>,
@@ -135,14 +138,33 @@ impl ReorgCache {
     }
 
     pub fn restore(&mut self, server: &Server, block_height: u32) -> anyhow::Result<()> {
+        self.restore_using(server, block_height, |batch| batch.commit(&server.db.storage))
+    }
+
+    pub(crate) fn restore_using(&mut self, server: &Server, block_height: u32, mut commit: impl FnMut(rocksdb_wrapper::RocksBatch) -> anyhow::Result<()>) -> anyhow::Result<()> {
         let _gate = server.sync_gate.write();
+        server.catching_up.store(true, std::sync::atomic::Ordering::Release);
+        server.snapshots.clear();
+        if server.db.last_block.try_get(())?.unwrap_or_default() > block_height {
+            let (&first, _) = self.blocks.first_key_value().context("Reorg has no undo history; reindex required")?;
+            anyhow::ensure!(block_height >= first.saturating_sub(1), "Reorg exceeds available undo history");
+        }
         while !self.blocks.is_empty() && block_height < *self.blocks.last_key_value().unwrap().0 {
-            let (height, data) = self.blocks.pop_last().anyhow()?;
+            let (&height, data) = self.blocks.last_key_value().anyhow()?;
+            let data = data.clone();
             let mut batch = rocksdb_wrapper::RocksBatch::default();
             batch.remove(&server.db.sync_blocks, height);
             batch.remove(&server.db.proof_of_history, height);
 
-            batch.set(&server.db.last_block, (), height - 1);
+            let parent = height.saturating_sub(1);
+            batch.set(&server.db.last_block, (), parent);
+            let floor = server.sync_boundary.load(std::sync::atomic::Ordering::Acquire);
+            let start = server.db.sync_state.try_get(()).ok().flatten().map(|state| state.start()).unwrap_or(floor.max(height));
+            let tip = server.db.block_info.try_get(parent)?.map(|info| (parent, info.hash.to_byte_array()));
+            if parent == 0 && tip.is_none() {
+                batch.remove(&server.db.last_block, ());
+            }
+            batch.set(&server.db.sync_state, (), crate::sync::storage::ReplayState::V2 { start, tip });
             batch.remove(&server.db.block_info, height);
 
             for entry in data.token_history.into_iter().rev() {
@@ -151,7 +173,8 @@ impl ReorgCache {
             for entry in data.ordinals_history.into_iter().rev() {
                 entry.proceed(server, &mut batch)?;
             }
-            batch.commit(&server.db.storage)?;
+            commit(batch)?;
+            self.blocks.remove(&height);
         }
 
         Ok(())
@@ -162,6 +185,6 @@ impl ReorgCache {
         let to = self.blocks.last_key_value().map(|x| *x.0);
 
         warn!("Restoring savepoints from {:?} to {:?}", from, to);
-        self.restore(server, 0)
+        self.restore(server, from.unwrap_or(1).saturating_sub(1))
     }
 }

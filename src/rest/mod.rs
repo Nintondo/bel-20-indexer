@@ -37,11 +37,39 @@ mod wrappers;
 
 pub use wrappers::{OutPoint, Txid};
 
-type ApiResult<T> = core::result::Result<T, Response<String>>;
+pub(crate) type ApiResult<T> = core::result::Result<T, Response<String>>;
 const INTERNAL: &str = "Internal server error";
+
+pub(crate) fn health_routes() -> axum::Router<Arc<Server>> {
+    axum::Router::new()
+        .route("/livez", axum::routing::get(|| async { StatusCode::OK }))
+        .route("/readyz", axum::routing::get(info::ready))
+}
 
 pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
     let token = server.token.clone();
+    let cleanup = server.clone();
+    tokio::spawn(async move {
+        let mut pruned_to = 0;
+        loop {
+            tokio::select! {
+                _ = cleanup.token.cancelled() => break,
+                _ = tokio::time::sleep(Duration::from_secs(30)) => {
+                    let server = cleanup.clone();
+                    if let Ok(Ok(boundary)) = tokio::task::spawn_blocking(move || -> anyhow::Result<u32> {
+                        server.snapshots.expire();
+                        let start = server.sync_boundary.load(std::sync::atomic::Ordering::Acquire);
+                        if start > pruned_to {
+                            crate::sync::storage::prune(&server.db)?;
+                        }
+                        Ok(start)
+                    }).await {
+                        pruned_to = boundary;
+                    }
+                },
+            }
+        }
+    });
 
     aide::generate::on_error(|error| {
         println!("{error}");
@@ -82,13 +110,13 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             // Status
             .api_route("/status", get_with(info::status, info::status_docs))
             .api_route("/proof-of-history", get_with(history::proof_of_history, history::proof_of_history_docs))
+            .nest("/sync", crate::sync::routes::router(server.clone()))
             // Debug
             .nest_api_service("/docs", docs_routes(server.clone()))
             .finish_api_with(&mut api, api_docs)
             // Not documented
             .route("/all-addresses", axum::routing::get(info::all_addresses))
-            .route("/livez", axum::routing::get(|| async { StatusCode::OK }))
-            .route("/readyz", axum::routing::get(info::status))
+            .merge(health_routes())
             .route("/all-tickers", axum::routing::get(tokens::all_tickers))
             .route("/events", axum::routing::post(history::subscribe))
             .layer(Extension(Arc::new(api)))
@@ -117,6 +145,15 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
 
 fn api_docs(api: TransformOpenApi) -> TransformOpenApi {
     api.title("BRC-20 Indexer API")
+        .security_scheme(
+            "SyncBearer",
+            aide::openapi::SecurityScheme::Http {
+                scheme: "bearer".into(),
+                bearer_format: None,
+                description: Some("SYNC_TOKEN; required by all /sync routes".into()),
+                extensions: Default::default(),
+            },
+        )
         .tag(Tag {
             name: "address".into(),
             description: Some("Address Management".into()),

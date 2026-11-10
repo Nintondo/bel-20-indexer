@@ -30,6 +30,9 @@ use crate::{
 };
 
 mod blockchain;
+mod startup;
+pub use startup::validate_local_paths;
+use startup::{validate_local_checkpoint, validate_tip};
 mod utils;
 
 pub use blockchain::{
@@ -49,6 +52,12 @@ pub struct BlockEvent {
     pub tip: u64,
 }
 
+pub enum IndexerEvent {
+    Block(BlockEvent),
+    Synced(BlockId),
+    InvalidTip(String),
+}
+
 pub struct Indexer {
     pub path: Option<String>,
     pub index_dir_path: Option<String>,
@@ -63,10 +72,10 @@ trait SendChecked {
     fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError>;
 }
 
-impl SendChecked for Sender<BlockEvent> {
+impl SendChecked for Sender<IndexerEvent> {
     fn send_checked(&self, event: BlockEvent, last_sent_hash: &mut sha256d::Hash) -> std::result::Result<(), SendError> {
         check_ordering(last_sent_hash, &event.block.header);
-        self.send(event)
+        self.send(IndexerEvent::Block(event))
     }
 }
 
@@ -79,15 +88,37 @@ fn check_ordering(last_sent_hash: &mut sha256d::Hash, header: &Hashed<proto::hea
 }
 
 impl Indexer {
-    pub fn parse_blocks(self: Arc<Self>) -> kanal::Receiver<BlockEvent> {
-        let (tx, rx) = kanal::bounded::<BlockEvent>(BOUNDED_CHANNEL_SIZE);
+    pub fn parse_blocks(self: Arc<Self>) -> kanal::Receiver<IndexerEvent> {
+        let (tx, rx) = kanal::bounded::<IndexerEvent>(BOUNDED_CHANNEL_SIZE);
 
         std::thread::spawn(move || {
+            if let Err(error) = validate_local_paths(self.path.as_deref(), self.index_dir_path.as_deref()) {
+                let _ = tx.send(IndexerEvent::InvalidTip(error.to_string()));
+                return;
+            }
+            if self.last_block.hash != sha256d::Hash::all_zeros() {
+                let check = self
+                    .client
+                    .get_block_hash(self.last_block.height)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|hash| validate_tip(self.last_block, hash));
+                if let Err(error) = check {
+                    let _ = tx.send(IndexerEvent::InvalidTip(format!(
+                        "Stored tip is not canonical; exports disabled, reindex required: {error:#}"
+                    )));
+                    return;
+                }
+            }
             let mut last_height = {
                 let last = self.last_block.height;
-                if last == 0 { last } else { last + 1 }
+                if last == 0 && self.last_block.hash == sha256d::Hash::all_zeros() {
+                    last
+                } else {
+                    last + 1
+                }
             };
             let mut last_hash = self.last_block.hash;
+            let mut emitted_tip = self.last_block;
 
             let mut chain = ChainStorage::new(&ChainOptions::new(
                 self.path.as_deref(),
@@ -115,16 +146,31 @@ impl Indexer {
                     tip: max_height,
                 };
 
+                emitted_tip = event.id;
                 if tx.send_checked(event, &mut last_hash).is_err() {
                     return;
                 };
             }
 
             let mut checkpoint = match chain.complete() {
-                Some(v) => v,
+                Some(v) => {
+                    if let Err(error) = validate_local_checkpoint(v.block_id(), emitted_tip, self.last_block) {
+                        let _ = tx.send(IndexerEvent::InvalidTip(error.to_string()));
+                        return;
+                    }
+                    // A copied index may lag the RPC-verified saved tip. Never
+                    // advance beyond emitted data, nor regress to that stale copy.
+                    if v.height() < emitted_tip.height { CheckPoint::new(emitted_tip) } else { v }
+                }
                 None => {
                     last_height = last_height.saturating_sub(1);
-                    let hash = self.client.get_block_hash(last_height).unwrap();
+                    // Keep the saved identity, verified above, instead of silently
+                    // attaching old balances to the node's replacement block.
+                    let hash = if self.last_block.hash != sha256d::Hash::all_zeros() {
+                        self.last_block.hash
+                    } else {
+                        self.client.get_block_hash(last_height).unwrap()
+                    };
                     last_hash = hash;
                     CheckPoint::new(BlockId { height: last_height, hash })
                 }
@@ -136,11 +182,13 @@ impl Indexer {
                 checkpoint = checkpoint.insert(BlockId { height, hash });
             }
 
+            let mut announced_synced = false;
             while !self.token.is_cancelled() {
                 let mut reorg_counter = 0;
                 let best_hash = self.client.get_best_block_hash().unwrap();
 
                 if best_hash != checkpoint.hash() {
+                    announced_synced = false;
                     loop {
                         if reorg_counter > self.reorg_max_len {
                             panic!("Reorg chain is too long");
@@ -200,6 +248,18 @@ impl Indexer {
                         break;
                     }
                 } else {
+                    if !announced_synced {
+                        // This marker follows all queued blocks, so the consumer
+                        // only advertises readiness after committing that tip.
+                        let tip = BlockId {
+                            height: checkpoint.height(),
+                            hash: checkpoint.hash(),
+                        };
+                        if tx.send(IndexerEvent::Synced(tip)).is_err() {
+                            return;
+                        }
+                        announced_synced = true;
+                    }
                     std::thread::sleep(Duration::from_millis(200));
                     continue;
                 }
@@ -215,70 +275,4 @@ impl Indexer {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::proto::header::BlockHeader;
-
-    use super::*;
-
-    fn test_block_id(height: u64) -> BlockId {
-        BlockId {
-            height,
-            hash: sha256d::Hash::from_byte_array([height as u8; 32]),
-        }
-    }
-
-    #[test]
-    fn test_reorg() {
-        let blocks = [test_block_id(0), test_block_id(1), test_block_id(2), test_block_id(3), test_block_id(4), test_block_id(5)];
-        let mut checkpoint = CheckPoint::from_block_ids(blocks).unwrap();
-
-        let best_block_id = BlockId {
-            height: 3,
-            hash: sha256d::Hash::from_byte_array([6; 32]),
-        };
-
-        let mut last_hash = checkpoint.hash();
-
-        let mut reorg_counter = 0;
-
-        if best_block_id.hash != checkpoint.hash() {
-            let best_height = best_block_id.height;
-
-            while checkpoint.height() >= best_block_id.height {
-                reorg_counter += 1;
-                checkpoint = checkpoint.prev().unwrap();
-                last_hash = checkpoint.hash();
-                continue;
-            }
-
-            assert_eq!(reorg_counter, 3);
-            assert_eq!(checkpoint.height(), best_height - 1);
-
-            while checkpoint.height() < best_height {
-                let next_height = checkpoint.height() + 1;
-                let next_hash = blocks.get(next_height as usize - 1).unwrap().hash;
-                checkpoint = checkpoint.insert(BlockId {
-                    height: next_height,
-                    hash: next_hash,
-                });
-
-                check_ordering(
-                    &mut last_hash,
-                    &Hashed {
-                        hash: blocks.get(checkpoint.height() as usize - 1).map(|x| x.hash).unwrap_or(sha256d::Hash::all_zeros()),
-                        value: BlockHeader {
-                            bits: 0,
-                            merkle_root: sha256d::Hash::all_zeros(),
-                            nonce: 0,
-                            prev_hash: checkpoint.hash(),
-                            timestamp: 0,
-                            version: 0,
-                        },
-                    },
-                );
-            }
-        }
-
-        assert_eq!(checkpoint.height(), best_block_id.height);
-    }
-}
+mod tests;

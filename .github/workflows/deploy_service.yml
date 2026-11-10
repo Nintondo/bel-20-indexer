@@ -116,6 +116,7 @@ jobs:
           NETWORK: ${{ vars.NETWORK }}
           BLK_DIR: ${{ vars.BLK_DIR }}
           INDEX_DIR: ${{ vars.INDEX_DIR }}
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
           set -euo pipefail
 

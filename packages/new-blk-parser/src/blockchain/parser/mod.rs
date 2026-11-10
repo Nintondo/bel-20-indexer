@@ -17,8 +17,10 @@ pub struct ChainOptions {
 
 impl ChainOptions {
     pub fn new(path: Option<&str>, index_dir_path: Option<&str>, coin: CoinType, last_height: u32) -> Self {
-        let dir = path.map(|path| PathBuf::from_str(path).expect("Invalid path"));
-        let index_dir_path = index_dir_path.map(|index_dir_path| PathBuf::from_str(index_dir_path).expect("Invalid INDEX_DIR path"));
+        let dir = path.filter(|value| !value.trim().is_empty()).map(|path| PathBuf::from_str(path).expect("Invalid path"));
+        let index_dir_path = index_dir_path
+            .filter(|value| !value.trim().is_empty())
+            .map(|index_dir_path| PathBuf::from_str(index_dir_path).expect("Invalid INDEX_DIR path"));
         let range = crate::utils::BlockHeightRange::new(last_height as u64, None).unwrap();
 
         Self {

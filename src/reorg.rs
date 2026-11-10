@@ -1,7 +1,9 @@
 use super::*;
+use anyhow::Context;
 
 pub const REORG_CACHE_MAX_LEN: usize = 30;
 
+#[derive(Clone)]
 pub enum TokenHistoryEntry {
     BalancesBefore(Vec<(AddressToken, TokenBalance)>),
     BalancesToRemove(Vec<AddressToken>),
@@ -19,29 +21,29 @@ pub enum TokenHistoryEntry {
 }
 
 trait ProceedReorg: Sized {
-    fn proceed(self, server: &Server) -> anyhow::Result<()>;
+    fn proceed(self, server: &Server, batch: &mut rocksdb_wrapper::RocksBatch) -> anyhow::Result<()>;
 }
 
 impl ProceedReorg for TokenHistoryEntry {
-    fn proceed(self, server: &Server) -> anyhow::Result<()> {
+    fn proceed(self, server: &Server, batch: &mut rocksdb_wrapper::RocksBatch) -> anyhow::Result<()> {
         match self {
             TokenHistoryEntry::DeploysToRemove(to_remove) => {
-                server.db.token_to_meta.remove_batch(to_remove);
+                batch.remove_batch(&server.db.token_to_meta, to_remove);
             }
             TokenHistoryEntry::DeploysToRestore(items) => {
-                server.db.token_to_meta.extend(items);
+                batch.extend(&server.db.token_to_meta, items);
             }
             TokenHistoryEntry::BalancesBefore(items) => {
-                server.db.address_token_to_balance.extend(items);
+                batch.extend(&server.db.address_token_to_balance, items);
             }
             TokenHistoryEntry::BalancesToRemove(address_tokens) => {
-                server.db.address_token_to_balance.remove_batch(address_tokens);
+                batch.remove_batch(&server.db.address_token_to_balance, address_tokens);
             }
             TokenHistoryEntry::RestoreTransfers(items) => {
-                server.db.address_location_to_transfer.extend(items);
+                batch.extend(&server.db.address_location_to_transfer, items);
             }
             TokenHistoryEntry::RemoveTransfers(address_locations) => {
-                server.db.address_location_to_transfer.remove_batch(address_locations);
+                batch.remove_batch(&server.db.address_location_to_transfer, address_locations);
             }
             TokenHistoryEntry::RemoveHistory {
                 to_remove,
@@ -50,11 +52,11 @@ impl ProceedReorg for TokenHistoryEntry {
                 height,
                 token_id_to_event,
             } => {
-                server.db.last_history_id.set((), last_history_id);
-                server.db.block_events.remove(height);
-                server.db.address_token_to_history.remove_batch(to_remove);
-                server.db.outpoint_to_event.remove_batch(outpoint_to_event);
-                server.db.token_id_to_event.remove_batch(token_id_to_event);
+                batch.set(&server.db.last_history_id, (), last_history_id);
+                batch.remove(&server.db.block_events, height);
+                batch.remove_batch(&server.db.address_token_to_history, to_remove);
+                batch.remove_batch(&server.db.outpoint_to_event, outpoint_to_event);
+                batch.remove_batch(&server.db.token_id_to_event, token_id_to_event);
             }
         }
 
@@ -62,6 +64,7 @@ impl ProceedReorg for TokenHistoryEntry {
     }
 }
 
+#[derive(Clone)]
 pub enum OrdinalsEntry {
     RestoreOffsets(Vec<(OutPoint, HashSet<u64>)>),
     RemoveOffsets(Vec<OutPoint>),
@@ -71,22 +74,22 @@ pub enum OrdinalsEntry {
 }
 
 impl ProceedReorg for OrdinalsEntry {
-    fn proceed(self, server: &Server) -> anyhow::Result<()> {
+    fn proceed(self, server: &Server, batch: &mut rocksdb_wrapper::RocksBatch) -> anyhow::Result<()> {
         match self {
             OrdinalsEntry::RestoreOffsets(items) => {
-                server.db.outpoint_to_inscription_offsets.extend(items);
+                batch.extend(&server.db.outpoint_to_inscription_offsets, items);
             }
             OrdinalsEntry::RemoveOffsets(outpoints) => {
-                server.db.outpoint_to_inscription_offsets.remove_batch(outpoints);
+                batch.remove_batch(&server.db.outpoint_to_inscription_offsets, outpoints);
             }
             OrdinalsEntry::RestorePrevouts(items) => {
-                server.db.prevouts.extend(items);
+                batch.extend(&server.db.prevouts, items);
             }
             OrdinalsEntry::RestorePartial(items) => {
-                server.db.outpoint_to_partials.extend(items);
+                batch.extend(&server.db.outpoint_to_partials, items);
             }
             OrdinalsEntry::RemovePartials(outpoints) => {
-                server.db.outpoint_to_partials.remove_batch(outpoints);
+                batch.remove_batch(&server.db.outpoint_to_partials, outpoints);
             }
         }
 
@@ -94,7 +97,7 @@ impl ProceedReorg for OrdinalsEntry {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ReorgHistoryBlock {
     token_history: Vec<TokenHistoryEntry>,
     ordinals_history: Vec<OrdinalsEntry>,
@@ -135,28 +138,55 @@ impl ReorgCache {
     }
 
     pub fn restore(&mut self, server: &Server, block_height: u32) -> anyhow::Result<()> {
-        while !self.blocks.is_empty() && block_height < *self.blocks.last_key_value().unwrap().0 {
-            let (height, data) = self.blocks.pop_last().anyhow()?;
+        self.restore_using(server, block_height, |batch| batch.commit(&server.db.storage))
+    }
 
-            server.db.last_block.set((), height - 1);
-            server.db.block_info.remove(height);
+    pub(crate) fn restore_using(&mut self, server: &Server, block_height: u32, mut commit: impl FnMut(rocksdb_wrapper::RocksBatch) -> anyhow::Result<()>) -> anyhow::Result<()> {
+        let _gate = server.sync_gate.write();
+        server.catching_up.store(true, std::sync::atomic::Ordering::Release);
+        server.snapshots.clear();
+        if server.db.last_block.try_get(())?.unwrap_or_default() > block_height {
+            let (&first, _) = self.blocks.first_key_value().context("Reorg has no undo history; reindex required")?;
+            anyhow::ensure!(block_height >= first.saturating_sub(1), "Reorg exceeds available undo history");
+        }
+        while !self.blocks.is_empty() && block_height < *self.blocks.last_key_value().unwrap().0 {
+            let (&height, data) = self.blocks.last_key_value().anyhow()?;
+            let data = data.clone();
+            let mut batch = rocksdb_wrapper::RocksBatch::default();
+            batch.remove(&server.db.sync_blocks, height);
+            batch.remove(&server.db.proof_of_history, height);
+
+            let parent = height.saturating_sub(1);
+            batch.set(&server.db.last_block, (), parent);
+            let floor = server.sync_boundary.load(std::sync::atomic::Ordering::Acquire);
+            let start = server.db.sync_state.try_get(()).ok().flatten().map(|state| state.start()).unwrap_or(floor.max(height));
+            let tip = server.db.block_info.try_get(parent)?.map(|info| (parent, info.hash.to_byte_array()));
+            if parent == 0 && tip.is_none() {
+                batch.remove(&server.db.last_block, ());
+            }
+            batch.set(&server.db.sync_state, (), crate::sync::storage::ReplayState::V2 { start, tip });
+            batch.remove(&server.db.block_info, height);
 
             for entry in data.token_history.into_iter().rev() {
-                entry.proceed(server)?;
+                entry.proceed(server, &mut batch)?;
             }
             for entry in data.ordinals_history.into_iter().rev() {
-                entry.proceed(server)?;
+                entry.proceed(server, &mut batch)?;
             }
+            commit(batch)?;
+            self.blocks.remove(&height);
         }
 
         Ok(())
     }
 
     pub fn restore_all(&mut self, server: &Server) -> anyhow::Result<()> {
-        let from = self.blocks.first_key_value().map(|x| *x.0);
+        let Some(from) = self.blocks.first_key_value().map(|x| *x.0) else {
+            return Ok(());
+        };
         let to = self.blocks.last_key_value().map(|x| *x.0);
 
         warn!("Restoring savepoints from {:?} to {:?}", from, to);
-        self.restore(server, 0)
+        self.restore(server, from.saturating_sub(1))
     }
 }

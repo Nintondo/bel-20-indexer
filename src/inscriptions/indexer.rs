@@ -11,6 +11,7 @@ pub struct InscriptionIndexer {
 pub struct DataToWrite {
     pub processed: Vec<ProcessedData>,
     pub block_events: Vec<ServerEvent>,
+    pub sync_balances: Vec<crate::sync::storage::BalanceV1>,
     pub history: Vec<(AddressTokenIdDB, HistoryValue)>,
 }
 
@@ -22,25 +23,10 @@ impl InscriptionIndexer {
     pub fn handle(&self, block_height: u32, block: nint_blk::proto::block::Block, handle_reorgs: bool) -> anyhow::Result<()> {
         let mut to_write = DataToWrite::default();
 
+        // All writers take the cache before the publication gate, including rollback.
+        let mut cache = self.reorg_cache.lock();
         self.handle_block(&mut to_write, block_height, block, handle_reorgs)?;
-
-        if handle_reorgs {
-            self.reorg_cache.lock().new_block(block_height);
-        }
-
-        // write/remove data from block
-        for data in to_write.processed {
-            data.write(&self.server, handle_reorgs.then_some(self.reorg_cache.clone()));
-        }
-
-        for event in to_write.block_events {
-            self.server.event_sender.send(event).ok();
-        }
-
-        if self.server.raw_event_sender.send(to_write.history).is_err() && !self.server.token.is_cancelled() {
-            panic!("Failed to send raw event");
-        }
-
+        super::commit::commit_block(&self.server, &mut cache, block_height, to_write, handle_reorgs)?;
         Ok(())
     }
 
@@ -80,6 +66,11 @@ impl InscriptionIndexer {
         });
 
         if block_height < *START_HEIGHT {
+            to_write.processed.push(ProcessedData::Info {
+                block_number: block_height,
+                block_info,
+                block_proof: prev_block_proof,
+            });
             return Ok(());
         }
 
@@ -114,6 +105,7 @@ impl InscriptionIndexer {
 
         token_cache.load_tokens_data(&self.server.db)?;
 
+        let balances_before = (handle_reorgs && self.server.sync_config.enabled()).then(|| token_cache.token_accounts.clone());
         let mut fullhash_to_load = HashSet::new();
 
         to_write.history = token_cache
@@ -179,6 +171,24 @@ impl InscriptionIndexer {
             .chain(outpoint_fullhash_to_address)
             .collect::<HashMap<_, _>>()
             .into();
+
+        if let Some(before) = balances_before {
+            token_cache.token_accounts.retain(|key, value| before.get(key) != Some(value));
+        }
+        if handle_reorgs && self.server.sync_config.enabled() {
+            to_write.sync_balances = token_cache
+                .token_accounts
+                .iter()
+                .filter_map(|(key, value)| {
+                    let address = rest_addresses.get(&key.address);
+                    if address == NON_STANDARD_ADDRESS || address == OP_RETURN_ADDRESS {
+                        return None;
+                    }
+                    let meta = token_cache.tokens.get(&key.token.into()).expect("Validated balance has token metadata");
+                    Some(crate::sync::storage::BalanceV1::new(address, *key, value, &TokenMetaDB::from(meta.clone())))
+                })
+                .collect();
+        }
 
         let new_proof = Server::generate_history_hash(prev_block_proof, &to_write.history, &rest_addresses)?;
 

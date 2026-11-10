@@ -50,6 +50,7 @@ mod utils;
 mod blockchain;
 mod db;
 mod server;
+mod sync;
 
 pub type Fixed128 = nintypes::utils::fixed::Fixed128<18>;
 const OP_RETURN_ADDRESS: &str = "BURNED";

@@ -216,7 +216,18 @@ jobs:
             exit 1
           fi
           rm -f "${manifest_error}"
-          docker build \
+          cache_args=()
+          if [[ "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}" == "true" ]]; then
+            for candidate in \
+              /opt/runner-hooks/cargo-cache/client.env \
+              /opt/runner-cache-hooks/cargo-cache/client.env; do
+              if [[ -r "$candidate" ]]; then
+                cache_args+=(--secret "id=cargo_cache_env,src=$candidate")
+                break
+              fi
+            done
+          fi
+          docker build "${cache_args[@]}" \
             --no-cache \
             --pull \
             --label "org.opencontainers.image.revision=${SERVICE_TAG}" \

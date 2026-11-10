@@ -27,6 +27,7 @@ pub(super) fn setup() -> (Fixture, Arc<Server>) {
     server.catching_up.store(false, std::sync::atomic::Ordering::Release);
     server.db.last_block.set((), 30_000);
     server.db.sync_state.set((), crate::sync::storage::ReplayState::V1 { start: 30_001 });
+    server.db.proof_of_history.set(30_000, sha256::Hash::from_byte_array([3; 32]));
     server.db.block_info.set(
         30_000,
         BlockInfo {
@@ -105,6 +106,7 @@ pub(super) fn empty_block(prev: [u8; 32], nonce: u32) -> nint_blk::proto::block:
 pub(super) async fn request(server: Arc<Server>, method: &str, path: &str) -> (axum::http::StatusCode, Vec<u8>) {
     let app = Router::new()
         .nest("/sync", crate::sync::routes::router(server.clone()).finish_api(&mut Default::default()))
+        .merge(crate::rest::health_routes())
         .with_state(server);
     let response = app
         .oneshot(

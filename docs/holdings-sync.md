@@ -113,6 +113,12 @@ durable undo recovery for pre-existing indexer data. Parser failure, shutdown, a
 rollback revoke readiness and invalidate snapshot sessions before undo or flush begins.
 Canonical block lookup returns 503 throughout recovery.
 
+`/readyz` also returns 503 until the committed tip is verified, during recovery,
+and after shutdown begins, independently of whether sync exports are enabled.
+`/livez` remains available while the HTTP server is running; `/status` reports the
+stored checkpoint during catch-up. Shutdown with no new blocks leaves that checkpoint
+and its balances unchanged.
+
 Balances, metadata, original history, replay records, and block markers are written in
 one RocksDB batch. If preparing the export log fails, balances and a replay gap marker
 commit atomically, forcing consumers to resnapshot instead of silently skipping changes.

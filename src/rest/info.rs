@@ -25,6 +25,21 @@ pub async fn all_addresses(State(server): State<Arc<Server>>) -> ApiResult<impl 
 }
 
 pub async fn status(State(server): State<Arc<Server>>) -> ApiResult<impl IntoApiResponse> {
+    read_status(&server)
+}
+
+pub async fn ready(State(server): State<Arc<Server>>) -> ApiResult<impl IntoApiResponse> {
+    let _gate = server.sync_gate.read();
+    if server.catching_up.load(std::sync::atomic::Ordering::Acquire) || server.token.is_cancelled() {
+        return Err(Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .body("Indexer tip is not verified".to_string())
+            .unwrap());
+    }
+    read_status(&server)
+}
+
+fn read_status(server: &Server) -> ApiResult<Json<types::Status>> {
     let last_height = server.db.last_block.get(()).internal("Failed to get last height")?;
 
     let last_poh = server.db.proof_of_history.get(last_height).internal("Failed to get last proof of history")?;

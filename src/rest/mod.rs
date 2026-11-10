@@ -40,6 +40,12 @@ pub use wrappers::{OutPoint, Txid};
 pub(crate) type ApiResult<T> = core::result::Result<T, Response<String>>;
 const INTERNAL: &str = "Internal server error";
 
+pub(crate) fn health_routes() -> axum::Router<Arc<Server>> {
+    axum::Router::new()
+        .route("/livez", axum::routing::get(|| async { StatusCode::OK }))
+        .route("/readyz", axum::routing::get(info::ready))
+}
+
 pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
     let token = server.token.clone();
     let cleanup = server.clone();
@@ -110,8 +116,7 @@ pub async fn run_rest(server: Arc<Server>) -> anyhow::Result<()> {
             .finish_api_with(&mut api, api_docs)
             // Not documented
             .route("/all-addresses", axum::routing::get(info::all_addresses))
-            .route("/livez", axum::routing::get(|| async { StatusCode::OK }))
-            .route("/readyz", axum::routing::get(info::status))
+            .merge(health_routes())
             .route("/all-tickers", axum::routing::get(tokens::all_tickers))
             .route("/events", axum::routing::post(history::subscribe))
             .layer(Extension(Arc::new(api)))

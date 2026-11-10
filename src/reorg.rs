@@ -181,10 +181,12 @@ impl ReorgCache {
     }
 
     pub fn restore_all(&mut self, server: &Server) -> anyhow::Result<()> {
-        let from = self.blocks.first_key_value().map(|x| *x.0);
+        let Some(from) = self.blocks.first_key_value().map(|x| *x.0) else {
+            return Ok(());
+        };
         let to = self.blocks.last_key_value().map(|x| *x.0);
 
         warn!("Restoring savepoints from {:?} to {:?}", from, to);
-        self.restore(server, from.unwrap_or(1).saturating_sub(1))
+        self.restore(server, from.saturating_sub(1))
     }
 }

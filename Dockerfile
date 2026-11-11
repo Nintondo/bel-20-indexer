@@ -1,4 +1,9 @@
+# syntax=docker/dockerfile:1.7
 FROM rust:1.92-trixie AS builder
+
+COPY tools/ci/install_sccache.sh /tmp/install_sccache.sh
+RUN sh /tmp/install_sccache.sh && rm /tmp/install_sccache.sh
+COPY tools/ci/with_cargo_cache.sh /usr/local/bin/with-cargo-cache
 
 ARG RUN_TESTS=0
 ARG CI_BUILD_JOBS=0
@@ -21,10 +26,11 @@ COPY Cargo.toml Cargo.lock ./
 COPY src src
 COPY packages packages
 
-RUN if [ "$CI_BUILD_JOBS" != "0" ]; then export CARGO_BUILD_JOBS="$CI_BUILD_JOBS"; fi \
+RUN --mount=type=secret,id=cargo_cache_env \
+    sh /usr/local/bin/with-cargo-cache sh -ec 'if [ "$CI_BUILD_JOBS" != "0" ]; then export CARGO_BUILD_JOBS="$CI_BUILD_JOBS"; fi \
   && cargo fetch --locked \
   && if [ "$RUN_TESTS" = "1" ]; then cargo test --release --locked; fi \
-  && cargo build --release --locked
+  && cargo build --release --locked'
 
 RUN rm -rf /usr/local/cargo/git && \
     rm -rf /usr/local/cargo/registry

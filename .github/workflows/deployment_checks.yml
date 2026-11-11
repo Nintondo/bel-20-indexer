@@ -67,7 +67,18 @@ jobs:
 
         run: |
           set -euo pipefail
-          docker build --pull --build-arg RUN_TESTS=1 --build-arg CI_BUILD_JOBS=2 --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$CI_TEST_IMAGE" .
+          cache_args=()
+          if [[ "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}" == "true" ]]; then
+            for candidate in \
+              /opt/runner-hooks/cargo-cache/client.env \
+              /opt/runner-cache-hooks/cargo-cache/client.env; do
+              if [[ -r "$candidate" ]]; then
+                cache_args+=(--secret "id=cargo_cache_env,src=$candidate")
+                break
+              fi
+            done
+          fi
+          docker build "${cache_args[@]}" --pull --build-arg RUN_TESTS=1 --build-arg CI_BUILD_JOBS=2 --label "org.opencontainers.image.revision=$SOURCE_SHA" -t "$CI_TEST_IMAGE" .
           [ "$(docker image inspect -f '{{if .Config.Healthcheck}}present{{end}}' "$CI_TEST_IMAGE")" = present ]
           [ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CI_TEST_IMAGE")" = "$SOURCE_SHA" ]
       - name: Remove this run's test image

@@ -202,20 +202,23 @@ jobs:
             [ "$(docker image inspect -f '{{if .Config.Healthcheck}}present{{end}}' "${IMAGE}:${SERVICE_TAG}")" = present ]
             [ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "${IMAGE}:${SERVICE_TAG}")" = "${SERVICE_TAG}" ]
           }
-          manifest_error="$(mktemp)"
-          if docker manifest inspect "${IMAGE}:${SERVICE_TAG}" >/dev/null 2>"${manifest_error}"; then
-            rm -f "${manifest_error}"
+          # Use the daemon's registry CA trust, consistently with login and push.
+          # The runner CLI may not trust a registry's private origin CA.
+          pull_error="$(mktemp)"
+          if docker pull --quiet "${IMAGE}:${SERVICE_TAG}" >/dev/null 2>"${pull_error}"; then
+            rm -f "${pull_error}"
             echo "Reusing the existing SHA image; commit tags are never overwritten."
-            docker pull --quiet "${IMAGE}:${SERVICE_TAG}"
             verify_image
             exit 0
           fi
-          if ! grep -qiE "manifest unknown|no such manifest" "${manifest_error}"; then
-            cat "${manifest_error}" >&2
-            rm -f "${manifest_error}"
+          missing_reference="Error response from daemon: failed to resolve reference \"${IMAGE}:${SERVICE_TAG}\": ${IMAGE}:${SERVICE_TAG}: not found"
+          if ! grep -qiE "manifest unknown|no such manifest" "${pull_error}" \
+            && ! grep -Fxq "$missing_reference" "${pull_error}"; then
+            cat "${pull_error}" >&2
+            rm -f "${pull_error}"
             exit 1
           fi
-          rm -f "${manifest_error}"
+          rm -f "${pull_error}"
           cache_args=()
           if [[ "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}" == "true" ]]; then
             for candidate in \
